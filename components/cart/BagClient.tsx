@@ -1,0 +1,211 @@
+"use client";
+
+import { useState } from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { ShoppingBag, Minus, Plus } from "lucide-react";
+import { useLanguage } from "@/lib/i18n";
+import { useCartStore } from "@/store/cartStore";
+import { useWishlistStore } from "@/store/wishlistStore";
+import { useToastStore } from "@/store/toastStore";
+import { Breadcrumb } from "@/components/layout/Breadcrumb";
+import { Button } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
+import { formatPrice } from "@/lib/utils";
+import { Container } from "@/components/layout/Container";
+import { previewCouponAction } from "@/lib/supabase/actions/checkout";
+import type { DeliverySettings } from "@/lib/supabase/queries/settings";
+
+interface BagClientProps {
+  deliverySettings: DeliverySettings;
+}
+
+export function BagClient({ deliverySettings }: BagClientProps) {
+  const { t, pick } = useLanguage();
+  const { items, removeItem, updateQuantity, subtotal } = useCartStore();
+  const addWishlistItem = useWishlistStore((s) => s.addItem);
+  const { addToast } = useToastStore();
+  const [coupon, setCoupon] = useState("");
+  const [couponMessage, setCouponMessage] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [checkingCoupon, setCheckingCoupon] = useState(false);
+
+  const subtotalValue = subtotal();
+  const deliveryFee =
+    subtotalValue === 0 || subtotalValue >= deliverySettings.freeDeliveryThreshold
+      ? 0
+      : deliverySettings.standardDeliveryFee;
+  const total = Math.max(0, subtotalValue + deliveryFee - couponDiscount);
+
+  const handleMoveToWishlist = (item: (typeof items)[number]) => {
+    addWishlistItem({
+      productId: item.productId,
+      slug: item.slug,
+      name: item.name,
+      image: item.image,
+      price: item.price,
+    });
+    removeItem(item.productId, item.size, item.colour);
+    addToast(t("wishlist.moveToBag"));
+  };
+
+  const handleApplyCoupon = async () => {
+    if (!coupon.trim()) {
+      setCouponDiscount(0);
+      setCouponMessage(t("bag.errors.couponRequired"));
+      return;
+    }
+    setCheckingCoupon(true);
+    const result = await previewCouponAction(coupon.trim(), subtotalValue);
+    setCheckingCoupon(false);
+    if (!result.ok || !result.data) {
+      setCouponDiscount(0);
+      setCouponMessage(t(!result.ok ? result.message : "bag.errors.couponFailed"));
+      return;
+    }
+    setCouponDiscount(result.data.discount);
+    setCouponMessage(`${t("bag.couponApplied")} ${formatPrice(result.data.discount)}`);
+  };
+
+  const handleRemoveCoupon = () => {
+    setCoupon("");
+    setCouponDiscount(0);
+    setCouponMessage("");
+  };
+
+  return (
+    <Container className="py-8 sm:py-12 lg:py-14">
+      <Breadcrumb items={[{ label: t("bag.heading") }]} />
+      <h1 className="font-serif text-3xl sm:text-4xl lg:text-[2.75rem] text-ink mt-3 mb-8">{t("bag.heading")}</h1>
+
+      {items.length === 0 ? (
+        <EmptyState
+          icon={ShoppingBag}
+          heading={t("bag.empty")}
+          text={t("bag.emptyText")}
+          action={
+            <Link href="/new-arrivals">
+              <Button variant="secondary">{t("bag.continueShopping")}</Button>
+            </Link>
+          }
+        />
+      ) : (
+        <div className="grid lg:grid-cols-3 gap-10">
+          <div className="lg:col-span-2 flex flex-col divide-y divide-border">
+            {items.map((item) => (
+              <div key={`${item.productId}-${item.size}-${item.colour}`} className="flex gap-4 py-6 first:pt-0">
+                <Link href={`/product/${item.slug}`} className="relative w-24 h-[120px] sm:w-28 sm:h-[140px] shrink-0 bg-beige">
+                  <Image src={item.image} alt={pick(item.name)} fill sizes="120px" className="object-cover" />
+                </Link>
+                <div className="flex-1 flex flex-col">
+                  <div className="flex justify-between gap-2">
+                    <Link href={`/product/${item.slug}`} className="text-sm sm:text-base text-ink hover:text-wine">
+                      {pick(item.name)}
+                    </Link>
+                    <span className="text-sm sm:text-base text-ink whitespace-nowrap">
+                      {formatPrice(item.price * item.quantity)}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted mt-1">
+                    {item.size} / {item.colour}
+                  </p>
+                  <div className="flex items-center justify-between mt-auto pt-3">
+                    <div className="flex items-center rounded-control border border-border">
+                      <button
+                        aria-label="Decrease quantity"
+                        className="p-2.5 hover:bg-beige transition-colors"
+                        onClick={() => updateQuantity(item.productId, item.size, item.colour, item.quantity - 1)}
+                      >
+                        <Minus size={14} />
+                      </button>
+                      <span className="w-8 text-center text-sm">{item.quantity}</span>
+                      <button
+                        aria-label="Increase quantity"
+                        className="p-2.5 hover:bg-beige transition-colors"
+                        onClick={() => updateQuantity(item.productId, item.size, item.colour, item.quantity + 1)}
+                      >
+                        <Plus size={14} />
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      <button
+                        onClick={() => handleMoveToWishlist(item)}
+                        className="text-xs text-muted hover:text-ink underline underline-offset-2"
+                      >
+                        {t("bag.moveToWishlist")}
+                      </button>
+                      <button
+                        onClick={() => removeItem(item.productId, item.size, item.colour)}
+                        className="text-xs text-muted hover:text-wine underline underline-offset-2"
+                      >
+                        {t("bag.remove")}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ))}
+            <div className="pt-6">
+              <Link href="/new-arrivals" className="text-sm text-ink underline underline-offset-2 hover:text-wine">
+                {t("bag.continueShopping")}
+              </Link>
+            </div>
+          </div>
+
+          <div className="bg-beige/50 rounded-panel border border-border p-6 h-fit flex flex-col gap-4">
+            <h2 className="font-serif text-xl text-ink mb-1">{t("bag.heading")}</h2>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted">{t("bag.subtotal")}</span>
+              <span className="text-ink">{formatPrice(subtotalValue)}</span>
+            </div>
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-muted">{t("bag.delivery")}</span>
+              <span className="text-ink">{formatPrice(deliveryFee)}</span>
+            </div>
+            {couponDiscount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted">{t("bag.coupon")}</span>
+                <span className="text-wine">-{formatPrice(couponDiscount)}</span>
+              </div>
+            )}
+            <p className="text-xs text-muted -mt-2">{t("bag.freeDeliveryNote")}</p>
+
+            <div className="flex flex-col gap-2 border-t border-border pt-4">
+              <label htmlFor="coupon" className="text-xs uppercase tracking-wide text-muted">
+                {t("bag.coupon")}
+              </label>
+              <div className="flex gap-2">
+                <input
+                  id="coupon"
+                  value={coupon}
+                  onChange={(e) => setCoupon(e.target.value.toUpperCase())}
+                  disabled={couponDiscount > 0}
+                  className="h-11 flex-1 rounded-control border border-border bg-white px-3.5 text-sm focus:outline-none focus:border-wine transition-colors disabled:bg-beige/60 disabled:text-muted"
+                />
+                {couponDiscount > 0 ? (
+                  <Button variant="outline" size="sm" onClick={handleRemoveCoupon}>
+                    {t("bag.couponRemove")}
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" onClick={handleApplyCoupon} loading={checkingCoupon}>
+                    {t("bag.applyCoupon")}
+                  </Button>
+                )}
+              </div>
+              {couponMessage && <p className="text-xs text-wine">{couponMessage}</p>}
+            </div>
+
+            <div className="flex items-center justify-between border-t border-border pt-4 text-base">
+              <span className="text-ink font-medium">{t("bag.total")}</span>
+              <span className="text-ink font-medium">{formatPrice(total)}</span>
+            </div>
+
+            <Link href="/checkout">
+              <Button fullWidth>{t("bag.checkout")}</Button>
+            </Link>
+          </div>
+        </div>
+      )}
+    </Container>
+  );
+}

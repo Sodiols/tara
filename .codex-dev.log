@@ -1,0 +1,17 @@
+
+> tara@0.1.0 dev
+> next dev --hostname 127.0.0.1 --port 3010
+
+▲ Next.js 16.2.12 (Turbopack)
+- Local:         http://127.0.0.1:3010
+- Network:       http://127.0.0.1:3010
+✓ Ready in 2.1s
+⨯ Another next dev server is already running.
+
+- Local:        http://localhost:3000
+- PID:          28748
+- Dir:          D:\tara website\Website
+- Log:          .next\dev\logs\next-development.log
+
+Run taskkill /PID 28748 /F to stop it.
+[?25h

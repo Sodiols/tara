@@ -1,0 +1,46 @@
+"use client";
+
+import { useLanguage } from "@/lib/i18n";
+import { CategoryCard } from "./CategoryCard";
+import { img, stockImages } from "@/lib/images";
+import { Container } from "@/components/layout/Container";
+import { SectionHeader } from "@/components/layout/SectionHeader";
+
+export function MainCategorySection() {
+  const { t } = useLanguage();
+
+  const categories = [
+    {
+      name: t("categories.unstitchedName"),
+      image: img(stockImages.portraitE, 700, 875),
+      href: "/unstitched-three-piece",
+    },
+    {
+      name: t("categories.readyName"),
+      image: img(stockImages.portraitK, 700, 875),
+      href: "/ready-three-piece",
+    },
+    {
+      name: t("categories.accessoriesName"),
+      image: img(stockImages.bagE, 700, 875),
+      href: "/accessories",
+    },
+  ];
+
+  return (
+    <Container as="section" className="py-12 sm:py-16 lg:py-24">
+      <SectionHeader eyebrow={t("categories.eyebrow")} heading={t("categories.heading")} />
+      <div className="grid sm:grid-cols-3 gap-4 md:gap-6 lg:gap-8">
+        {categories.map((cat) => (
+          <CategoryCard
+            key={cat.href}
+            image={cat.image}
+            name={cat.name}
+            exploreLabel={t("common.exploreLink")}
+            href={cat.href}
+          />
+        ))}
+      </div>
+    </Container>
+  );
+}

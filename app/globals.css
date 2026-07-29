@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Official TARA colour palette. */
+  --tara-wine: #702d42;
+  --tara-ivory: #f5f1ea;
+  --tara-white: #ffffff;
+  --tara-black: #171717;
+  --tara-rose: #d5a0aa;
+  --tara-taupe: #b9aa9c;
+
+  /* Same six colours as "R G B" channel triplets, consumed by tailwind.config.ts
+     so utilities like bg-taraWine/50 can apply opacity to the official palette. */
+  --tara-wine-rgb: 112 45 66;
+  --tara-ivory-rgb: 245 241 234;
+  --tara-white-rgb: 255 255 255;
+  --tara-black-rgb: 23 23 23;
+  --tara-rose-rgb: 213 160 170;
+  --tara-taupe-rgb: 185 170 156;
+}
+
+html {
+  scroll-behavior: smooth;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  background-color: var(--tara-white);
+  color: var(--tara-black);
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+::selection {
+  background-color: var(--tara-wine);
+  color: var(--tara-white);
+}
+
+/* Bangla: Noto Sans Bengali for interface/body text, Noto Serif Bengali for display headings.
+   Bodoni Moda and Manrope are Latin-only, so Bangla content never inherits them. */
+html[lang="bn"] body {
+  font-family: var(--font-bengali), var(--font-body), sans-serif;
+}
+
+html[lang="bn"] .font-serif,
+html[lang="bn"] .font-display {
+  font-family: var(--font-bengali-serif), var(--font-heading), serif;
+}
+
+*:focus-visible {
+  outline: 2px solid var(--tara-wine);
+  outline-offset: 2px;
+}
+
+.line-clamp-1 {
+  display: -webkit-box;
+  -webkit-line-clamp: 1;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
