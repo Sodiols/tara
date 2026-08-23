@@ -12,5 +12,5 @@ export const metadata: Metadata = {
 export default async function ReadyPage({ searchParams }: { searchParams: ListingSearchParams }) {
   const parsed = await parseListingParams(searchParams);
   const result = await getProductsByCategory("ready-three-piece", parsed.filters);
-  return <ProductListingClient titleKey="nav.ready" products={result.products} initialFilters={parsed.initialFilters} initialSort={parsed.initialSort} />;
+  return <ProductListingClient title="Ready Three Piece" products={result.products} initialFilters={parsed.initialFilters} initialSort={parsed.initialSort} />;
 }

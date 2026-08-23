@@ -12,7 +12,6 @@ import {
   Truck,
   User,
 } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
 import { useCartStore } from "@/store/cartStore";
 import { useWishlistStore } from "@/store/wishlistStore";
 import { logoutAction } from "@/lib/supabase/actions/auth";
@@ -22,7 +21,6 @@ interface AccountMenuProps {
 }
 
 export function AccountMenu({ fullName }: AccountMenuProps) {
-  const { t } = useLanguage();
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -64,7 +62,7 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={panelId}
-        aria-label={t("nav.account")}
+        aria-label={"Account"}
         onClick={() => setOpen((o) => !o)}
         className="p-2 text-ink hover:text-wine transition-colors"
       >
@@ -80,17 +78,17 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
           >
             {fullName && (
               <p className="truncate px-4 pb-2 pt-1 font-sans text-xs text-muted">
-                {t("account.heading")} · <span className="text-ink">{fullName}</span>
+                {"My Account"} · <span className="text-ink">{fullName}</span>
               </p>
             )}
             <Link href="/account" onClick={close} className={linkClass}>
-              <User size={16} /> {t("account.heading")}
+              <User size={16} /> {"My Account"}
             </Link>
             <Link href="/account/profile" onClick={close} className={linkClass}>
-              <User size={16} /> {t("account.profile")}
+              <User size={16} /> {"Profile"}
             </Link>
             <Link href="/account/wishlist" onClick={close} className={linkClass}>
-              <Heart size={16} /> {t("account.wishlist")}
+              <Heart size={16} /> {"Wishlist"}
             </Link>
             <button
               type="button"
@@ -100,19 +98,19 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
               }}
               className={`${linkClass} w-full text-left`}
             >
-              <ShoppingBag size={16} /> {t("nav.bag")}
+              <ShoppingBag size={16} /> {"Shopping Bag"}
             </button>
             <Link href="/account/orders" onClick={close} className={linkClass}>
-              <Package size={16} /> {t("account.orders")}
+              <Package size={16} /> {"Order History"}
             </Link>
             <Link href="/track-order" onClick={close} className={linkClass}>
-              <Truck size={16} /> {t("account.trackOrder")}
+              <Truck size={16} /> {"Track Order"}
             </Link>
             <Link href="/account/addresses" onClick={close} className={linkClass}>
-              <MapPin size={16} /> {t("account.addresses")}
+              <MapPin size={16} /> {"Addresses"}
             </Link>
             <Link href="/account/security" onClick={close} className={linkClass}>
-              <KeyRound size={16} /> {t("account.security")}
+              <KeyRound size={16} /> {"Change Password"}
             </Link>
             <div className="my-1 border-t border-border" role="presentation" />
             <form
@@ -123,7 +121,7 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
               }}
             >
               <button type="submit" className={`${linkClass} w-full text-left text-wine hover:text-wine`}>
-                <LogOut size={16} /> {t("account.logout")}
+                <LogOut size={16} /> {"Logout"}
               </button>
             </form>
           </div>

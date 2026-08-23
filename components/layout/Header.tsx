@@ -7,11 +7,9 @@ import { Menu, Search, User, Heart, ShoppingBag } from "lucide-react";
 import { DesktopNavigation } from "./DesktopNavigation";
 import { MobileNavigation } from "./MobileNavigation";
 import { SearchOverlay } from "./SearchOverlay";
-import { LanguageSwitcher } from "./LanguageSwitcher";
 import { AccountMenu } from "./AccountMenu";
 import { useCartStore } from "@/store/cartStore";
 import { useWishlistStore } from "@/store/wishlistStore";
-import { useLanguage } from "@/lib/i18n";
 import { useHasMounted } from "@/hooks/useHasMounted";
 import { Container } from "./Container";
 import { createClient } from "@/lib/supabase/client";
@@ -20,7 +18,6 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 export function Header() {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const { t } = useLanguage();
   const hasMounted = useHasMounted();
   const cartCountRaw = useCartStore((s) => s.itemCount());
   const openBag = useCartStore((s) => s.openBag);
@@ -55,7 +52,7 @@ export function Header() {
           <div className="flex items-center min-w-0">
             <button
               onClick={() => setMobileNavOpen(true)}
-              aria-label={t("nav.menu")}
+              aria-label={"Menu"}
               className="p-2 -ml-2 text-ink lg:hidden"
             >
               <Menu size={22} />
@@ -63,21 +60,22 @@ export function Header() {
             <DesktopNavigation />
           </div>
 
-          <Link href="/" className="shrink-0 justify-self-center" aria-label={t("common.brand")}>
+          <Link href="/" className="shrink-0 justify-self-center" aria-label={"TARA"}>
             <Image
               src="/logo/logo-black.png"
-              alt={t("common.brand")}
+              alt={"TARA"}
               width={250}
-              height={200}
+              height={64}
               priority
-              className="h-11 lg:h-14 w-auto"
+              quality={90}
+              className="h-5 lg:h-6 w-auto"
             />
           </Link>
 
           <div className="flex items-center justify-end gap-0.5 sm:gap-1 min-w-0">
             <button
               onClick={() => setSearchOpen(true)}
-              aria-label={t("nav.search")}
+              aria-label={"Search"}
               className="p-2 text-ink hover:text-wine transition-colors"
             >
               <Search size={20} />
@@ -89,7 +87,7 @@ export function Header() {
             ) : (
               <Link
                 href="/login"
-                aria-label={t("nav.account")}
+                aria-label={"Account"}
                 aria-busy={authState === "loading"}
                 className={`p-2 text-ink hover:text-wine transition-colors hidden lg:inline-flex ${
                   authState === "loading" ? "opacity-50" : ""
@@ -100,7 +98,7 @@ export function Header() {
             )}
             <Link
               href="/wishlist"
-              aria-label={t("nav.wishlist")}
+              aria-label={"Wishlist"}
               className="relative p-2 text-ink hover:text-wine transition-colors hidden sm:inline-flex"
             >
               <Heart size={20} />
@@ -112,7 +110,7 @@ export function Header() {
             </Link>
             <button
               onClick={openBag}
-              aria-label={t("nav.bag")}
+              aria-label={"Shopping Bag"}
               className="relative p-2 text-ink hover:text-wine transition-colors"
             >
               <ShoppingBag size={20} />
@@ -122,9 +120,6 @@ export function Header() {
                 </span>
               )}
             </button>
-            <div className="hidden lg:block ml-2">
-              <LanguageSwitcher compact />
-            </div>
           </div>
         </div>
       </Container>

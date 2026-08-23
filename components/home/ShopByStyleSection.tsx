@@ -2,17 +2,15 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useLanguage } from "@/lib/i18n";
 import { shopByStyleCategories } from "@/data/shopByStyle";
 import { Container } from "@/components/layout/Container";
 import { SectionHeader } from "@/components/layout/SectionHeader";
 
 export function ShopByStyleSection() {
-  const { t } = useLanguage();
 
   return (
     <Container as="section" className="py-12 sm:py-16 lg:py-24">
-      <SectionHeader eyebrow={t("shopByStyle.eyebrow")} heading={t("shopByStyle.heading")} />
+      <SectionHeader eyebrow={"Shop by Style"} heading={"Find Your Look"} />
       <div className="flex gap-3 md:gap-6 lg:gap-8 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-5">
         {shopByStyleCategories.map((style) => (
           <Link
@@ -22,7 +20,7 @@ export function ShopByStyleSection() {
           >
             <Image
               src={style.image}
-              alt={t(`shopByStyle.${style.translationKey}`)}
+              alt={style.label}
               fill
               sizes="(max-width: 768px) 45vw, 20vw"
               className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
@@ -30,7 +28,7 @@ export function ShopByStyleSection() {
             <div className="absolute inset-0 bg-gradient-to-t from-ink/60 via-ink/10 to-transparent group-hover:from-ink/70 transition-colors duration-200" />
             <div className="absolute inset-x-0 bottom-0 p-4">
               <span className="text-white text-sm font-serif leading-snug">
-                {t(`shopByStyle.${style.translationKey}`)}
+                {style.label}
               </span>
             </div>
           </Link>

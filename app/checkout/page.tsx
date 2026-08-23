@@ -5,7 +5,7 @@ import { getCheckoutPrefill } from "@/lib/supabase/queries/account";
 
 export const metadata: Metadata = {
   title: "Checkout",
-  description: "Complete your order with TARA — Cash on Delivery and online payment options available.",
+  description: "Complete your order with TARA — cash on delivery across Bangladesh.",
 };
 
 export default async function CheckoutPage() {

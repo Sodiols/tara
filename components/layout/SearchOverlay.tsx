@@ -5,17 +5,17 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
 import { X, Search as SearchIcon } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
 import type { Product } from "@/types";
 import { formatPrice } from "@/lib/utils";
 import { useRouter } from "next/navigation";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 
 const RECENT_KEY = "tara-recent-searches";
-const suggestedKeywords = ["Undready", "Kurta", "Wine", "Festive", "Bag", "Earrings"];
+const suggestedKeywords = ["Unstitched", "Kurta", "Wine", "Festive", "Bag", "Earrings"];
 const popularCategories = [
-  { label: "categories.unstitchedName", href: "/unstitched-three-piece" },
-  { label: "categories.readyName", href: "/ready-three-piece" },
-  { label: "categories.accessoriesName", href: "/accessories" },
+  { label: "Unstitched Three Piece", href: "/unstitched-three-piece" },
+  { label: "Ready Three Piece", href: "/ready-three-piece" },
+  { label: "Accessories", href: "/accessories" },
 ];
 
 interface SearchOverlayProps {
@@ -24,7 +24,6 @@ interface SearchOverlayProps {
 }
 
 export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
-  const { t, pick } = useLanguage();
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [recent, setRecent] = useState<string[]>([]);
@@ -33,19 +32,21 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-      setTimeout(() => inputRef.current?.focus(), 50);
-      const stored = window.localStorage.getItem(RECENT_KEY);
-      // Reading persisted recent searches when the overlay opens.
-      // eslint-disable-next-line react-hooks/set-state-in-effect
-      setRecent(stored ? JSON.parse(stored) : []);
-    } else {
-      document.body.style.overflow = "";
-      setQuery("");
-    }
+    if (!isOpen) return;
+    const release = lockBodyScroll();
+    const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
+    const stored = window.localStorage.getItem(RECENT_KEY);
+    // Opening the overlay starts a fresh search and reloads the recent list
+    // from this device. Resetting on open rather than on close keeps the two
+    // pieces of state in one place and leaves nothing to clear on the way out.
+    /* eslint-disable react-hooks/set-state-in-effect */
+    setQuery("");
+    setResults([]);
+    setRecent(stored ? JSON.parse(stored) : []);
+    /* eslint-enable react-hooks/set-state-in-effect */
     return () => {
-      document.body.style.overflow = "";
+      clearTimeout(focusTimer);
+      release();
     };
   }, [isOpen]);
 
@@ -89,7 +90,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     <div className="fixed inset-0 z-[60] bg-white animate-fadeIn overflow-y-auto">
       <div className="max-w-3xl mx-auto px-5 pt-8 pb-16">
         <div className="flex items-center justify-end mb-6">
-          <button onClick={onClose} aria-label={t("common.close")} className="p-1 text-ink">
+          <button onClick={onClose} aria-label={"Close"} className="p-1 text-ink">
             <X size={26} />
           </button>
         </div>
@@ -100,15 +101,15 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder={t("search.placeholder")}
-            aria-label={t("search.placeholder")}
+            placeholder={"Search for products..."}
+            aria-label={"Search for products..."}
             className="w-full bg-transparent pl-8 pr-4 py-1 text-lg text-ink placeholder:text-muted focus:outline-none"
           />
         </form>
 
         {query.trim().length >= 2 ? (
           loading ? (
-            <p className="py-10 text-center text-sm text-muted">{t("common.loading")}</p>
+            <p className="py-10 text-center text-sm text-muted">{"Loading"}</p>
           ) : results.length > 0 ? (
             <div className="flex flex-col gap-4">
               {results.map((p) => (
@@ -122,10 +123,10 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                   className="flex items-center gap-4 group"
                 >
                   <div className="relative w-16 h-20 shrink-0 bg-beige overflow-hidden">
-                    <Image src={p.images[0]} alt={pick(p.name)} fill sizes="64px" className="object-cover" />
+                    <Image src={p.images[0]} alt={p.name} fill sizes="64px" className="object-cover" />
                   </div>
                   <div>
-                    <p className="text-sm text-ink group-hover:text-wine transition-colors">{pick(p.name)}</p>
+                    <p className="text-sm text-ink group-hover:text-wine transition-colors">{p.name}</p>
                     <p className="text-sm text-muted mt-1">{formatPrice(p.price)}</p>
                   </div>
                 </Link>
@@ -133,15 +134,15 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
             </div>
           ) : (
             <div className="text-center py-10">
-              <p className="text-ink font-serif text-xl mb-1">{t("search.noResults")}</p>
-              <p className="text-muted text-sm">{t("search.noResultsText")}</p>
+              <p className="text-ink font-serif text-xl mb-1">{"No results found"}</p>
+              <p className="text-muted text-sm">{"Try searching for something else."}</p>
             </div>
           )
         ) : (
           <div className="flex flex-col gap-8">
             {recent.length > 0 && (
               <div>
-                <h3 className="text-xs uppercase tracking-wide text-muted mb-3">{t("search.recent")}</h3>
+                <h3 className="text-xs uppercase tracking-wide text-muted mb-3">{"Recent Searches"}</h3>
                 <div className="flex flex-wrap gap-2">
                   {recent.map((term) => (
                     <button
@@ -156,7 +157,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
               </div>
             )}
             <div>
-              <h3 className="text-xs uppercase tracking-wide text-muted mb-3">{t("search.suggested")}</h3>
+              <h3 className="text-xs uppercase tracking-wide text-muted mb-3">{"Suggested Keywords"}</h3>
               <div className="flex flex-wrap gap-2">
                 {suggestedKeywords.map((term) => (
                   <button
@@ -170,7 +171,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
               </div>
             </div>
             <div>
-              <h3 className="text-xs uppercase tracking-wide text-muted mb-3">{t("search.popular")}</h3>
+              <h3 className="text-xs uppercase tracking-wide text-muted mb-3">{"Popular Categories"}</h3>
               <div className="flex flex-col gap-1">
                 {popularCategories.map((cat) => (
                   <Link
@@ -179,7 +180,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
                     onClick={onClose}
                     className="text-sm text-ink hover:text-wine py-1.5 transition-colors"
                   >
-                    {t(cat.label)}
+                    {cat.label}
                   </Link>
                 ))}
               </div>

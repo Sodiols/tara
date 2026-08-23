@@ -15,7 +15,13 @@ type Table<Row, Insert = Partial<Row>, Update = Partial<Insert>> = {
 
 type Timestamps = { created_at: string; updated_at: string };
 
-export type UserRole = "customer" | "staff" | "admin";
+export type UserRole =
+  | "customer"
+  | "support"
+  | "fulfilment"
+  | "manager"
+  | "staff"
+  | "admin";
 export type ProductStatus = "draft" | "active" | "archived";
 export type OrderStatus =
   | "pending"
@@ -31,7 +37,23 @@ export type PaymentStatus =
   | "pending"
   | "paid"
   | "failed"
-  | "refunded";
+  | "refunded"
+  | "partially_refunded";
+export type PaymentMethod = "cash_on_delivery" | "online";
+export type DeliveryMethod = "standard" | "express";
+export type ReviewStatus = "pending" | "approved" | "rejected";
+export type MessageStatus = "new" | "read" | "replied" | "resolved";
+export type DiscountType = "fixed" | "percentage";
+export type NotificationStatus = "queued" | "sent" | "failed" | "skipped";
+
+export type InventoryAdjustmentReason =
+  | "restock"
+  | "correction"
+  | "damaged"
+  | "lost"
+  | "return_to_stock"
+  | "transfer"
+  | "other";
 
 export interface Database {
   public: {
@@ -45,6 +67,8 @@ export interface Database {
           avatar_url: string | null;
           preferred_language: "en" | "bn";
           role: UserRole;
+          is_active: boolean;
+          last_seen_at: string | null;
         }
       >;
       addresses: Table<
@@ -74,6 +98,8 @@ export interface Database {
           image_url: string | null;
           is_active: boolean;
           sort_order: number;
+          seo_title: string | null;
+          seo_description: string | null;
         }
       >;
       collections: Table<
@@ -90,6 +116,8 @@ export interface Database {
           is_active: boolean;
           is_featured: boolean;
           sort_order: number;
+          seo_title: string | null;
+          seo_description: string | null;
         }
       >;
       products: Table<
@@ -118,6 +146,13 @@ export interface Database {
           ready_made_details: Json | null;
           average_rating: number;
           review_count: number;
+          seo_title: string | null;
+          seo_description: string | null;
+          material_en: string;
+          material_bn: string;
+          size_guide_note_en: string;
+          size_guide_note_bn: string;
+          archived_at: string | null;
         }
       >;
       product_images: Table<{
@@ -143,6 +178,7 @@ export interface Database {
           colour_hex: string;
           price_override: number | null;
           stock_quantity: number;
+          reserved_quantity: number;
           low_stock_threshold: number;
           is_active: boolean;
         }
@@ -170,10 +206,11 @@ export interface Database {
           customer_name: string;
           customer_email: string | null;
           customer_phone: string;
+          normalized_phone: string | null;
           status: OrderStatus;
           payment_status: PaymentStatus;
-          payment_method: "cash_on_delivery" | "online";
-          delivery_method: "standard" | "express";
+          payment_method: PaymentMethod;
+          delivery_method: DeliveryMethod;
           subtotal: number;
           delivery_fee: number;
           discount_amount: number;
@@ -182,6 +219,12 @@ export interface Database {
           shipping_address: Json;
           customer_note: string | null;
           tracking_token: string;
+          idempotency_key: string | null;
+          client_fingerprint: string | null;
+          stock_restored_at: string | null;
+          cancelled_at: string | null;
+          delivered_at: string | null;
+          risk_flags: string[];
         }
       >;
       order_items: Table<{
@@ -208,15 +251,17 @@ export interface Database {
           code: string;
           description_en: string;
           description_bn: string;
-          discount_type: "fixed" | "percentage";
+          discount_type: DiscountType;
           discount_value: number;
           minimum_order_amount: number;
           maximum_discount_amount: number | null;
           starts_at: string | null;
           expires_at: string | null;
           usage_limit: number | null;
+          per_customer_limit: number | null;
           usage_count: number;
           is_active: boolean;
+          archived_at: string | null;
         }
       >;
       coupon_redemptions: Table<{
@@ -238,7 +283,10 @@ export interface Database {
           title: string | null;
           comment_en: string;
           comment_bn: string | null;
-          status: "pending" | "approved" | "rejected";
+          status: ReviewStatus;
+          moderated_by: string | null;
+          moderated_at: string | null;
+          moderation_note: string | null;
         }
       >;
       order_tracking_events: Table<{
@@ -248,15 +296,71 @@ export interface Database {
         note_en: string | null;
         note_bn: string | null;
         created_by: string | null;
+        is_customer_visible: boolean;
         created_at: string;
+      }>;
+      order_internal_notes: Table<{
+        id: string;
+        order_id: string;
+        author_id: string | null;
+        author_name: string;
+        note: string;
+        created_at: string;
+      }>;
+      order_status_transitions: Table<{
+        from_status: OrderStatus;
+        to_status: OrderStatus;
+        required_permission: string;
+      }>;
+      inventory_adjustments: Table<{
+        id: string;
+        product_variant_id: string;
+        order_id: string | null;
+        previous_quantity: number;
+        new_quantity: number;
+        delta: number;
+        reason: string;
+        note: string | null;
+        adjusted_by: string | null;
+        created_at: string;
+      }>;
+      admin_audit_log: Table<{
+        id: string;
+        actor_id: string | null;
+        actor_email: string;
+        actor_role: string;
+        action: string;
+        entity_type: string;
+        entity_id: string | null;
+        entity_label: string | null;
+        before_value: Json | null;
+        after_value: Json | null;
+        reason: string | null;
+        created_at: string;
+      }>;
+      notification_outbox: Table<{
+        id: string;
+        channel: string;
+        template: string;
+        recipient: string;
+        payload: Json;
+        status: NotificationStatus;
+        attempts: number;
+        last_error: string | null;
+        created_at: string;
+        sent_at: string | null;
       }>;
       contact_messages: Table<{
         id: string;
         name: string;
         email: string;
         phone: string | null;
+        subject: string | null;
         message: string;
-        status: "new" | "read" | "resolved";
+        status: MessageStatus;
+        handled_by: string | null;
+        handled_at: string | null;
+        staff_note: string | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -265,12 +369,16 @@ export interface Database {
         email: string;
         preferred_language: "en" | "bn";
         is_active: boolean;
+        unsubscribed_at: string | null;
+        source: string;
         created_at: string;
         updated_at: string;
       }>;
       store_settings: Table<{
         key: string;
         value: Json;
+        is_public: boolean;
+        label: string | null;
         updated_at: string;
       }>;
     };
@@ -285,6 +393,8 @@ export interface Database {
           p_payment_method: string;
           p_coupon_code?: string | null;
           p_customer_note?: string | null;
+          p_idempotency_key?: string | null;
+          p_client_fingerprint?: string | null;
         };
         Returns: Json;
       };
@@ -292,35 +402,111 @@ export interface Database {
         Args: { p_order_number: string; p_tracking_token: string };
         Returns: Json;
       };
-      admin_update_order_status: {
+      admin_transition_order: {
         Args: {
           p_order_id: string;
           p_status: OrderStatus;
+          p_customer_note?: string | null;
+          p_internal_note?: string | null;
+          p_restock?: boolean | null;
+        };
+        Returns: Json;
+      };
+      admin_update_payment_status: {
+        Args: {
+          p_order_id: string;
           p_payment_status: PaymentStatus;
           p_note?: string | null;
         };
         Returns: Json;
       };
-      validate_coupon: {
-        Args: { p_code: string; p_subtotal: number };
+      admin_add_order_note: {
+        Args: { p_order_id: string; p_note: string };
         Returns: Json;
       };
-      is_staff: { Args: Record<PropertyKey, never>; Returns: boolean };
-      is_full_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
-      ensure_my_profile: {
+      admin_adjust_inventory: {
+        Args: {
+          p_variant_id: string;
+          p_new_quantity: number;
+          p_reason: InventoryAdjustmentReason;
+          p_note?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_moderate_review: {
+        Args: { p_review_id: string; p_status: ReviewStatus; p_note?: string | null };
+        Returns: Json;
+      };
+      admin_update_message_status: {
+        Args: {
+          p_message_id: string;
+          p_status: MessageStatus;
+          p_staff_note?: string | null;
+        };
+        Returns: Json;
+      };
+      admin_set_newsletter_active: {
+        Args: { p_subscriber_id: string; p_active: boolean };
+        Returns: Json;
+      };
+      admin_save_coupon: { Args: { p_payload: Json }; Returns: Json };
+      admin_archive_coupon: {
+        Args: { p_coupon_id: string; p_archived: boolean };
+        Returns: Json;
+      };
+      admin_save_settings: { Args: { p_settings: Json }; Returns: Json };
+      admin_dashboard_metrics: {
         Args: Record<PropertyKey, never>;
         Returns: Json;
       };
+      admin_analytics: { Args: { p_days?: number }; Returns: Json };
+      admin_customer_summary: { Args: { p_profile_id: string }; Returns: Json };
+      admin_set_customer_active: {
+        Args: { p_profile_id: string; p_active: boolean; p_reason?: string | null };
+        Returns: Json;
+      };
+      admin_mark_notification: {
+        Args: { p_id: string; p_status: NotificationStatus; p_error?: string | null };
+        Returns: Json;
+      };
+      validate_coupon: {
+        Args: {
+          p_code: string;
+          p_subtotal: number;
+          p_user_id?: string | null;
+          p_phone?: string | null;
+        };
+        Returns: Json;
+      };
+      unsubscribe_newsletter: { Args: { p_email: string }; Returns: boolean };
+      normalize_bd_phone: { Args: { p_phone: string }; Returns: string | null };
+      is_staff: { Args: Record<PropertyKey, never>; Returns: boolean };
+      is_full_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
+      has_permission: { Args: { p_permission: string }; Returns: boolean };
+      my_permissions: { Args: Record<PropertyKey, never>; Returns: string[] };
+      current_role_name: { Args: Record<PropertyKey, never>; Returns: string };
+      ensure_my_profile: { Args: Record<PropertyKey, never>; Returns: Json };
       set_profile_role: {
         Args: { p_profile_id: string; p_role: UserRole };
         Returns: undefined;
       };
       submit_contact_message: {
-        Args: { p_name: string; p_email: string; p_phone: string; p_message: string };
+        Args: {
+          p_name: string;
+          p_email: string;
+          p_phone: string;
+          p_message: string;
+          p_subject?: string | null;
+          p_client_fingerprint?: string | null;
+        };
         Returns: string;
       };
       subscribe_newsletter: {
-        Args: { p_email: string; p_language?: string };
+        Args: {
+          p_email: string;
+          p_language?: string;
+          p_client_fingerprint?: string | null;
+        };
         Returns: boolean;
       };
     };
@@ -329,7 +515,15 @@ export interface Database {
       product_status: ProductStatus;
       order_status: OrderStatus;
       payment_status: PaymentStatus;
+      payment_method: PaymentMethod;
+      delivery_method: DeliveryMethod;
+      review_status: ReviewStatus;
+      message_status: MessageStatus;
+      discount_type: DiscountType;
     };
     CompositeTypes: Record<string, never>;
   };
 }
+
+export type Tables<T extends keyof Database["public"]["Tables"]> =
+  Database["public"]["Tables"][T]["Row"];

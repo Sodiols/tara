@@ -1,6 +1,5 @@
 "use client";
 
-import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 
 interface SizeSelectorProps {
@@ -11,23 +10,22 @@ interface SizeSelectorProps {
 }
 
 export function SizeSelector({ sizes, selected, onChange, onOpenGuide }: SizeSelectorProps) {
-  const { t } = useLanguage();
   return (
     <div>
       <div className="flex items-center justify-between mb-2">
         <span className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-muted">
-          {t("product.size")}: {selected}
+          {"Size"}: {selected}
         </span>
         {onOpenGuide && (
           <button
             onClick={onOpenGuide}
             className="font-sans font-medium text-xs text-ink underline underline-offset-2 hover:text-wine"
           >
-            {t("product.sizeGuide")}
+            {"Size Guide"}
           </button>
         )}
       </div>
-      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={t("product.selectSize")}>
+      <div className="flex flex-wrap gap-2" role="radiogroup" aria-label={"Select Size"}>
         {sizes.map((size) => (
           <button
             key={size}

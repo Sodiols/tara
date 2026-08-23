@@ -84,7 +84,7 @@ export async function syncCartAction(items: CartItem[]) {
     return [{
       productId: product.id,
       slug: product.slug,
-      name: { en: product.name_en, bn: product.name_bn },
+      name: product.name_en,
       image: images?.find((image) => image.product_id === product.id)?.image_url ?? "",
       price: Number(variant.price_override ?? product.base_price),
       size: variant.size,

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { getProductBySlug, getRelatedProducts } from "@/lib/supabase/queries/products";
 import { ProductDetailClient } from "@/components/product/ProductDetailClient";
 import { siteConfig } from "@/data/site";
+import { categoryHref, humanizeSlug } from "@/lib/utils";
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>;
@@ -14,11 +15,11 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
   if (!product) return { title: "Product Not Found" };
 
   return {
-    title: product.name.en,
-    description: product.description.en,
+    title: product.name,
+    description: product.description,
     openGraph: {
-      title: product.name.en,
-      description: product.description.en,
+      title: product.name,
+      description: product.description,
       images: product.images,
     },
     alternates: {
@@ -36,8 +37,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const productSchema = {
     "@context": "https://schema.org",
     "@type": "Product",
-    name: product.name.en,
-    description: product.description.en,
+    name: product.name,
+    description: product.description,
     image: product.images,
     sku: product.productCode,
     offers: {
@@ -57,14 +58,34 @@ export default async function ProductPage({ params }: ProductPageProps) {
         : undefined,
   };
 
+  // Only the built-in categories have a page of their own. A staff-created
+  // category has no route, so it is left out of the trail entirely rather than
+  // published as a ListItem pointing at a URL that returns 404.
+  const categoryPath = categoryHref(product.category);
+  const breadcrumbTrail = [
+    { name: "Home", item: siteConfig.url },
+    ...(categoryPath
+      ? [
+          {
+            // The category's real name, not its URL slug — "Ready Three Piece"
+            // rather than "ready-three-piece".
+            name: product.categoryName ?? humanizeSlug(product.category),
+            item: `${siteConfig.url}${categoryPath}`,
+          },
+        ]
+      : []),
+    { name: product.name, item: `${siteConfig.url}/product/${product.slug}` },
+  ];
+
   const breadcrumbSchema = {
     "@context": "https://schema.org",
     "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Home", item: siteConfig.url },
-      { "@type": "ListItem", position: 2, name: product.category, item: `${siteConfig.url}/${product.category}` },
-      { "@type": "ListItem", position: 3, name: product.name.en, item: `${siteConfig.url}/product/${product.slug}` },
-    ],
+    itemListElement: breadcrumbTrail.map((crumb, index) => ({
+      "@type": "ListItem",
+      position: index + 1,
+      name: crumb.name,
+      item: crumb.item,
+    })),
   };
 
   return (

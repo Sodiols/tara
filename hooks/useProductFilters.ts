@@ -17,12 +17,24 @@ export function useProductFilters(products: Product[], initialFilters: FilterSta
     () => Array.from(new Set(products.flatMap((p) => p.sizes))).filter((s) => s !== "One Size" && s !== "Unstitched"),
     [products]
   );
+  // Blanks are dropped throughout: a product that belongs to no collection is
+  // stored with `collection: ""`, and an empty value would otherwise render as
+  // a checkbox with no label that filters everything away when ticked.
   const availableColours = useMemo(
-    () => Array.from(new Set(products.flatMap((p) => p.colours.map((c) => c.name.en)))),
+    () =>
+      Array.from(
+        new Set(products.flatMap((p) => p.colours.map((c) => c.name.trim())))
+      ).filter(Boolean),
     [products]
   );
-  const availableFabrics = useMemo(() => Array.from(new Set(products.map((p) => p.fabric.en))), [products]);
-  const availableCollections = useMemo(() => Array.from(new Set(products.map((p) => p.collection))), [products]);
+  const availableFabrics = useMemo(
+    () => Array.from(new Set(products.map((p) => p.fabric.trim()))).filter(Boolean),
+    [products]
+  );
+  const availableCollections = useMemo(
+    () => Array.from(new Set(products.map((p) => p.collection.trim()))).filter(Boolean),
+    [products]
+  );
 
   const filteredProducts = useMemo(() => {
     let result = products.filter((p) => {
@@ -34,8 +46,8 @@ export function useProductFilters(products: Product[], initialFilters: FilterSta
         if (!inRange) return false;
       }
       if (filters.sizes.length > 0 && !p.sizes.some((s) => filters.sizes.includes(s))) return false;
-      if (filters.colours.length > 0 && !p.colours.some((c) => filters.colours.includes(c.name.en))) return false;
-      if (filters.fabrics.length > 0 && !filters.fabrics.includes(p.fabric.en)) return false;
+      if (filters.colours.length > 0 && !p.colours.some((c) => filters.colours.includes(c.name))) return false;
+      if (filters.fabrics.length > 0 && !filters.fabrics.includes(p.fabric)) return false;
       if (filters.collections.length > 0 && !filters.collections.includes(p.collection)) return false;
       return true;
     });

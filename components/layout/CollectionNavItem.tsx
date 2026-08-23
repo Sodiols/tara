@@ -2,13 +2,11 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
-import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { NavigationChevron } from "./NavigationChevron";
 import { CollectionDropdown } from "./CollectionDropdown";
 
 export function CollectionNavItem() {
-  const { t } = useLanguage();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -68,7 +66,7 @@ export function CollectionNavItem() {
           (active || open) && "text-wine"
         )}
       >
-        {t("nav.collection")}
+        {"Collection"}
         <NavigationChevron open={open} />
         <span
           className={cn(

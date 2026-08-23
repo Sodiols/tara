@@ -23,15 +23,46 @@ Restart the Next.js development server after editing `.env.local`.
 
 ## 2. Create or repair the database
 
-1. Open **SQL Editor** in the Supabase dashboard.
-2. Open `supabase/TARA_COMPLETE_SETUP.sql` from this project.
-3. Copy the complete file into a new SQL Editor query.
-4. Run the complete SQL once. Do not run selected sections.
-5. Confirm the final result says `TARA Supabase setup completed successfully`.
+Open **SQL Editor** in the Supabase dashboard and run these files **one at a
+time, in this order**. Copy each complete file into a new query and run the
+whole thing — never a selected section.
 
-The setup is non-destructive. It repairs partial installations, existing Auth
-users without profiles or carts, grants, RLS policies, storage, and catalog
-data without deleting customers, profiles, orders, Auth users, or products.
+1. `supabase/TARA_COMPLETE_SETUP.sql`
+2. `supabase/migrations/0001_role_and_status_enums.sql`
+3. `supabase/migrations/0002_production_hardening.sql`
+4. `supabase/migrations/0003_fix_anon_permission_grants.sql`
+5. `supabase/migrations/0004_cod_only_standard_delivery.sql`
+6. `supabase/migrations/0005_english_only_storefront.sql`
+7. `supabase/migrations/0006_fix_place_order_tracking_token.sql`
+8. `supabase/migrations/0007_repair_unstitched_category_slug.sql`
+9. `supabase/migrations/0008_fix_place_order_ambiguous_phone.sql`
+
+**The base file alone is not enough.** Checkout does not work without 0006 and
+0008 — they repair two separate faults in `place_order()`, and the second only
+became reachable once the first was fixed. Without 0007 the Unstitched Three
+Piece category shows no products. See `supabase/README.md` for what each file
+does.
+
+`0001` must run on its own: PostgreSQL refuses to *use* an enum value in the
+same transaction that added it.
+
+Every file is non-destructive and safe to re-run. Together they repair partial
+installations, Auth users without profiles or carts, grants, RLS policies,
+storage and catalogue data — without deleting customers, profiles, orders, Auth
+users or products.
+
+Verify checkout is working before going live:
+
+```sql
+select public.place_order(
+  '{"name":"","email":"","phone":""}'::jsonb, '{}'::jsonb, '[]'::jsonb,
+  'standard','cash_on_delivery',null,null,null,null
+);
+```
+
+This must fail with `invalid_customer_or_address`. Any other error — in
+particular `gen_random_bytes ... does not exist` or `column reference
+"customer_phone" is ambiguous` — means a migration is still missing.
 
 ## 3. Authentication settings
 

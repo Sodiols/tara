@@ -724,7 +724,13 @@ declare
   variant_record record;
   new_order_id uuid := gen_random_uuid();
   new_order_number text := public.generate_order_number();
-  new_tracking_token text := encode(gen_random_bytes(24), 'hex');
+  -- 48 hex characters from two v4 UUIDs. NOT gen_random_bytes(): that lives
+  -- in the pgcrypto extension and cannot be resolved under `search_path = ''`,
+  -- which made every single call to this function fail with 42883.
+  new_tracking_token text := substr(
+    replace(gen_random_uuid()::text, '-', '') || replace(gen_random_uuid()::text, '-', ''),
+    1, 48
+  );
   current_user_id uuid := auth.uid();
   item_quantity integer;
   unit_price numeric(12,2);
@@ -850,8 +856,9 @@ begin
       where id = variant_record.variant_id;
   end loop;
 
-  insert into public.order_tracking_events(order_id, status, note_en, note_bn)
-  values (new_order_id, 'pending', 'Order placed', 'অর্ডার গ্রহণ করা হয়েছে');
+  -- English only: note_bn is nullable and deliberately left unset.
+  insert into public.order_tracking_events(order_id, status, note_en)
+  values (new_order_id, 'pending', 'Order placed');
 
   if current_user_id is not null then
     delete from public.cart_items where cart_id = (select id from public.carts where user_id = current_user_id);

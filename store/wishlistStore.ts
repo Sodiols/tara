@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { WishlistItem } from "@/types";
+import { flattenName } from "./persisted-name";
 
 interface WishlistState {
   items: WishlistItem[];
@@ -36,6 +37,21 @@ export const useWishlistStore = create<WishlistState>()(
       },
       replaceItems: (items) => set({ items }),
     }),
-    { name: "tara-wishlist" }
+    {
+      name: "tara-wishlist",
+      // See the matching note in cartStore: v0 persisted `name` as { en, bn }.
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version >= 1) return persisted as { items: WishlistItem[] };
+        const state = (persisted ?? {}) as { items?: unknown };
+        const items = Array.isArray(state.items) ? state.items : [];
+        return {
+          items: items.map((item) => {
+            const entry = item as WishlistItem & { name: unknown };
+            return { ...entry, name: flattenName(entry.name) };
+          }),
+        };
+      },
+    }
   )
 );

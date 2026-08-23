@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { useLanguage } from "@/lib/i18n";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils";
 import { subscribeNewsletterAction } from "@/lib/supabase/actions/public";
@@ -13,7 +12,6 @@ interface NewsletterFormProps {
 }
 
 export function NewsletterForm({ variant = "light" }: NewsletterFormProps) {
-  const { t } = useLanguage();
   const [email, setEmail] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
@@ -23,14 +21,14 @@ export function NewsletterForm({ variant = "light" }: NewsletterFormProps) {
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (!EMAIL_REGEX.test(email)) {
-      setError(t("newsletter.invalidEmail"));
+      setError("Please enter a valid email address");
       return;
     }
     setError("");
     setLoading(true);
     const result = await subscribeNewsletterAction({ email });
     setLoading(false);
-    if (!result.ok) return setError(t(result.message));
+    if (!result.ok) return setError(result.message);
     setSuccess(true);
     setEmail("");
   };
@@ -43,26 +41,26 @@ export function NewsletterForm({ variant = "light" }: NewsletterFormProps) {
           isDark ? "text-taraIvory" : "text-ink"
         )}
       >
-        {t("newsletter.heading")}
+        {"Stay close to TARA"}
       </h2>
       <p className={cn("font-sans font-normal text-sm mb-6", isDark ? "text-taraIvory/75" : "text-muted")}>
-        {t("newsletter.text")}
+        {"Be the first to discover new collections, offers, and styling inspiration."}
       </p>
       {success ? (
         <p className={cn("text-sm", isDark ? "text-taraRose" : "text-wine")} role="status">
-          {t("newsletter.success")}
+          {"Thank you for subscribing to TARA."}
         </p>
       ) : (
         <form onSubmit={handleSubmit} noValidate className="flex flex-col sm:flex-row gap-3 sm:gap-0">
           <label htmlFor="newsletter-email" className="sr-only">
-            {t("newsletter.placeholder")}
+            {"Enter your email address"}
           </label>
           <input
             id="newsletter-email"
             type="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            placeholder={t("newsletter.placeholder")}
+            placeholder={"Enter your email address"}
             aria-invalid={!!error}
             aria-describedby={error ? "newsletter-error" : undefined}
             className={cn(
@@ -78,7 +76,7 @@ export function NewsletterForm({ variant = "light" }: NewsletterFormProps) {
             loading={loading}
             className={cn("sm:px-8", isDark && "!bg-white !text-wine hover:!bg-taraBlack hover:!text-white")}
           >
-            {t("newsletter.subscribe")}
+            {"Subscribe"}
           </Button>
         </form>
       )}
@@ -87,7 +85,7 @@ export function NewsletterForm({ variant = "light" }: NewsletterFormProps) {
           {error}
         </p>
       )}
-      <p className={cn("text-xs mt-4", isDark ? "text-taraIvory/60" : "text-muted")}>{t("newsletter.privacyNote")}</p>
+      <p className={cn("text-xs mt-4", isDark ? "text-taraIvory/60" : "text-muted")}>{"By subscribing you agree to our Privacy Policy."}</p>
     </div>
   );
 }

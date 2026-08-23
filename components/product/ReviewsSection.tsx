@@ -1,7 +1,6 @@
 "use client";
 
 import { Star } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
 import type { Review } from "@/types";
 
 interface ReviewsSectionProps {
@@ -11,7 +10,6 @@ interface ReviewsSectionProps {
 }
 
 export function ReviewsSection({ reviews, rating, reviewCount }: ReviewsSectionProps) {
-  const { t, pick, locale } = useLanguage();
 
   return (
     <div>
@@ -31,7 +29,7 @@ export function ReviewsSection({ reviews, rating, reviewCount }: ReviewsSectionP
       </div>
 
       {reviews.length === 0 ? (
-        <p className="text-sm text-muted">{t("product.noReviews")}</p>
+        <p className="text-sm text-muted">{"No reviews yet. Be the first to review this product."}</p>
       ) : (
         <div className="flex flex-col gap-6">
           {reviews.map((review) => (
@@ -39,7 +37,7 @@ export function ReviewsSection({ reviews, rating, reviewCount }: ReviewsSectionP
               <div className="flex items-center justify-between mb-1.5">
                 <span className="text-sm text-ink font-medium">{review.author}</span>
                 <span className="text-xs text-muted">
-                  {new Date(review.date).toLocaleDateString(locale === "bn" ? "bn-BD" : "en-US", {
+                  {new Date(review.date).toLocaleDateString("en-US", {
                     year: "numeric",
                     month: "long",
                     day: "numeric",
@@ -51,7 +49,7 @@ export function ReviewsSection({ reviews, rating, reviewCount }: ReviewsSectionP
                   <Star key={i} size={13} className={i < review.rating ? "fill-wine text-wine" : "text-border"} />
                 ))}
               </div>
-              <p className="text-sm text-muted">{pick(review.comment)}</p>
+              <p className="text-sm text-muted">{review.comment}</p>
             </div>
           ))}
         </div>

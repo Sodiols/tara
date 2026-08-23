@@ -39,17 +39,6 @@ body {
   color: var(--tara-white);
 }
 
-/* Bangla: Noto Sans Bengali for interface/body text, Noto Serif Bengali for display headings.
-   Bodoni Moda and Manrope are Latin-only, so Bangla content never inherits them. */
-html[lang="bn"] body {
-  font-family: var(--font-bengali), var(--font-body), sans-serif;
-}
-
-html[lang="bn"] .font-serif,
-html[lang="bn"] .font-display {
-  font-family: var(--font-bengali-serif), var(--font-heading), serif;
-}
-
 *:focus-visible {
   outline: 2px solid var(--tara-wine);
   outline-offset: 2px;

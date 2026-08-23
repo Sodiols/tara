@@ -3,11 +3,9 @@
 import { useEffect, useState } from "react";
 import type { Product } from "@/types";
 import { useRecentlyViewedStore } from "@/store/recentlyViewedStore";
-import { useLanguage } from "@/lib/i18n";
 import { ProductCarousel } from "./ProductCarousel";
 
 export function RecentlyViewedSection({ excludeSlug }: { excludeSlug: string }) {
-  const { t } = useLanguage();
   const slugs = useRecentlyViewedStore((state) => state.slugs);
   const [items, setItems] = useState<Product[]>([]);
 
@@ -23,5 +21,5 @@ export function RecentlyViewedSection({ excludeSlug }: { excludeSlug: string }) 
   }, [excludeSlug, slugs]);
 
   if (items.length === 0) return null;
-  return <section className="py-14"><h2 className="mb-8 font-serif text-2xl text-ink sm:text-3xl">{t("product.recentlyViewed")}</h2><ProductCarousel products={items} /></section>;
+  return <section className="py-14"><h2 className="mb-8 font-serif text-2xl text-ink sm:text-3xl">{"Recently Viewed"}</h2><ProductCarousel products={items} /></section>;
 }

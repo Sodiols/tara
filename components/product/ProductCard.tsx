@@ -5,13 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { Eye } from "lucide-react";
 import type { Product } from "@/types";
-import { useLanguage } from "@/lib/i18n";
 import { useCartStore } from "@/store/cartStore";
 import { useToastStore } from "@/store/toastStore";
 import { PriceDisplay } from "./PriceDisplay";
 import { WishlistButton } from "./WishlistButton";
 import { Button } from "@/components/ui/Button";
-import { getCategoryTranslationKey } from "@/lib/utils";
+import { resolveCategoryLabel } from "@/lib/utils";
 
 interface ProductCardProps {
   product: Product;
@@ -19,7 +18,6 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onQuickView }: ProductCardProps) {
-  const { t, pick } = useLanguage();
   const addItem = useCartStore((s) => s.addItem);
   const { addToast } = useToastStore();
   const [hovered, setHovered] = useState(false);
@@ -36,10 +34,10 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
       image: product.images[0],
       price: product.price,
       size: product.sizes[0] ?? "One Size",
-      colour: product.colours[0]?.name.en ?? "",
+      colour: product.colours[0]?.name ?? "",
       quantity: 1,
     });
-    addToast(t("common.addToBag"));
+    addToast("Add to Cart");
   };
 
   return (
@@ -54,7 +52,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
       >
         <Image
           src={product.images[0]}
-          alt={pick(product.name)}
+          alt={product.name}
           fill
           sizes="(max-width: 768px) 50vw, 25vw"
           className={`object-cover transition-opacity duration-300 ${hovered && product.images[1] ? "opacity-0" : "opacity-100"}`}
@@ -72,17 +70,17 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
         <div className="absolute top-2.5 left-2.5 flex flex-col gap-1.5">
           {product.isNew && (
             <span className="bg-taraRose text-taraBlack font-sans font-semibold text-[10px] uppercase tracking-wide px-2 py-1 rounded-control">
-              {t("product.new")}
+              {"New"}
             </span>
           )}
           {product.isSale && (
             <span className="bg-wine text-taraIvory font-sans font-semibold text-[10px] uppercase tracking-wide px-2 py-1 rounded-control">
-              {t("product.sale")}
+              {"Sale"}
             </span>
           )}
           {product.stock === 0 && (
             <span className="bg-taraTaupe text-taraBlack font-sans font-semibold text-[10px] uppercase tracking-wide px-2 py-1 rounded-control">
-              {t("common.outOfStock")}
+              {"Out of Stock"}
             </span>
           )}
         </div>
@@ -99,18 +97,18 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
           }}
           className="hidden sm:flex items-center justify-center gap-1.5 absolute bottom-0 left-0 right-0 bg-white/95 text-ink font-sans font-semibold text-xs uppercase tracking-wide py-2.5 translate-y-full group-hover:translate-y-0 transition-transform duration-200"
         >
-          <Eye size={14} /> {t("common.quickView")}
+          <Eye size={14} /> {"Quick View"}
         </button>
       </Link>
 
       <div className="flex flex-1 flex-col pt-3">
         <Link href={`/product/${product.slug}`}>
           <h3 className="font-sans font-medium text-[13px] sm:text-sm text-ink hover:text-wine transition-colors line-clamp-2 min-h-[2.5rem] leading-snug">
-            {pick(product.name)}
+            {product.name}
           </h3>
         </Link>
         <p className="font-sans font-normal text-xs text-muted mt-1">
-          {t(getCategoryTranslationKey(product.category))}
+          {resolveCategoryLabel(product)}
         </p>
         <div className="mt-1.5">
           <PriceDisplay price={product.price} previousPrice={product.previousPrice} />
@@ -122,10 +120,10 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
               <div className="flex items-center gap-1.5">
                 {product.colours.map((c) => (
                   <span
-                    key={c.name.en}
+                    key={c.name}
                     className="w-3.5 h-3.5 rounded-full border border-border/70"
                     style={{ backgroundColor: c.hex }}
-                    title={pick(c.name)}
+                    title={c.name}
                   />
                 ))}
               </div>
@@ -143,7 +141,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
             fullWidth
             disabled={product.stock === 0}
           >
-            {product.stock === 0 ? t("common.outOfStock") : t("common.addToBag")}
+            {product.stock === 0 ? "Out of Stock" : "Add to Cart"}
           </Button>
         </div>
       </div>

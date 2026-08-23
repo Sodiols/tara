@@ -4,7 +4,6 @@ import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ShoppingBag, Minus, Plus } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
 import { useCartStore } from "@/store/cartStore";
 import { useWishlistStore } from "@/store/wishlistStore";
 import { useToastStore } from "@/store/toastStore";
@@ -21,7 +20,6 @@ interface BagClientProps {
 }
 
 export function BagClient({ deliverySettings }: BagClientProps) {
-  const { t, pick } = useLanguage();
   const { items, removeItem, updateQuantity, subtotal } = useCartStore();
   const addWishlistItem = useWishlistStore((s) => s.addItem);
   const { addToast } = useToastStore();
@@ -46,13 +44,13 @@ export function BagClient({ deliverySettings }: BagClientProps) {
       price: item.price,
     });
     removeItem(item.productId, item.size, item.colour);
-    addToast(t("wishlist.moveToBag"));
+    addToast("Move to Bag");
   };
 
   const handleApplyCoupon = async () => {
     if (!coupon.trim()) {
       setCouponDiscount(0);
-      setCouponMessage(t("bag.errors.couponRequired"));
+      setCouponMessage("Enter a coupon code first.");
       return;
     }
     setCheckingCoupon(true);
@@ -60,11 +58,11 @@ export function BagClient({ deliverySettings }: BagClientProps) {
     setCheckingCoupon(false);
     if (!result.ok || !result.data) {
       setCouponDiscount(0);
-      setCouponMessage(t(!result.ok ? result.message : "bag.errors.couponFailed"));
+      setCouponMessage(!result.ok ? result.message : "Could not check that coupon right now. Please try again.");
       return;
     }
     setCouponDiscount(result.data.discount);
-    setCouponMessage(`${t("bag.couponApplied")} ${formatPrice(result.data.discount)}`);
+    setCouponMessage(`${"Coupon applied — you saved"} ${formatPrice(result.data.discount)}`);
   };
 
   const handleRemoveCoupon = () => {
@@ -75,17 +73,17 @@ export function BagClient({ deliverySettings }: BagClientProps) {
 
   return (
     <Container className="py-8 sm:py-12 lg:py-14">
-      <Breadcrumb items={[{ label: t("bag.heading") }]} />
-      <h1 className="font-serif text-3xl sm:text-4xl lg:text-[2.75rem] text-ink mt-3 mb-8">{t("bag.heading")}</h1>
+      <Breadcrumb items={[{ label: "Shopping Bag" }]} />
+      <h1 className="font-serif text-3xl sm:text-4xl lg:text-[2.75rem] text-ink mt-3 mb-8">{"Shopping Bag"}</h1>
 
       {items.length === 0 ? (
         <EmptyState
           icon={ShoppingBag}
-          heading={t("bag.empty")}
-          text={t("bag.emptyText")}
+          heading={"Your bag is empty"}
+          text={"Add items to your bag to see them here."}
           action={
             <Link href="/new-arrivals">
-              <Button variant="secondary">{t("bag.continueShopping")}</Button>
+              <Button variant="secondary">{"Continue Shopping"}</Button>
             </Link>
           }
         />
@@ -95,12 +93,12 @@ export function BagClient({ deliverySettings }: BagClientProps) {
             {items.map((item) => (
               <div key={`${item.productId}-${item.size}-${item.colour}`} className="flex gap-4 py-6 first:pt-0">
                 <Link href={`/product/${item.slug}`} className="relative w-24 h-[120px] sm:w-28 sm:h-[140px] shrink-0 bg-beige">
-                  <Image src={item.image} alt={pick(item.name)} fill sizes="120px" className="object-cover" />
+                  <Image src={item.image} alt={item.name} fill sizes="120px" className="object-cover" />
                 </Link>
                 <div className="flex-1 flex flex-col">
                   <div className="flex justify-between gap-2">
                     <Link href={`/product/${item.slug}`} className="text-sm sm:text-base text-ink hover:text-wine">
-                      {pick(item.name)}
+                      {item.name}
                     </Link>
                     <span className="text-sm sm:text-base text-ink whitespace-nowrap">
                       {formatPrice(item.price * item.quantity)}
@@ -132,13 +130,13 @@ export function BagClient({ deliverySettings }: BagClientProps) {
                         onClick={() => handleMoveToWishlist(item)}
                         className="text-xs text-muted hover:text-ink underline underline-offset-2"
                       >
-                        {t("bag.moveToWishlist")}
+                        {"Move to Wishlist"}
                       </button>
                       <button
                         onClick={() => removeItem(item.productId, item.size, item.colour)}
                         className="text-xs text-muted hover:text-wine underline underline-offset-2"
                       >
-                        {t("bag.remove")}
+                        {"Remove"}
                       </button>
                     </div>
                   </div>
@@ -147,32 +145,32 @@ export function BagClient({ deliverySettings }: BagClientProps) {
             ))}
             <div className="pt-6">
               <Link href="/new-arrivals" className="text-sm text-ink underline underline-offset-2 hover:text-wine">
-                {t("bag.continueShopping")}
+                {"Continue Shopping"}
               </Link>
             </div>
           </div>
 
           <div className="bg-beige/50 rounded-panel border border-border p-6 h-fit flex flex-col gap-4">
-            <h2 className="font-serif text-xl text-ink mb-1">{t("bag.heading")}</h2>
+            <h2 className="font-serif text-xl text-ink mb-1">{"Shopping Bag"}</h2>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted">{t("bag.subtotal")}</span>
+              <span className="text-muted">{"Subtotal"}</span>
               <span className="text-ink">{formatPrice(subtotalValue)}</span>
             </div>
             <div className="flex items-center justify-between text-sm">
-              <span className="text-muted">{t("bag.delivery")}</span>
+              <span className="text-muted">{"Delivery"}</span>
               <span className="text-ink">{formatPrice(deliveryFee)}</span>
             </div>
             {couponDiscount > 0 && (
               <div className="flex items-center justify-between text-sm">
-                <span className="text-muted">{t("bag.coupon")}</span>
+                <span className="text-muted">{"Coupon Code"}</span>
                 <span className="text-wine">-{formatPrice(couponDiscount)}</span>
               </div>
             )}
-            <p className="text-xs text-muted -mt-2">{t("bag.freeDeliveryNote")}</p>
+            <p className="text-xs text-muted -mt-2">{"Free delivery in Sylhet on orders above ৳1500"}</p>
 
             <div className="flex flex-col gap-2 border-t border-border pt-4">
               <label htmlFor="coupon" className="text-xs uppercase tracking-wide text-muted">
-                {t("bag.coupon")}
+                {"Coupon Code"}
               </label>
               <div className="flex gap-2">
                 <input
@@ -184,11 +182,11 @@ export function BagClient({ deliverySettings }: BagClientProps) {
                 />
                 {couponDiscount > 0 ? (
                   <Button variant="outline" size="sm" onClick={handleRemoveCoupon}>
-                    {t("bag.couponRemove")}
+                    {"Remove coupon"}
                   </Button>
                 ) : (
                   <Button variant="outline" size="sm" onClick={handleApplyCoupon} loading={checkingCoupon}>
-                    {t("bag.applyCoupon")}
+                    {"Apply"}
                   </Button>
                 )}
               </div>
@@ -196,12 +194,12 @@ export function BagClient({ deliverySettings }: BagClientProps) {
             </div>
 
             <div className="flex items-center justify-between border-t border-border pt-4 text-base">
-              <span className="text-ink font-medium">{t("bag.total")}</span>
+              <span className="text-ink font-medium">{"Total"}</span>
               <span className="text-ink font-medium">{formatPrice(total)}</span>
             </div>
 
             <Link href="/checkout">
-              <Button fullWidth>{t("bag.checkout")}</Button>
+              <Button fullWidth>{"Proceed to Checkout"}</Button>
             </Link>
           </div>
         </div>

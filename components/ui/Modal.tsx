@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useRef } from "react";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 
 interface ModalProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidthClass = "max-w
     if (!isOpen) return;
 
     previouslyFocused.current = document.activeElement as HTMLElement | null;
-    document.body.style.overflow = "hidden";
+    const release = lockBodyScroll();
     closeButtonRef.current?.focus();
 
     const handleKey = (e: KeyboardEvent) => {
@@ -51,7 +52,7 @@ export function Modal({ isOpen, onClose, title, children, maxWidthClass = "max-w
     document.addEventListener("keydown", handleKey);
     return () => {
       document.removeEventListener("keydown", handleKey);
-      document.body.style.overflow = "";
+      release();
       previouslyFocused.current?.focus();
     };
   }, [isOpen, onClose]);

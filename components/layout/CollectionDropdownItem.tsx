@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import type { NavChildLink } from "@/data/navigation";
 
@@ -13,7 +12,6 @@ interface CollectionDropdownItemProps {
 }
 
 export function CollectionDropdownItem({ item, onSelect, emphasis }: CollectionDropdownItemProps) {
-  const { pick } = useLanguage();
   const pathname = usePathname();
   const active = pathname === item.href;
 
@@ -24,7 +22,7 @@ export function CollectionDropdownItem({ item, onSelect, emphasis }: CollectionD
         onClick={onSelect}
         className="flex h-11 items-center px-5 font-sans text-sm font-medium text-wine hover:bg-wine hover:text-taraIvory transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-wine"
       >
-        {pick(item.label)}
+        {item.label}
       </Link>
     );
   }
@@ -38,7 +36,7 @@ export function CollectionDropdownItem({ item, onSelect, emphasis }: CollectionD
         active ? "bg-cream text-wine" : "text-ink hover:bg-cream hover:text-wine"
       )}
     >
-      {pick(item.label)}
+      {item.label}
     </Link>
   );
 }

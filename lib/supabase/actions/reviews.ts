@@ -13,12 +13,11 @@ export async function submitReviewAction(formData: FormData): Promise<ActionResu
     rating: Number(formData.get("rating")),
     title: String(formData.get("title") ?? ""),
     commentEn: String(formData.get("commentEn") ?? ""),
-    commentBn: String(formData.get("commentBn") ?? ""),
   });
-  if (!parsed.success) return { ok: false, message: "product.reviewInvalid" };
+  if (!parsed.success) return { ok: false, message: "Check your review and try again." };
   const user = await requireUser("/account/orders");
   const supabase = await createClient();
-  if (!supabase) return { ok: false, message: "auth.errors.notConfigured" };
+  if (!supabase) return { ok: false, message: "Supabase has not been configured yet." };
   const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
   const { error } = await supabase.from("reviews").insert({
     product_id: parsed.data.productId,
@@ -28,13 +27,12 @@ export async function submitReviewAction(formData: FormData): Promise<ActionResu
     rating: parsed.data.rating,
     title: parsed.data.title || null,
     comment_en: parsed.data.commentEn,
-    comment_bn: parsed.data.commentBn || null,
     status: "pending",
   });
   if (error) {
     console.error("Review submission failed:", error.message);
-    return { ok: false, message: "product.reviewFailed" };
+    return { ok: false, message: "Your review could not be submitted." };
   }
   revalidatePath("/account/orders");
-  return { ok: true, message: "product.reviewSubmitted" };
+  return { ok: true, message: "Your review was submitted for approval." };
 }

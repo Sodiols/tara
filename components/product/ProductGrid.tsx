@@ -6,7 +6,6 @@ import { ProductCard } from "./ProductCard";
 import { QuickViewModal } from "./QuickViewModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
 
 interface ProductGridProps {
   products: Product[];
@@ -14,14 +13,13 @@ interface ProductGridProps {
 
 export function ProductGrid({ products }: ProductGridProps) {
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
-  const { t } = useLanguage();
 
   if (products.length === 0) {
     return (
       <EmptyState
         icon={PackageSearch}
-        heading={t("listing.noProducts")}
-        text={t("listing.noProductsText")}
+        heading={"No products found"}
+        text={"Try adjusting your filters or search terms."}
       />
     );
   }

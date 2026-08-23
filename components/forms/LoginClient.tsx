@@ -18,7 +18,6 @@ import {
   loginAction,
   registerAction,
 } from "@/lib/supabase/actions/auth";
-import { useLanguage } from "@/lib/i18n";
 import { Button } from "@/components/ui/Button";
 
 type AuthMode = "login" | "register";
@@ -38,11 +37,14 @@ function AuthInput({
   label,
   icon,
   error,
+  hint,
   ...props
 }: React.InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   icon: React.ReactNode;
   error?: string;
+  /** Shown before submit, so a rule does not have to be discovered by failing. */
+  hint?: string;
 }) {
   return (
     <label className="block text-sm font-medium text-ink">
@@ -57,7 +59,16 @@ function AuthInput({
           className="h-[52px] w-full rounded-control border border-border bg-white pl-11 pr-4 outline-none transition-colors focus:border-wine"
         />
       </span>
-      {error && <span className="mt-1.5 block text-xs font-normal text-wine">{error}</span>}
+      {hint && !error && (
+        <span className="mt-1.5 block text-xs font-normal text-muted">{hint}</span>
+      )}
+      {/* role="alert" so the failure is announced when it appears, not only
+          when the field is focused again. */}
+      {error && (
+        <span role="alert" className="mt-1.5 block text-xs font-normal text-wine">
+          {error}
+        </span>
+      )}
     </label>
   );
 }
@@ -73,7 +84,6 @@ export function LoginClient({
   initialMode?: AuthMode;
   passwordUpdated?: boolean;
 }) {
-  const { t, locale } = useLanguage();
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [mode, setMode] = useState<AuthMode>(initialMode);
@@ -82,11 +92,11 @@ export function LoginClient({
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState(
     errorCode === "not-configured"
-      ? "auth.errors.notConfigured"
+      ? "Supabase has not been configured yet."
       : errorCode === "recovery-expired"
-        ? "auth.errors.recoveryExpired"
+        ? "This recovery link is invalid or expired."
         : errorCode
-          ? "auth.errors.callbackFailed"
+          ? "The sign-in link is invalid or expired."
           : "",
   );
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -138,17 +148,16 @@ export function LoginClient({
     startTransition(async () => {
       const result = await registerAction({
         ...registerForm,
-        preferredLanguage: locale,
       });
       if (!result.ok) {
         setFieldErrors(result.fieldErrors ?? {});
         return setError(result.message);
       }
-      if (result.message === "auth.registerSuccess") {
+      if (result.message === "Account created successfully") {
         router.replace("/account");
         router.refresh();
       } else {
-        setSuccess(result.message ?? "auth.confirmationSent");
+        setSuccess(result.message ?? "Check your email and confirm your address before signing in.");
       }
     });
   }
@@ -177,50 +186,50 @@ export function LoginClient({
         >
           <div className="w-full max-w-[610px] rounded-[3px] border border-[#ded8d0] bg-white px-6 py-8 sm:px-11 sm:py-10">
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-[0.22em] text-wine">
-              {t("auth.accountEyebrow")}
+              {"Your TARA account"}
             </p>
             <h1
               id="auth-heading"
               className="font-serif text-[2.35rem] leading-none text-ink sm:text-[3.1rem]"
             >
-              {t(mode === "login" ? "auth.welcomeBack" : "auth.createAccountTitle")}
+              {mode === "login" ? "Welcome back" : "Create your account"}
             </h1>
             <p className="mb-7 mt-3 text-sm text-muted">
-              {t(mode === "login" ? "auth.loginSubtitle" : "auth.registerSubtitle")}
+              {mode === "login" ? "Sign in to continue your TARA experience." : "Join TARA for faster checkout, order tracking, and saved favourites."}
             </p>
 
             {passwordUpdated && mode === "login" && (
               <p className="mb-5 rounded-control border border-border bg-beige/35 px-4 py-3 text-sm text-ink">
-                {t("auth.passwordUpdated")}
+                {"Your password has been updated."}
               </p>
             )}
 
             {success ? (
               <div className="rounded-control border border-border bg-beige/35 px-5 py-6 text-center">
-                <h2 className="font-serif text-2xl text-ink">{t("auth.checkEmail")}</h2>
-                <p className="mt-3 text-sm leading-6 text-muted">{t(success)}</p>
+                <h2 className="font-serif text-2xl text-ink">{"Check your email"}</h2>
+                <p className="mt-3 text-sm leading-6 text-muted">{success}</p>
                 <button
                   type="button"
                   onClick={() => switchMode("login")}
                   className="mt-5 text-sm font-medium text-wine hover:underline"
                 >
-                  {t("auth.backToLogin")}
+                  {"Back to login"}
                 </button>
               </div>
             ) : mode === "login" ? (
               <form onSubmit={submitLogin} className="space-y-5">
                 <AuthInput
-                  label={t("auth.email")}
+                  label={"Email Address"}
                   icon={<Mail size={17} />}
                   type="email"
                   autoComplete="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
-                  error={fieldErrors.email?.length ? t("auth.errors.invalidEmail") : undefined}
+                  error={fieldErrors.email?.length ? "Enter a valid email address." : undefined}
                   required
                 />
                 <label className="block text-sm font-medium text-ink">
-                  {t("auth.password")}
+                  {"Password"}
                   <span className="relative mt-2 block">
                     <LockKeyhole size={17} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
                     <input
@@ -234,7 +243,7 @@ export function LoginClient({
                     <button
                       type="button"
                       onClick={() => setShowPassword((value) => !value)}
-                      aria-label={showPassword ? t("auth.hidePassword") : t("auth.showPassword")}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
                       className="absolute right-1 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-muted hover:text-wine"
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -243,72 +252,73 @@ export function LoginClient({
                 </label>
                 <div className="flex justify-end">
                   <Link href="/forgot-password" className="text-sm text-wine hover:underline">
-                    {t("auth.forgotPassword")}
+                    {"Forgot Password?"}
                   </Link>
                 </div>
-                {error && <p role="alert" className="text-sm text-wine">{t(error)}</p>}
+                {error && <p role="alert" className="text-sm text-wine">{error}</p>}
                 <Button type="submit" fullWidth size="lg" loading={pending} className="normal-case tracking-normal">
-                  {t("auth.signIn")}
+                  {"Sign In"}
                 </Button>
               </form>
             ) : (
               <form onSubmit={submitRegistration} className="space-y-4">
                 <div className="grid gap-4 sm:grid-cols-2">
                   <AuthInput
-                    label={t("auth.fullName")}
+                    label={"Full Name"}
                     icon={<UserRound size={17} />}
                     autoComplete="name"
                     value={registerForm.fullName}
                     onChange={(event) => setRegisterForm({ ...registerForm, fullName: event.target.value })}
-                    error={fieldErrors.fullName?.length ? t("auth.errors.invalidFullName") : undefined}
+                    error={fieldErrors.fullName?.length ? "Enter your full name." : undefined}
                     required
                   />
                   <AuthInput
-                    label={t("auth.phone")}
+                    label={"Phone Number"}
                     icon={<Phone size={17} />}
                     type="tel"
                     autoComplete="tel"
                     value={registerForm.phone}
                     onChange={(event) => setRegisterForm({ ...registerForm, phone: event.target.value })}
-                    error={fieldErrors.phone?.length ? t("auth.errors.invalidPhone") : undefined}
+                    error={fieldErrors.phone?.length ? "Enter a valid Bangladesh mobile number." : undefined}
                     required
                   />
                 </div>
                 <AuthInput
-                  label={t("auth.email")}
+                  label={"Email Address"}
                   icon={<Mail size={17} />}
                   type="email"
                   autoComplete="email"
                   value={registerForm.email}
                   onChange={(event) => setRegisterForm({ ...registerForm, email: event.target.value })}
-                  error={fieldErrors.email?.length ? t("auth.errors.invalidEmail") : undefined}
+                  error={fieldErrors.email?.length ? "Enter a valid email address." : undefined}
                   required
                 />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <AuthInput
-                    label={t("auth.password")}
+                    label={"Password"}
                     icon={<LockKeyhole size={17} />}
                     type="password"
                     autoComplete="new-password"
                     value={registerForm.password}
                     onChange={(event) => setRegisterForm({ ...registerForm, password: event.target.value })}
-                    error={fieldErrors.password?.length ? t("auth.errors.weakPassword") : undefined}
+                    hint="At least 8 characters, with an uppercase letter, a lowercase letter and a number."
+                    error={fieldErrors.password?.length ? "Use at least 8 characters with uppercase, lowercase, and a number." : undefined}
                     required
                   />
                   <AuthInput
-                    label={t("auth.confirmPassword")}
+                    label={"Confirm Password"}
                     icon={<LockKeyhole size={17} />}
                     type="password"
                     autoComplete="new-password"
                     value={registerForm.confirmPassword}
                     onChange={(event) => setRegisterForm({ ...registerForm, confirmPassword: event.target.value })}
-                    error={fieldErrors.confirmPassword?.length ? t("auth.errors.passwordMismatch") : undefined}
+                    error={fieldErrors.confirmPassword?.length ? "The passwords do not match." : undefined}
                     required
                   />
                 </div>
-                {error && <p role="alert" className="text-sm text-wine">{t(error)}</p>}
+                {error && <p role="alert" className="text-sm text-wine">{error}</p>}
                 <Button type="submit" fullWidth size="lg" loading={pending} className="normal-case tracking-normal">
-                  {t("auth.createAccount")}
+                  {"Create Account"}
                 </Button>
               </form>
             )}
@@ -316,13 +326,13 @@ export function LoginClient({
             {!success && (
               <>
                 <p className="mt-5 text-center text-sm text-muted">
-                  {t(mode === "login" ? "auth.noAccount" : "auth.haveAccount")}{" "}
+                  {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
                   <button
                     type="button"
                     onClick={() => switchMode(mode === "login" ? "register" : "login")}
                     className="font-medium text-wine hover:underline"
                   >
-                    {t(mode === "login" ? "auth.createAccount" : "auth.signIn")}
+                    {mode === "login" ? "Create Account" : "Sign In"}
                   </button>
                 </p>
 
@@ -330,12 +340,12 @@ export function LoginClient({
                   <>
                     <div className="my-5 flex items-center gap-4">
                       <span className="h-px flex-1 bg-border" />
-                      <span className="text-xs text-muted">{t("auth.or")}</span>
+                      <span className="text-xs text-muted">{"or"}</span>
                       <span className="h-px flex-1 bg-border" />
                     </div>
                   <form action={() => googleLoginAction(returnTo)}>
                     <Button type="submit" variant="outline" fullWidth className="normal-case tracking-normal">
-                      <span className="flex items-center justify-center gap-3"><GoogleIcon />{t("auth.continueGoogle")}</span>
+                      <span className="flex items-center justify-center gap-3"><GoogleIcon />{"Continue with Google"}</span>
                     </Button>
                   </form>
                   </>
@@ -345,7 +355,7 @@ export function LoginClient({
 
             <div className="mt-5 flex justify-center gap-2 text-xs leading-5 text-muted">
               <ShieldCheck size={18} className="text-wine" />
-              <p>{t("auth.securityNote")}</p>
+              <p>{"Your information is protected by secure account access."}</p>
             </div>
           </div>
         </div>

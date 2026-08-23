@@ -20,20 +20,20 @@ export type ActionResult<T = undefined> =
 function authError(message: string): ActionResult {
   const normalized = message.toLowerCase();
   if (normalized.includes("email not confirmed"))
-    return { ok: false, message: "auth.errors.emailNotConfirmed" };
+    return { ok: false, message: "Confirm your email address before signing in." };
   if (normalized.includes("invalid login"))
-    return { ok: false, message: "auth.errors.invalidCredentials" };
+    return { ok: false, message: "The email or password is incorrect." };
   if (normalized.includes("already registered"))
-    return { ok: false, message: "auth.errors.emailExists" };
+    return { ok: false, message: "An account already exists for this email." };
   if (normalized.includes("rate"))
-    return { ok: false, message: "auth.errors.rateLimited" };
+    return { ok: false, message: "Too many attempts. Please wait before trying again." };
   if (
     normalized.includes("fetch") ||
     normalized.includes("network") ||
     normalized.includes("connection")
   )
-    return { ok: false, message: "auth.errors.network" };
-  return { ok: false, message: "auth.errors.unexpected" };
+    return { ok: false, message: "We could not reach the account service. Check your connection and try again." };
+  return { ok: false, message: "Authentication could not be completed. Please try again." };
 }
 
 export async function loginAction(input: unknown): Promise<ActionResult> {
@@ -41,12 +41,12 @@ export async function loginAction(input: unknown): Promise<ActionResult> {
   if (!parsed.success) {
     return {
       ok: false,
-      message: "auth.errors.invalidForm",
+      message: "Check the highlighted information and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
   if (!isSupabaseConfigured())
-    return { ok: false, message: "auth.errors.notConfigured" };
+    return { ok: false, message: "Supabase has not been configured yet." };
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -55,7 +55,7 @@ export async function loginAction(input: unknown): Promise<ActionResult> {
     });
     if (error) return authError(error.message);
     if (!data.session || !data.user)
-      return { ok: false, message: "auth.errors.unexpected" };
+      return { ok: false, message: "Authentication could not be completed. Please try again." };
     return { ok: true, data: undefined };
   } catch (error) {
     return authError(error instanceof Error ? error.message : "unexpected");
@@ -67,12 +67,12 @@ export async function registerAction(input: unknown): Promise<ActionResult> {
   if (!parsed.success) {
     return {
       ok: false,
-      message: "auth.errors.invalidForm",
+      message: "Check the highlighted information and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
   if (!isSupabaseConfigured())
-    return { ok: false, message: "auth.errors.notConfigured" };
+    return { ok: false, message: "Supabase has not been configured yet." };
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.signUp({
@@ -82,7 +82,6 @@ export async function registerAction(input: unknown): Promise<ActionResult> {
         data: {
           full_name: parsed.data.fullName,
           phone: parsed.data.phone,
-          preferred_language: parsed.data.preferredLanguage,
         },
         emailRedirectTo: `${supabaseEnv.siteUrl}/auth/callback?next=/account`,
       },
@@ -91,8 +90,8 @@ export async function registerAction(input: unknown): Promise<ActionResult> {
     return {
       ok: true,
       message: data.session
-        ? "auth.registerSuccess"
-        : "auth.confirmationSent",
+        ? "Account created successfully"
+        : "Check your email and confirm your address before signing in.",
     };
   } catch (error) {
     return authError(error instanceof Error ? error.message : "unexpected");
@@ -104,9 +103,9 @@ export async function forgotPasswordAction(
 ): Promise<ActionResult> {
   const parsed = forgotPasswordSchema.safeParse(input);
   if (!parsed.success)
-    return { ok: false, message: "auth.errors.invalidEmail" };
+    return { ok: false, message: "Enter a valid email address." };
   if (!isSupabaseConfigured())
-    return { ok: false, message: "auth.errors.notConfigured" };
+    return { ok: false, message: "Supabase has not been configured yet." };
   try {
     const supabase = await createClient();
     const { error } = await supabase.auth.resetPasswordForEmail(
@@ -118,7 +117,7 @@ export async function forgotPasswordAction(
       if (!normalized.includes("not found") && !normalized.includes("does not exist"))
         return authError(error.message);
     }
-    return { ok: true, message: "auth.resetEmailSent" };
+    return { ok: true, message: "If an account exists, a password reset link has been sent." };
   } catch (error) {
     return authError(error instanceof Error ? error.message : "unexpected");
   }
@@ -131,25 +130,25 @@ export async function resetPasswordAction(
   if (!parsed.success) {
     return {
       ok: false,
-      message: "auth.errors.invalidForm",
+      message: "Check the highlighted information and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
   if (!isSupabaseConfigured())
-    return { ok: false, message: "auth.errors.notConfigured" };
+    return { ok: false, message: "Supabase has not been configured yet." };
   const cookieStore = await cookies();
   if (cookieStore.get("tara-password-recovery")?.value !== "active")
-    return { ok: false, message: "auth.errors.recoveryExpired" };
+    return { ok: false, message: "This recovery link is invalid or expired." };
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
-  if (!data.user) return { ok: false, message: "auth.errors.recoveryExpired" };
+  if (!data.user) return { ok: false, message: "This recovery link is invalid or expired." };
   const { error } = await supabase.auth.updateUser({
     password: parsed.data.password,
   });
   if (error) return authError(error.message);
   await supabase.auth.signOut();
   cookieStore.delete("tara-password-recovery");
-  return { ok: true, message: "auth.passwordUpdated" };
+  return { ok: true, message: "Your password has been updated." };
 }
 
 export async function changePasswordAction(input: unknown): Promise<ActionResult> {
@@ -157,16 +156,16 @@ export async function changePasswordAction(input: unknown): Promise<ActionResult
   if (!parsed.success) {
     return {
       ok: false,
-      message: "auth.errors.invalidForm",
+      message: "Check the highlighted information and try again.",
       fieldErrors: parsed.error.flatten().fieldErrors,
     };
   }
   if (!isSupabaseConfigured())
-    return { ok: false, message: "auth.errors.notConfigured" };
+    return { ok: false, message: "Supabase has not been configured yet." };
   const supabase = await createClient();
   const { data } = await supabase.auth.getUser();
   const email = data.user?.email;
-  if (!email) return { ok: false, message: "auth.errors.unexpected" };
+  if (!email) return { ok: false, message: "Authentication could not be completed. Please try again." };
 
   // Re-verify the current password before allowing a change, so an
   // unattended logged-in session can't have its password swapped out from
@@ -176,11 +175,11 @@ export async function changePasswordAction(input: unknown): Promise<ActionResult
     email,
     password: parsed.data.currentPassword,
   });
-  if (verifyError) return { ok: false, message: "auth.errors.currentPasswordIncorrect" };
+  if (verifyError) return { ok: false, message: "Your current password is incorrect." };
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return authError(error.message);
-  return { ok: true, message: "auth.passwordUpdated" };
+  return { ok: true, message: "Your password has been updated." };
 }
 
 export async function logoutAction() {

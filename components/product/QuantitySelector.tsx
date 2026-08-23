@@ -1,7 +1,6 @@
 "use client";
 
 import { Minus, Plus } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
 
 interface QuantitySelectorProps {
   quantity: number;
@@ -10,11 +9,10 @@ interface QuantitySelectorProps {
 }
 
 export function QuantitySelector({ quantity, onChange, max = 10 }: QuantitySelectorProps) {
-  const { t } = useLanguage();
   return (
     <div>
       <span className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-muted block mb-2">
-        {t("product.quantity")}
+        {"Quantity"}
       </span>
       <div className="inline-flex items-center border border-border">
         <button

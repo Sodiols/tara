@@ -2,8 +2,6 @@
 
 import Link from "next/link";
 import { X, User, Heart, Headset, KeyRound, LogOut, MapPin, Package, Truck } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
-import { LanguageSwitcher } from "./LanguageSwitcher";
 import { navItems } from "./DesktopNavigation";
 import { MobileCollectionAccordion } from "./MobileCollectionAccordion";
 import { siteConfig } from "@/data/site";
@@ -14,6 +12,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { logoutAction } from "@/lib/supabase/actions/auth";
 import { useCartStore } from "@/store/cartStore";
 import { useWishlistStore } from "@/store/wishlistStore";
+import { lockBodyScroll } from "@/lib/scroll-lock";
 
 interface MobileNavigationProps {
   isOpen: boolean;
@@ -21,7 +20,6 @@ interface MobileNavigationProps {
 }
 
 export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
-  const { t } = useLanguage();
   const [authenticated, setAuthenticated] = useState(false);
   const clearBag = useCartStore((s) => s.clearBag);
   const clearWishlist = useWishlistStore((s) => s.replaceItems);
@@ -35,14 +33,8 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
   }, []);
 
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "";
-    }
-    return () => {
-      document.body.style.overflow = "";
-    };
+    if (!isOpen) return;
+    return lockBodyScroll();
   }, [isOpen]);
 
   if (!isOpen || typeof document === "undefined") return null;
@@ -52,15 +44,15 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
       <div className="absolute inset-0 bg-ink/40 animate-fadeIn" onClick={onClose} />
       <div className="absolute left-0 top-0 h-full w-[85%] max-w-sm bg-white animate-slideInLeft overflow-y-auto flex flex-col">
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <span className="font-serif text-xl tracking-widest uppercase">{t("common.brand")}</span>
-          <button onClick={onClose} aria-label={t("common.close")} className="p-1 text-ink">
+          <span className="font-serif text-xl tracking-widest uppercase">{"TARA"}</span>
+          <button onClick={onClose} aria-label={"Close"} className="p-1 text-ink">
             <X size={22} />
           </button>
         </div>
 
         <nav aria-label="Mobile primary" className="flex flex-col py-2">
           {navItems.map((item) =>
-            item.key === "nav.collection" ? (
+            item.label === "Collection" ? (
               <MobileCollectionAccordion key={item.href} onNavigate={onClose} />
             ) : (
               <Link
@@ -69,7 +61,7 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
                 onClick={onClose}
                 className="flex items-center h-14 px-5 font-sans font-medium text-sm uppercase tracking-[0.05em] text-ink border-b border-border/60 hover:bg-beige/60 transition-colors"
               >
-                {t(item.key)}
+                {item.label}
               </Link>
             )
           )}
@@ -81,7 +73,7 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
             onClick={onClose}
             className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
           >
-            <User size={17} /> {t("nav.account")}
+            <User size={17} /> {"Account"}
           </Link>
           {authenticated && (
             <>
@@ -90,28 +82,28 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
                 onClick={onClose}
                 className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
               >
-                <Package size={17} /> {t("account.orders")}
+                <Package size={17} /> {"Order History"}
               </Link>
               <Link
                 href="/track-order"
                 onClick={onClose}
                 className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
               >
-                <Truck size={17} /> {t("account.trackOrder")}
+                <Truck size={17} /> {"Track Order"}
               </Link>
               <Link
                 href="/account/addresses"
                 onClick={onClose}
                 className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
               >
-                <MapPin size={17} /> {t("account.addresses")}
+                <MapPin size={17} /> {"Addresses"}
               </Link>
               <Link
                 href="/account/security"
                 onClick={onClose}
                 className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
               >
-                <KeyRound size={17} /> {t("account.security")}
+                <KeyRound size={17} /> {"Change Password"}
               </Link>
             </>
           )}
@@ -120,14 +112,14 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
             onClick={onClose}
             className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
           >
-            <Heart size={17} /> {t("nav.wishlist")}
+            <Heart size={17} /> {"Wishlist"}
           </Link>
           <Link
             href="/contact"
             onClick={onClose}
             className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
           >
-            <Headset size={17} /> {t("nav.customerSupport")}
+            <Headset size={17} /> {"Customer Support"}
           </Link>
           <a
             href={`https://maps.google.com/?q=${encodeURIComponent(siteConfig.address)}`}
@@ -150,14 +142,10 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
                 type="submit"
                 className="flex h-12 w-full items-center gap-3 px-5 text-sm text-wine hover:bg-beige/60 transition-colors"
               >
-                <LogOut size={17} /> {t("account.logout")}
+                <LogOut size={17} /> {"Logout"}
               </button>
             </form>
           )}
-        </div>
-
-        <div className="mt-auto px-5 py-5 border-t border-border">
-          <LanguageSwitcher />
         </div>
       </div>
     </div>,

@@ -26,7 +26,7 @@ export async function syncWishlistAction(items: WishlistItem[]) {
     items: (products ?? []).map((product) => ({
       productId: product.id,
       slug: product.slug,
-      name: { en: product.name_en, bn: product.name_bn },
+      name: product.name_en,
       image: images?.find((image) => image.product_id === product.id)?.image_url ?? "",
       price: Number(product.base_price),
       previousPrice: product.compare_at_price == null ? undefined : Number(product.compare_at_price),

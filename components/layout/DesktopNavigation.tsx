@@ -2,25 +2,23 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { CollectionNavItem } from "./CollectionNavItem";
 
 const navItems = [
-  { key: "nav.unstitched", href: "/unstitched-three-piece" },
-  { key: "nav.ready", href: "/ready-three-piece" },
-  { key: "nav.collection", href: "/collection" },
-  { key: "nav.about", href: "/about" },
+  { label: "Unstitched Three Piece", href: "/unstitched-three-piece" },
+  { label: "Ready Three Piece", href: "/ready-three-piece" },
+  { label: "Collection", href: "/collection" },
+  { label: "About Us", href: "/about" },
 ];
 
 export function DesktopNavigation() {
-  const { t } = useLanguage();
   const pathname = usePathname();
 
   return (
     <nav aria-label="Primary" className="hidden lg:flex items-center gap-8">
       {navItems.map((item) => {
-        if (item.key === "nav.collection") {
+        if (item.label === "Collection") {
           return <CollectionNavItem key={item.href} />;
         }
 
@@ -34,7 +32,7 @@ export function DesktopNavigation() {
               active && "text-wine"
             )}
           >
-            {t(item.key)}
+            {item.label}
             <span
               className={cn(
                 "absolute left-0 -bottom-0.5 h-px w-full bg-wine origin-left scale-x-0 transition-transform duration-300 group-hover:scale-x-100",

@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { CartItem } from "@/types";
+import { flattenName } from "./persisted-name";
 
 // Matches the per-line-item cap enforced server-side in place_order() and
 // resolveCartRows() (supabase/TARA_COMPLETE_SETUP.sql, lib/supabase/actions/cart.ts)
@@ -69,6 +70,25 @@ export const useCartStore = create<CartState>()(
       itemCount: () => get().items.reduce((sum, i) => sum + i.quantity, 0),
       subtotal: () => get().items.reduce((sum, i) => sum + i.quantity * i.price, 0),
     }),
-    { name: "tara-cart", partialize: (state) => ({ items: state.items }) }
+    {
+      name: "tara-cart",
+      partialize: (state) => ({ items: state.items }),
+      // v0 stored `name` as { en, bn } from the old bilingual build. A shopper
+      // who added to their bag before this release still has that shape in
+      // localStorage, and rendering it would print "[object Object]" in the bag
+      // drawer and on the checkout summary. Flatten it to the English string.
+      version: 1,
+      migrate: (persisted, version) => {
+        if (version >= 1) return persisted as { items: CartItem[] };
+        const state = (persisted ?? {}) as { items?: unknown };
+        const items = Array.isArray(state.items) ? state.items : [];
+        return {
+          items: items.map((item) => {
+            const line = item as CartItem & { name: unknown };
+            return { ...line, name: flattenName(line.name) };
+          }),
+        };
+      },
+    }
   )
 );

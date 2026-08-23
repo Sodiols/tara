@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { Facebook, Instagram, MapPin } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
+import { Facebook, Instagram } from "lucide-react";
 import { siteConfig } from "@/data/site";
 import { NewsletterForm } from "@/components/forms/NewsletterForm";
 import { Container } from "./Container";
@@ -17,30 +16,29 @@ function TiktokIcon({ size = 18 }: { size?: number }) {
 }
 
 export function Footer() {
-  const { t } = useLanguage();
 
   const shopLinks = [
-    { label: t("nav.unstitched"), href: "/unstitched-three-piece" },
-    { label: t("nav.ready"), href: "/ready-three-piece" },
-    { label: t("newArrivals.eyebrow"), href: "/new-arrivals" },
-    { label: t("nav.accessories"), href: "/accessories" },
-    { label: t("nav.collection"), href: "/collection" },
+    { label: "Unstitched Three Piece", href: "/unstitched-three-piece" },
+    { label: "Ready Three Piece", href: "/ready-three-piece" },
+    { label: "New Arrivals", href: "/new-arrivals" },
+    { label: "Accessories", href: "/accessories" },
+    { label: "Collection", href: "/collection" },
   ];
 
   const careLinks = [
-    { label: t("footer.contactUs"), href: "/contact" },
-    { label: t("footer.deliveryInfo"), href: "/delivery-information" },
-    { label: t("footer.exchangePolicy"), href: "/exchange-policy" },
-    { label: t("footer.sizeGuide"), href: "/size-guide" },
-    { label: t("footer.faq"), href: "/faq" },
+    { label: "Contact Us", href: "/contact" },
+    { label: "Delivery Information", href: "/delivery-information" },
+    { label: "Exchange Policy", href: "/exchange-policy" },
+    { label: "Size Guide", href: "/size-guide" },
+    { label: "Frequently Asked Questions", href: "/faq" },
   ];
 
   const aboutLinks = [
-    { label: t("footer.ourStory"), href: "/about" },
-    { label: t("footer.physicalStore"), href: "/contact" },
-    { label: t("footer.careers"), href: "/contact" },
-    { label: t("footer.privacyPolicy"), href: "/privacy-policy" },
-    { label: t("footer.termsConditions"), href: "/terms-and-conditions" },
+    { label: "Our Story", href: "/about" },
+    { label: "Physical Store", href: "/contact" },
+    { label: "Careers", href: "/contact" },
+    { label: "Privacy Policy", href: "/privacy-policy" },
+    { label: "Terms and Conditions", href: "/terms-and-conditions" },
   ];
 
   return (
@@ -48,20 +46,17 @@ export function Footer() {
       <Container className="py-16 lg:py-20">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">
           <div className="col-span-2 md:col-span-1">
-            <Link href="/" className="inline-block" aria-label={t("common.brand")}>
+            <Link href="/" className="inline-block" aria-label={"TARA"}>
               <Image
                 src="/logo/logo-off-white.png"
-                alt={t("common.brand")}
+                alt={"TARA"}
                 width={250}
-                height={200}
-                className="h-11 lg:h-14 w-auto"
+                height={64}
+                quality={90}
+                className="h-7 lg:h-9 w-auto"
               />
             </Link>
-            <p className="font-sans font-normal text-sm text-taraIvory/70 mt-4 flex items-start gap-2 max-w-[220px]">
-              <MapPin size={16} className="shrink-0 mt-0.5" />
-              {t("footer.storeLocation")}
-            </p>
-            <div className="flex items-center gap-3 mt-5">
+            <div className="flex items-center gap-3 mt-6">
               <a href={siteConfig.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="text-taraIvory hover:text-white transition-colors">
                 <Facebook size={18} />
               </a>
@@ -76,7 +71,7 @@ export function Footer() {
 
           <div>
             <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-taraIvory mb-4">
-              {t("footer.shop")}
+              {"Shop"}
             </h3>
             <ul className="flex flex-col gap-2.5">
               {shopLinks.map((l) => (
@@ -94,7 +89,7 @@ export function Footer() {
 
           <div>
             <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-taraIvory mb-4">
-              {t("footer.customerCare")}
+              {"Customer Care"}
             </h3>
             <ul className="flex flex-col gap-2.5">
               {careLinks.map((l) => (
@@ -112,7 +107,7 @@ export function Footer() {
 
           <div>
             <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-taraIvory mb-4">
-              {t("footer.aboutTara")}
+              {"About TARA"}
             </h3>
             <ul className="flex flex-col gap-2.5">
               {aboutLinks.map((l, i) => (
@@ -135,13 +130,11 @@ export function Footer() {
 
         <div className="border-t border-taraIvory/15 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans font-normal text-xs text-taraIvory/70">
           <p>
-            © {new Date().getFullYear()} {t("common.brand")}. {t("footer.copyright")}
+            © {new Date().getFullYear()} {"TARA"}. {"All rights reserved."}
           </p>
           <div className="flex items-center gap-3">
             <span className="border border-taraIvory/25 text-taraIvory/80 px-2 py-1">bKash</span>
             <span className="border border-taraIvory/25 text-taraIvory/80 px-2 py-1">Nagad</span>
-            <span className="border border-taraIvory/25 text-taraIvory/80 px-2 py-1">COD</span>
-            <span className="border border-taraIvory/25 text-taraIvory/80 px-2 py-1">Visa</span>
           </div>
         </div>
       </Container>

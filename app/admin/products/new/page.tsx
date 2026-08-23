@@ -1,11 +1,43 @@
-import { createClient } from "@/lib/supabase/server";
+import Link from "next/link";
+import { getTaxonomyOptions } from "@/lib/supabase/queries/admin";
+import { requirePermission } from "@/lib/supabase/auth";
+import { AdminEmptyState, PageHeader, Panel } from "@/components/admin/ui";
 import { ProductForm } from "@/components/admin/ProductForm";
 
 export default async function NewProductPage() {
-  const supabase = await createClient();
-  const [{ data: categories }, { data: collections }] = await Promise.all([
-    supabase!.from("categories").select("id,name_en").order("sort_order"),
-    supabase!.from("collections").select("id,name_en").order("sort_order"),
-  ]);
-  return <><h2 className="mb-6 font-serif text-2xl">New product</h2><ProductForm categories={categories ?? []} collections={collections ?? []} /></>;
+  await requirePermission("catalogue.manage");
+  const { categories, collections } = await getTaxonomyOptions();
+
+  return (
+    <>
+      <PageHeader
+        eyebrow={
+          <Link href="/admin/products" className="underline-offset-4 hover:underline">
+            ← Products
+          </Link>
+        }
+        title="New product"
+        description="Save the product first, then add its variants and images."
+      />
+
+      {categories.length === 0 ? (
+        <Panel>
+          <AdminEmptyState
+            title="Create a category first"
+            description="Every product must belong to a category, and none exist yet."
+            action={
+              <Link
+                href="/admin/categories"
+                className="mt-2 inline-flex h-11 items-center rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory"
+              >
+                Manage categories
+              </Link>
+            }
+          />
+        </Panel>
+      ) : (
+        <ProductForm categories={categories} collections={collections} />
+      )}
+    </>
+  );
 }

@@ -1,17 +1,15 @@
 "use client";
 
 import { Truck, ShieldCheck, RotateCcw, Headset } from "lucide-react";
-import { useLanguage } from "@/lib/i18n";
 import { Container } from "@/components/layout/Container";
 
 export function ServiceBenefits() {
-  const { t } = useLanguage();
 
   const benefits = [
-    { icon: Truck, title: t("benefits.freeDelivery"), text: t("benefits.freeDeliveryText") },
-    { icon: ShieldCheck, title: t("benefits.securePayment"), text: t("benefits.securePaymentText") },
-    { icon: RotateCcw, title: t("benefits.easyExchange"), text: t("benefits.easyExchangeText") },
-    { icon: Headset, title: t("benefits.customerSupport"), text: t("benefits.customerSupportText") },
+    { icon: Truck, title: "Free Delivery", text: "On orders above ৳1500 in Sylhet" },
+    { icon: ShieldCheck, title: "Secure Payment", text: "100% secure payment methods" },
+    { icon: RotateCcw, title: "Easy Exchange", text: "Hassle-free returns within 7 days" },
+    { icon: Headset, title: "Customer Support", text: "We're here to help you 24/7" },
   ];
 
   return (

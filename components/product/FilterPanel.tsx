@@ -1,6 +1,5 @@
 "use client";
 
-import { useLanguage } from "@/lib/i18n";
 import { formatPrice } from "@/lib/utils";
 import type { FilterState } from "@/hooks/useProductFilters";
 
@@ -30,7 +29,6 @@ export function FilterPanel({
   availableCollections,
   onClearAll,
 }: FilterPanelProps) {
-  const { t } = useLanguage();
 
   const toggleArrayValue = (key: "sizes" | "colours" | "fabrics" | "collections", value: string) => {
     setFilters((prev) => {
@@ -43,14 +41,14 @@ export function FilterPanel({
   return (
     <div className="flex flex-col gap-8">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm uppercase tracking-wide text-ink font-medium">{t("listing.filters")}</h2>
+        <h2 className="text-sm uppercase tracking-wide text-ink font-medium">{"Filters"}</h2>
         <button onClick={onClearAll} className="text-xs text-muted hover:text-wine underline underline-offset-2">
-          {t("common.clearAll")}
+          {"Clear All"}
         </button>
       </div>
 
       <div>
-        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{t("listing.newAndSale")}</h3>
+        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"New & Sale"}</h3>
         <div className="flex flex-col gap-2.5">
           <label className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
             <input
@@ -59,7 +57,7 @@ export function FilterPanel({
               onChange={(e) => setFilters((p) => ({ ...p, newIn: e.target.checked }))}
               className="w-4 h-4 accent-wine"
             />
-            {t("listing.newIn")}
+            {"New In"}
           </label>
           <label className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
             <input
@@ -68,13 +66,13 @@ export function FilterPanel({
               onChange={(e) => setFilters((p) => ({ ...p, onSale: e.target.checked }))}
               className="w-4 h-4 accent-wine"
             />
-            {t("listing.onSale")}
+            {"On Sale"}
           </label>
         </div>
       </div>
 
       <div>
-        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{t("listing.availability")}</h3>
+        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Availability"}</h3>
         <label className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
           <input
             type="checkbox"
@@ -82,12 +80,12 @@ export function FilterPanel({
             onChange={(e) => setFilters((p) => ({ ...p, inStockOnly: e.target.checked }))}
             className="w-4 h-4 accent-wine"
           />
-          {t("listing.inStockOnly")}
+          {"In Stock Only"}
         </label>
       </div>
 
       <div>
-        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{t("listing.price")}</h3>
+        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Price"}</h3>
         <div className="flex flex-col gap-2.5">
           {priceRanges.map((range) => (
             <label key={range.join("-")} className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
@@ -115,7 +113,7 @@ export function FilterPanel({
 
       {availableSizes.length > 0 && (
         <div>
-          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{t("listing.size")}</h3>
+          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Size"}</h3>
           <div className="flex flex-wrap gap-2">
             {availableSizes.map((size) => (
               <button
@@ -134,7 +132,7 @@ export function FilterPanel({
 
       {availableColours.length > 0 && (
         <div>
-          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{t("listing.colour")}</h3>
+          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Colour"}</h3>
           <div className="flex flex-col gap-2.5">
             {availableColours.map((colour) => (
               <label key={colour} className="flex items-center gap-2.5 text-sm text-muted cursor-pointer capitalize">
@@ -153,7 +151,7 @@ export function FilterPanel({
 
       {availableFabrics.length > 0 && (
         <div>
-          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{t("listing.fabric")}</h3>
+          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Fabric"}</h3>
           <div className="flex flex-col gap-2.5">
             {availableFabrics.map((fabric) => (
               <label key={fabric} className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
@@ -172,7 +170,7 @@ export function FilterPanel({
 
       {availableCollections.length > 0 && (
         <div>
-          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{t("listing.collectionFilter")}</h3>
+          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Collection"}</h3>
           <div className="flex flex-col gap-2.5">
             {availableCollections.map((collection) => (
               <label key={collection} className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">

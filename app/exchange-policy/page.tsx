@@ -3,7 +3,7 @@ import { ExchangePolicyClient } from "@/components/policies/ExchangePolicyClient
 
 export const metadata: Metadata = {
   title: "Exchange Policy",
-  description: "Learn about TARA's easy exchange policy for undready and ready-made products.",
+  description: "Learn about TARA's easy exchange policy for unstitched and ready-made products.",
 };
 
 export default function ExchangePolicyPage() {

@@ -3,8 +3,7 @@
 import { useState, type SetStateAction } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SlidersHorizontal } from "lucide-react";
-import type { Product, LocalizedText } from "@/types";
-import { useLanguage } from "@/lib/i18n";
+import type { Product } from "@/types";
 import { useProductFilters } from "@/hooks/useProductFilters";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { FilterPanel } from "./FilterPanel";
@@ -17,18 +16,15 @@ import type { FilterState, SortOption } from "@/lib/product-filter-types";
 const PAGE_SIZE = 8;
 
 interface ProductListingClientProps {
-  titleKey?: string;
-  titleText?: LocalizedText;
+  title: string;
   products: Product[];
   initialFilters?: FilterState;
   initialSort?: SortOption;
 }
 
-export function ProductListingClient({ titleKey, titleText, products, initialFilters, initialSort }: ProductListingClientProps) {
-  const { t, pick } = useLanguage();
+export function ProductListingClient({ title, products, initialFilters, initialSort }: ProductListingClientProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const title = titleText ? pick(titleText) : t(titleKey ?? "");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
@@ -97,7 +93,7 @@ export function ProductListingClient({ titleKey, titleText, products, initialFil
         {title}
       </h1>
       <p className="font-sans font-normal text-sm text-muted mb-8">
-        {filteredProducts.length} {t("listing.productsFound")}
+        {filteredProducts.length} {"products found"}
       </p>
 
       <div className="flex flex-col lg:flex-row gap-10 lg:gap-14">
@@ -111,11 +107,11 @@ export function ProductListingClient({ titleKey, titleText, products, initialFil
               onClick={() => setMobileFilterOpen(true)}
               className="lg:hidden inline-flex h-11 items-center gap-2 rounded-control font-sans font-medium text-sm text-ink border border-border px-4"
             >
-              <SlidersHorizontal size={15} /> {t("listing.filters")}
+              <SlidersHorizontal size={15} /> {"Filters"}
             </button>
             <div className="ml-auto">
               <label htmlFor="sort" className="sr-only">
-                {t("listing.sortBy")}
+                {"Sort By"}
               </label>
               <select
                 id="sort"
@@ -123,10 +119,10 @@ export function ProductListingClient({ titleKey, titleText, products, initialFil
                 onChange={(e) => setSyncedSort(e.target.value as typeof sort)}
                 className="h-11 rounded-control border border-border bg-white px-3 font-sans font-medium text-xs sm:text-sm text-ink focus:outline-none focus:border-wine"
               >
-                <option value="newest">{t("listing.sortNewest")}</option>
-                <option value="priceLow">{t("listing.sortPriceLow")}</option>
-                <option value="priceHigh">{t("listing.sortPriceHigh")}</option>
-                <option value="popular">{t("listing.sortPopular")}</option>
+                <option value="newest">{"Newest First"}</option>
+                <option value="priceLow">{"Price: Low to High"}</option>
+                <option value="priceHigh">{"Price: High to Low"}</option>
+                <option value="popular">{"Most Popular"}</option>
               </select>
             </div>
           </div>
@@ -136,7 +132,7 @@ export function ProductListingClient({ titleKey, titleText, products, initialFil
           {hasMore && (
             <div className="flex justify-center mt-12 lg:mt-16">
               <Button variant="outline" onClick={() => setVisibleCount((c) => c + PAGE_SIZE)}>
-                {t("common.seeMore")}
+                {"Load More"}
               </Button>
             </div>
           )}

@@ -11,5 +11,5 @@ export const metadata: Metadata = {
 export default async function NewArrivalsPage({ searchParams }: { searchParams: ListingSearchParams }) {
   const parsed = await parseListingParams(searchParams);
   const result = await getProducts({ ...parsed.filters, isNew: true, pageSize: 48 });
-  return <ProductListingClient titleKey="newArrivals.eyebrow" products={result.products} initialFilters={{ ...parsed.initialFilters, newIn: true }} initialSort={parsed.initialSort} />;
+  return <ProductListingClient title="New Arrivals" products={result.products} initialFilters={{ ...parsed.initialFilters, newIn: true }} initialSort={parsed.initialSort} />;
 }

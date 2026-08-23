@@ -1,6 +1,5 @@
 "use client";
 
-import { useLanguage } from "@/lib/i18n";
 import { collectionLinks, collectionMenuHeading } from "@/data/navigation";
 import { CollectionDropdownItem } from "./CollectionDropdownItem";
 
@@ -10,7 +9,6 @@ interface CollectionDropdownProps {
 }
 
 export function CollectionDropdown({ id, onSelect }: CollectionDropdownProps) {
-  const { pick } = useLanguage();
   const mainLinks = collectionLinks.slice(0, -1);
   const allCollectionsLink = collectionLinks[collectionLinks.length - 1];
 
@@ -27,14 +25,14 @@ export function CollectionDropdown({ id, onSelect }: CollectionDropdownProps) {
       <div
         id={id}
         role="menu"
-        aria-label={pick(collectionMenuHeading)}
+        aria-label={collectionMenuHeading}
         className="rounded-[6px] border border-border bg-white p-3 shadow-[0_12px_28px_-8px_rgba(23,23,23,0.16)]"
       >
         <p
           role="presentation"
           className="px-5 pb-2 pt-1 font-sans font-semibold text-[11px] uppercase tracking-[0.08em] text-muted"
         >
-          {pick(collectionMenuHeading)}
+          {collectionMenuHeading}
         </p>
         <div className="flex flex-col">
           {mainLinks.map((item) => (

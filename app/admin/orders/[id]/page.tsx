@@ -1,92 +1,366 @@
+import Link from "next/link";
+import Image from "next/image";
 import { notFound } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
-import { formatPrice } from "@/lib/utils";
-import { OrderStatusForm } from "@/components/admin/OrderStatusForm";
+import { Printer, ReceiptText } from "lucide-react";
+import { getAdminOrderDetail } from "@/lib/supabase/queries/admin";
+import { requireStaff } from "@/lib/supabase/auth";
+import { formatDateTime, formatTaka } from "@/lib/format";
+import { formatBdPhone, toInternationalBdPhone } from "@/lib/phone";
+import { CUSTOMER_STATUS_LABELS, FULFILMENT_PIPELINE, ORDER_STATUS_LABELS } from "@/lib/order-status";
+import {
+  Badge,
+  DetailRow,
+  PageHeader,
+  Panel,
+  PanelHeader,
+  TableWrap,
+  Td,
+  Th,
+} from "@/components/admin/ui";
+import { OrderStatusBadge, PaymentStatusBadge } from "@/components/admin/status";
+import { OrderActions } from "@/components/admin/OrderActions";
+import type { Json } from "@/types/database";
 
-export default async function AdminOrderPage({ params }: { params: Promise<{ id: string }> }) {
+function addressLines(raw: Json | null): string[] {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  const address = raw as Record<string, unknown>;
+  const pick = (key: string) => {
+    const value = address[key];
+    return typeof value === "string" && value.trim() ? value.trim() : null;
+  };
+  return [
+    pick("fullAddress"),
+    [pick("area"), pick("upazila")].filter(Boolean).join(", ") || null,
+    [pick("district"), pick("division")].filter(Boolean).join(", ") || null,
+    pick("postalCode"),
+  ].filter((line): line is string => Boolean(line));
+}
+
+export default async function AdminOrderDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
-  const supabase = await createClient();
-  const [{ data: order }, { data: items }, { data: events }] = await Promise.all([
-    supabase!.from("orders").select("*").eq("id", id).maybeSingle(),
-    supabase!.from("order_items").select("*").eq("order_id", id),
-    supabase!.from("order_tracking_events").select("*").eq("order_id", id).order("created_at", { ascending: false }),
-  ]);
-  if (!order) notFound();
+  const [staff, detail] = await Promise.all([requireStaff(), getAdminOrderDetail(id)]);
+  if (!detail) notFound();
 
-  const address = order.shipping_address as Record<string, string> | null;
+  const { order, items, events, notes, adjustments, couponCode } = detail;
+  const address = addressLines(order.shipping_address);
+  const pipelineIndex = FULFILMENT_PIPELINE.indexOf(order.status);
+
+  const printLinkClass =
+    "inline-flex h-11 items-center gap-2 rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine";
 
   return (
-    <div className="grid gap-8 lg:grid-cols-[1fr_320px]">
-      <div>
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-serif text-2xl text-ink">{order.order_number}</h2>
-          <span className="rounded-control border border-border px-3 py-1 font-sans text-xs uppercase tracking-wide text-muted">
-            {order.status}
-          </span>
-        </div>
-        <p className="mt-2 font-sans text-sm text-muted">
-          {order.customer_name} · {order.customer_phone} {order.customer_email ? `· ${order.customer_email}` : ""}
-        </p>
+    <>
+      <PageHeader
+        eyebrow={
+          <Link href="/admin/orders" className="underline-offset-4 hover:underline">
+            ← Orders
+          </Link>
+        }
+        title={order.order_number}
+        description={`Placed ${formatDateTime(order.created_at)}`}
+        actions={
+          <>
+            <Link href={`/admin/orders/${order.id}/invoice`} className={printLinkClass}>
+              <ReceiptText size={15} aria-hidden="true" />
+              Invoice
+            </Link>
+            <Link href={`/admin/orders/${order.id}/packing-slip`} className={printLinkClass}>
+              <Printer size={15} aria-hidden="true" />
+              Packing slip
+            </Link>
+          </>
+        }
+      />
 
-        {address && (
-          <p className="mt-3 font-sans text-sm leading-6 text-muted">
-            {address.fullAddress}, {address.area}, {address.district}, {address.division}
-          </p>
-        )}
-
-        <div className="mt-6 divide-y divide-border border-y border-border">
-          {(items ?? []).map((item) => (
-            <div key={item.id} className="flex items-center justify-between gap-4 py-3 font-sans text-sm">
-              <div>
-                <p className="text-ink">
-                  {item.product_name_en} × {item.quantity}
-                </p>
-                <p className="text-xs text-muted">
-                  {item.size} · {item.colour_en} · SKU {item.sku}
-                </p>
-              </div>
-              <strong className="text-ink">{formatPrice(Number(item.line_total))}</strong>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 flex flex-col gap-1 font-sans text-sm text-muted">
-          <div className="flex justify-between">
-            <span>Subtotal</span>
-            <span>{formatPrice(Number(order.subtotal))}</span>
-          </div>
-          <div className="flex justify-between">
-            <span>Delivery</span>
-            <span>{formatPrice(Number(order.delivery_fee))}</span>
-          </div>
-          {Number(order.discount_amount) > 0 && (
-            <div className="flex justify-between">
-              <span>Discount</span>
-              <span>-{formatPrice(Number(order.discount_amount))}</span>
-            </div>
-          )}
-          <div className="flex justify-between font-semibold text-ink">
-            <span>Total</span>
-            <span>{formatPrice(Number(order.total))}</span>
-          </div>
-        </div>
-
-        {events && events.length > 0 && (
-          <div className="mt-8">
-            <h3 className="font-sans font-semibold text-sm uppercase tracking-wide text-ink">Tracking history</h3>
-            <ul className="mt-3 flex flex-col gap-2 font-sans text-sm text-muted">
-              {events.map((event) => (
-                <li key={event.id} className="flex justify-between gap-4">
-                  <span className="capitalize text-ink">{event.status}</span>
-                  <span>{new Date(event.created_at).toLocaleString("en-GB")}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <OrderStatusBadge status={order.status} />
+        <PaymentStatusBadge status={order.payment_status} />
+        <Badge tone="neutral">Cash on delivery</Badge>
+        {order.risk_flags.map((flag) => (
+          <Badge key={flag} tone="warning">
+            {flag.replace(/_/g, " ")}
+          </Badge>
+        ))}
       </div>
 
-      <OrderStatusForm orderId={order.id} currentStatus={order.status} currentPaymentStatus={order.payment_status} />
-    </div>
+      {/* Fulfilment rail */}
+      {pipelineIndex >= 0 && (
+        <ol className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          {FULFILMENT_PIPELINE.map((step, index) => (
+            <li
+              key={step}
+              className={
+                index <= pipelineIndex
+                  ? "rounded-control border border-taraWine/35 bg-taraWine/8 px-3 py-2"
+                  : "rounded-control border border-border bg-taraWhite px-3 py-2"
+              }
+            >
+              <span
+                className={
+                  index <= pipelineIndex
+                    ? "block font-sans text-[11px] font-bold uppercase tracking-wide text-taraWine"
+                    : "block font-sans text-[11px] font-bold uppercase tracking-wide text-muted"
+                }
+              >
+                {index + 1}. {ORDER_STATUS_LABELS[step]}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div className="grid gap-5 xl:grid-cols-[1.5fr_1fr]">
+        <div className="flex flex-col gap-5">
+          {/* Items */}
+          <Panel>
+            <PanelHeader
+              title="Items"
+              description="Prices are the snapshot taken when the order was placed and never change afterwards."
+            />
+            <TableWrap>
+              <thead>
+                <tr>
+                  <Th>Product</Th>
+                  <Th>Variant</Th>
+                  <Th align="right">Unit</Th>
+                  <Th align="right">Qty</Th>
+                  <Th align="right">Line total</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <Td>
+                      <div className="flex items-center gap-3">
+                        {item.product_image_url ? (
+                          <Image
+                            src={item.product_image_url}
+                            alt=""
+                            width={44}
+                            height={56}
+                            className="h-14 w-11 shrink-0 rounded-sm object-cover"
+                          />
+                        ) : (
+                          <span
+                            aria-hidden="true"
+                            className="h-14 w-11 shrink-0 rounded-sm bg-taraIvory"
+                          />
+                        )}
+                        <span className="min-w-0">
+                          <span className="block truncate font-medium">
+                            {item.product_name_en}
+                          </span>
+                          <span className="block font-sans text-xs text-muted">
+                            {item.product_code}
+                          </span>
+                        </span>
+                      </div>
+                    </Td>
+                    <Td>
+                      <span className="block">
+                        {item.size} · {item.colour_en}
+                      </span>
+                      <span className="block font-sans text-xs text-muted">SKU {item.sku}</span>
+                    </Td>
+                    <Td align="right">{formatTaka(item.unit_price)}</Td>
+                    <Td align="right">{item.quantity}</Td>
+                    <Td align="right" className="font-semibold">
+                      {formatTaka(item.line_total)}
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </TableWrap>
+            <dl className="px-5 py-4">
+              <DetailRow label="Subtotal">{formatTaka(order.subtotal)}</DetailRow>
+              <DetailRow label="Delivery">{formatTaka(order.delivery_fee)}</DetailRow>
+              {Number(order.discount_amount) > 0 && (
+                <DetailRow label={couponCode ? `Discount (${couponCode})` : "Discount"}>
+                  −{formatTaka(order.discount_amount)}
+                </DetailRow>
+              )}
+              <DetailRow label="Total">
+                <strong className="font-serif text-lg">{formatTaka(order.total)}</strong>
+              </DetailRow>
+            </dl>
+          </Panel>
+
+          {/* Customer-visible timeline */}
+          <Panel>
+            <PanelHeader
+              title="Customer tracking"
+              description="Exactly what the customer sees on the public tracking page."
+            />
+            {events.length === 0 ? (
+              <p className="px-5 py-6 font-sans text-sm text-muted">No tracking events yet.</p>
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {events.map((event) => (
+                  <li key={event.id} className="flex flex-wrap justify-between gap-2 px-5 py-3">
+                    <div className="min-w-0">
+                      <p className="font-sans text-sm font-medium text-ink">
+                        {CUSTOMER_STATUS_LABELS[event.status]}
+                      </p>
+                      {event.note_en && (
+                        <p className="mt-0.5 font-sans text-sm text-muted">{event.note_en}</p>
+                      )}
+                      {!event.is_customer_visible && (
+                        <Badge tone="neutral" className="mt-1">
+                          Hidden from customer
+                        </Badge>
+                      )}
+                    </div>
+                    <span className="whitespace-nowrap font-sans text-xs text-muted">
+                      {formatDateTime(event.created_at)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          {/* Internal notes */}
+          <Panel>
+            <PanelHeader
+              title="Internal notes"
+              description="Private to staff. Stored in a separate table that customers have no access to."
+            />
+            {notes.length === 0 ? (
+              <p className="px-5 py-6 font-sans text-sm text-muted">
+                No internal notes on this order.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {notes.map((note) => (
+                  <li key={note.id} className="px-5 py-3">
+                    <p className="whitespace-pre-wrap font-sans text-sm leading-6 text-ink">
+                      {note.note}
+                    </p>
+                    <p className="mt-1 font-sans text-xs text-muted">
+                      {note.author_name || "Staff"} · {formatDateTime(note.created_at)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
+
+          {adjustments.length > 0 && (
+            <Panel>
+              <PanelHeader title="Inventory impact" />
+              <TableWrap>
+                <thead>
+                  <tr>
+                    <Th>Reason</Th>
+                    <Th align="right">Before</Th>
+                    <Th align="right">Change</Th>
+                    <Th align="right">After</Th>
+                    <Th align="right">When</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {adjustments.map((adjustment) => (
+                    <tr key={adjustment.id}>
+                      <Td className="capitalize">{adjustment.reason.replace(/_/g, " ")}</Td>
+                      <Td align="right">{adjustment.previous_quantity}</Td>
+                      <Td align="right" className="font-semibold">
+                        {adjustment.delta > 0 ? `+${adjustment.delta}` : adjustment.delta}
+                      </Td>
+                      <Td align="right">{adjustment.new_quantity}</Td>
+                      <Td align="right" className="whitespace-nowrap text-xs text-muted">
+                        {formatDateTime(adjustment.created_at)}
+                      </Td>
+                    </tr>
+                  ))}
+                </tbody>
+              </TableWrap>
+            </Panel>
+          )}
+        </div>
+
+        <div className="flex flex-col gap-5">
+          <Panel>
+            <PanelHeader title="Customer" />
+            <dl className="px-5 py-3">
+              <DetailRow label="Name">{order.customer_name}</DetailRow>
+              <DetailRow label="Phone">
+                {toInternationalBdPhone(order.customer_phone) ? (
+                  <a
+                    href={`tel:${toInternationalBdPhone(order.customer_phone)}`}
+                    className="text-taraWine underline-offset-4 hover:underline"
+                  >
+                    {formatBdPhone(order.customer_phone)}
+                  </a>
+                ) : (
+                  order.customer_phone
+                )}
+              </DetailRow>
+              <DetailRow label="Email">
+                {order.customer_email ? (
+                  <a
+                    href={`mailto:${order.customer_email}`}
+                    className="break-all text-taraWine underline-offset-4 hover:underline"
+                  >
+                    {order.customer_email}
+                  </a>
+                ) : (
+                  <span className="text-muted">Not provided</span>
+                )}
+              </DetailRow>
+              <DetailRow label="Account">
+                {order.user_id ? (
+                  <Link
+                    href={`/admin/customers/${order.user_id}`}
+                    className="text-taraWine underline-offset-4 hover:underline"
+                  >
+                    Registered customer
+                  </Link>
+                ) : (
+                  <span className="text-muted">Guest checkout</span>
+                )}
+              </DetailRow>
+            </dl>
+          </Panel>
+
+          <Panel>
+            <PanelHeader title="Delivery address" />
+            <div className="px-5 py-4">
+              {address.length > 0 ? (
+                <address className="font-sans text-sm not-italic leading-6 text-ink">
+                  {address.map((line) => (
+                    <span key={line} className="block">
+                      {line}
+                    </span>
+                  ))}
+                </address>
+              ) : (
+                <p className="font-sans text-sm text-muted">No address recorded.</p>
+              )}
+              {order.customer_note && (
+                <div className="mt-4 rounded-control border border-border bg-taraIvory/60 p-3">
+                  <p className="font-sans text-[11px] font-bold uppercase tracking-wide text-muted">
+                    Customer note
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap font-sans text-sm leading-6 text-ink">
+                    {order.customer_note}
+                  </p>
+                </div>
+              )}
+            </div>
+          </Panel>
+
+          <OrderActions
+            orderId={order.id}
+            status={order.status}
+            paymentStatus={order.payment_status}
+            permissions={staff.permissions}
+          />
+        </div>
+      </div>
+    </>
   );
 }

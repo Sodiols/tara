@@ -3,7 +3,6 @@
 import { Heart } from "lucide-react";
 import { useWishlistStore } from "@/store/wishlistStore";
 import { useToastStore } from "@/store/toastStore";
-import { useLanguage } from "@/lib/i18n";
 import { useHasMounted } from "@/hooks/useHasMounted";
 import type { Product } from "@/types";
 import { cn } from "@/lib/utils";
@@ -19,7 +18,6 @@ interface WishlistButtonProps {
 export function WishlistButton({ product, className }: WishlistButtonProps) {
   const { isInWishlist, toggleItem } = useWishlistStore();
   const { addToast } = useToastStore();
-  const { pick, locale } = useLanguage();
   const hasMounted = useHasMounted();
   const active = hasMounted && isInWishlist(product.id);
 
@@ -48,14 +46,14 @@ export function WishlistButton({ product, className }: WishlistButtonProps) {
           price: product.price,
           previousPrice: product.previousPrice,
         });
-        addToast(locale === "bn" ? "উইশলিস্ট আপডেট করা যায়নি" : "Wishlist could not be updated");
+        addToast("Wishlist could not be updated");
         return;
       }
     }
     addToast(
       active
-        ? (locale === "bn" ? "উইশলিস্ট থেকে সরানো হয়েছে" : "Removed from wishlist")
-        : (locale === "bn" ? "উইশলিস্টে যোগ করা হয়েছে" : "Added to wishlist")
+        ? ("Removed from wishlist")
+        : ("Added to wishlist")
     );
   };
 

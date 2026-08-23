@@ -7,5 +7,5 @@ export const metadata: Metadata = { title: "Winter Collection", description: "Sh
 export default async function WinterCollectionPage({ searchParams }: { searchParams: ListingSearchParams }) {
   const parsed = await parseListingParams(searchParams);
   const result = await getProductsByCollection("winter", parsed.filters);
-  return <ProductListingClient titleText={{ en: "Winter Collection", bn: "উইন্টার কালেকশন" }} products={result.products} initialFilters={parsed.initialFilters} initialSort={parsed.initialSort} />;
+  return <ProductListingClient title="Winter Collection" products={result.products} initialFilters={parsed.initialFilters} initialSort={parsed.initialSort} />;
 }

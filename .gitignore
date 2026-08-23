@@ -8,3 +8,7 @@ npm-debug.log*
 .DS_Store
 *.tsbuildinfo
 next-env.d.ts
+
+# Local dev logs and stray archives
+.codex-dev.log
+app.zip

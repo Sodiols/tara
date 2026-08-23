@@ -46,9 +46,6 @@ const config: Config = {
         // Manrope — body copy and all interface/functional text.
         sans: ["var(--font-body)", "sans-serif"],
         body: ["var(--font-body)", "sans-serif"],
-        // Bangla: Noto Sans Bengali for interface text, Noto Serif Bengali for headings.
-        bengali: ["var(--font-bengali)", "sans-serif"],
-        bengaliSerif: ["var(--font-bengali-serif)", "serif"],
       },
       letterSpacing: {
         widest2: "0.25em",

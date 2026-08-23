@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Product, ProductCategory, Review } from "@/types";
+import type { CategorySlug, Product, Review } from "@/types";
 import type { Database, Json } from "@/types/database";
 import { products as seedProducts } from "@/data/products";
 import { createClient } from "../server";
@@ -13,7 +13,7 @@ type ProductVariantRow =
 type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
 
 export interface ProductFilters {
-  category?: ProductCategory;
+  category?: CategorySlug;
   collection?: string;
   query?: string;
   minPrice?: number;
@@ -88,11 +88,9 @@ function fallbackProducts(filters: ProductFilters = {}): ProductPage {
     if (
       searchTerm &&
       ![
-        product.name.en,
-        product.name.bn,
+        product.name,
         product.productCode,
-        product.fabric.en,
-        product.fabric.bn,
+        product.fabric,
         product.collection,
         ...product.tags,
       ].some((value) => value.toLowerCase().includes(searchTerm))
@@ -101,7 +99,7 @@ function fallbackProducts(filters: ProductFilters = {}): ProductPage {
     if (filters.maxPrice != null && product.price > filters.maxPrice) return false;
     if (
       filters.fabric &&
-      !product.fabric.en.toLowerCase().includes(filters.fabric.toLowerCase())
+      !product.fabric.toLowerCase().includes(filters.fabric.toLowerCase())
     ) return false;
     if (filters.isNew && !product.isNew) return false;
     if (filters.onSale && !product.isSale) return false;
@@ -114,7 +112,7 @@ function fallbackProducts(filters: ProductFilters = {}): ProductPage {
     ) return false;
     if (
       filters.colours?.length &&
-      !product.colours.some((colour) => filters.colours?.includes(colour.name.en))
+      !product.colours.some((colour) => filters.colours?.includes(colour.name))
     ) return false;
     return true;
   });
@@ -180,12 +178,56 @@ function devFallbackProductBySlug(slug: string, reason: string): Product | null 
   return null;
 }
 
-function localizedJson(value: Json | null) {
-  return (value ?? undefined) as Product["unstitchedDetails"];
+/**
+ * `unstitched_details` and `ready_made_details` are jsonb, and rows written by
+ * the bilingual build stored every field as `{ en, bn }`. The storefront is
+ * English only and its types say `string`, so a blind cast would render
+ * "[object Object]" on the product page for every existing product.
+ *
+ * Read the English side out, and pass a value that is already a plain string
+ * straight through so rows written from here on need no special case.
+ */
+function englishField(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    const bilingual = value as { en?: unknown; bn?: unknown };
+    if (typeof bilingual.en === "string") return bilingual.en;
+    if (typeof bilingual.bn === "string") return bilingual.bn;
+  }
+  return "";
 }
 
-function readyMadeJson(value: Json | null) {
-  return (value ?? undefined) as Product["readyMadeDetails"];
+function localizedJson(value: Json | null): Product["unstitchedDetails"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+  return {
+    kameezFabric: englishField(row.kameezFabric),
+    salwarFabric: englishField(row.salwarFabric),
+    dupattaFabric: englishField(row.dupattaFabric),
+    workDetails: englishField(row.workDetails),
+    fabricLength: englishField(row.fabricLength),
+    colourInfo: englishField(row.colourInfo),
+  };
+}
+
+function readyMadeJson(value: Json | null): Product["readyMadeDetails"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const row = value as Record<string, unknown>;
+  const measurements = Array.isArray(row.sizeMeasurements) ? row.sizeMeasurements : [];
+  return {
+    sizeMeasurements: measurements.map((entry) => {
+      const measurement = (entry ?? {}) as Record<string, unknown>;
+      return {
+        size: englishField(measurement.size),
+        chest: englishField(measurement.chest),
+        waist: englishField(measurement.waist),
+        length: englishField(measurement.length),
+      };
+    }),
+    modelHeight: englishField(row.modelHeight),
+    modelWearingSize: englishField(row.modelWearingSize),
+    fitInformation: englishField(row.fitInformation),
+  };
 }
 
 async function hydrateProducts(rows: ProductRow[]): Promise<Product[]> {
@@ -213,7 +255,7 @@ async function hydrateProducts(rows: ProductRow[]): Promise<Product[]> {
         .order("created_at", { ascending: false }),
       supabase
         .from("categories")
-        .select("id,slug")
+        .select("id,slug,name_en")
         .in("id", [...new Set(rows.map((row) => row.category_id))]),
       supabase
         .from("collections")
@@ -228,7 +270,10 @@ async function hydrateProducts(rows: ProductRow[]): Promise<Product[]> {
   const variants = (variantsResult.data ?? []) as ProductVariantRow[];
   const reviews = (reviewsResult.data ?? []) as ReviewRow[];
   const categoryById = new Map(
-    (categoryResult.data ?? []).map((item) => [item.id, item.slug]),
+    (categoryResult.data ?? []).map((item) => [
+      item.id,
+      { slug: item.slug, name: item.name_en },
+    ]),
   );
   const collectionById = new Map(
     (collectionResult.data ?? []).map((item) => [item.id, item.name_en]),
@@ -244,7 +289,7 @@ async function hydrateProducts(rows: ProductRow[]): Promise<Product[]> {
         productVariants.map((variant) => [
           variant.colour_en,
           {
-            name: { en: variant.colour_en, bn: variant.colour_bn },
+            name: variant.colour_en,
             hex: variant.colour_hex,
           },
         ]),
@@ -257,27 +302,27 @@ async function hydrateProducts(rows: ProductRow[]): Promise<Product[]> {
         author: review.author_name,
         rating: review.rating,
         date: review.created_at.slice(0, 10),
-        comment: {
-          en: review.comment_en,
-          bn: review.comment_bn || review.comment_en,
-        },
+        comment: review.comment_en,
       }));
 
     return {
       id: row.id,
       slug: row.slug,
-      name: { en: row.name_en, bn: row.name_bn },
-      description: { en: row.description_en, bn: row.description_bn },
-      category:
-        (categoryById.get(row.category_id) as ProductCategory | undefined) ??
-        "collection",
+      name: row.name_en,
+      description: row.description_en,
+      // The slug is whatever staff created in /admin/categories — it is NOT
+      // limited to the four built-in routes, so it is carried through as-is
+      // rather than being cast to a union it may not belong to. The display
+      // name travels with it so no screen has to guess a label from the slug.
+      category: categoryById.get(row.category_id)?.slug ?? "collection",
+      categoryName: categoryById.get(row.category_id)?.name,
       price: Number(row.base_price),
       previousPrice:
         row.compare_at_price == null ? undefined : Number(row.compare_at_price),
       images: productImages.map((image) => image.image_url),
       colours,
       sizes: [...new Set(productVariants.map((variant) => variant.size))],
-      fabric: { en: row.fabric_en, bn: row.fabric_bn },
+      fabric: row.fabric_en,
       stock: productVariants.reduce(
         (total, variant) => total + variant.stock_quantity,
         0,
@@ -293,10 +338,7 @@ async function hydrateProducts(rows: ProductRow[]): Promise<Product[]> {
       rating: Number(row.average_rating),
       reviewCount: row.review_count,
       productCode: row.product_code,
-      careInstructions: {
-        en: row.care_instructions_en,
-        bn: row.care_instructions_bn,
-      },
+      careInstructions: row.care_instructions_en,
       unstitchedDetails: localizedJson(row.unstitched_details),
       readyMadeDetails: readyMadeJson(row.ready_made_details),
       reviews: productReviews,
@@ -344,7 +386,7 @@ export async function getProducts(
   if (filters.query) {
     const safe = filters.query.replaceAll(/[%(),]/g, " ").trim();
     query = query.or(
-      `name_en.ilike.%${safe}%,name_bn.ilike.%${safe}%,product_code.ilike.%${safe}%`,
+      `name_en.ilike.%${safe}%,product_code.ilike.%${safe}%`,
     );
   }
   if (filters.minPrice != null) query = query.gte("base_price", filters.minPrice);
@@ -400,9 +442,6 @@ export async function getProducts(
   return { products, total, page, pageSize, hasMore: start + pageSize < total };
 }
 
-export async function getActiveProducts(limit = 24) {
-  return (await getProducts({ pageSize: limit })).products;
-}
 export async function getNewArrivals(limit = 8) {
   return (await getProducts({ isNew: true, pageSize: limit })).products;
 }
@@ -413,7 +452,7 @@ export async function getBestSellers(limit = 8) {
   return (await getProducts({ bestSeller: true, pageSize: limit })).products;
 }
 export async function getProductsByCategory(
-  category: ProductCategory,
+  category: CategorySlug,
   filters: ProductFilters = {},
 ) {
   return getProducts({ ...filters, category });
@@ -424,6 +463,44 @@ export async function getProductsByCollection(
 ) {
   return getProducts({ ...filters, collection });
 }
+
+export interface PublicCollection {
+  slug: string;
+  name: string;
+  description: string | null;
+}
+
+/**
+ * A collection a shopper is allowed to see right now.
+ *
+ * Returns null for one that does not exist, has been deactivated, or is
+ * scheduled outside its own start/end window — the same rule the sitemap
+ * applies, so a collection is never reachable by URL while being deliberately
+ * withheld from crawlers.
+ */
+export async function getPublicCollectionBySlug(
+  slug: string,
+): Promise<PublicCollection | null> {
+  if (!isSupabaseConfigured()) return null;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("collections")
+    .select("slug,name_en,description_en,is_active,starts_at,ends_at")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (error || !data || !data.is_active) return null;
+
+  const now = Date.now();
+  if (data.starts_at && new Date(data.starts_at).getTime() > now) return null;
+  if (data.ends_at && new Date(data.ends_at).getTime() <= now) return null;
+
+  return {
+    slug: data.slug,
+    name: data.name_en,
+    description: data.description_en,
+  };
+}
 export async function searchProducts(query: string, limit = 12) {
   const term = query.trim();
   if (term.length < 2) return [];
@@ -432,10 +509,10 @@ export async function searchProducts(query: string, limit = 12) {
   const supabase = await createClient();
   const safe = term.replaceAll(/[%(),]/g, " ");
   const [directResult, taggedResult, categoryResult, collectionResult] = await Promise.all([
-    supabase.from("products").select("*").eq("status", "active").or(`name_en.ilike.%${safe}%,name_bn.ilike.%${safe}%,product_code.ilike.%${safe}%`).limit(limit),
+    supabase.from("products").select("*").eq("status", "active").or(`name_en.ilike.%${safe}%,product_code.ilike.%${safe}%`).limit(limit),
     supabase.from("products").select("*").eq("status", "active").contains("tags", [term.toLowerCase()]).limit(limit),
-    supabase.from("categories").select("id").eq("is_active", true).or(`name_en.ilike.%${safe}%,name_bn.ilike.%${safe}%`),
-    supabase.from("collections").select("id").eq("is_active", true).or(`name_en.ilike.%${safe}%,name_bn.ilike.%${safe}%`),
+    supabase.from("categories").select("id").eq("is_active", true).or(`name_en.ilike.%${safe}%`),
+    supabase.from("collections").select("id").eq("is_active", true).or(`name_en.ilike.%${safe}%`),
   ]);
   if (
     [directResult.error, taggedResult.error, categoryResult.error, collectionResult.error]
@@ -485,25 +562,3 @@ export async function getRelatedProducts(product: Product, limit = 4) {
   return result.products.filter((item) => item.id !== product.id).slice(0, limit);
 }
 
-export async function getProductVariants(productId: string) {
-  if (!isSupabaseConfigured()) return [];
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("product_variants")
-    .select("*")
-    .eq("product_id", productId)
-    .eq("is_active", true);
-  return data ?? [];
-}
-
-export async function getProductReviews(productId: string) {
-  if (!isSupabaseConfigured()) return [];
-  const supabase = await createClient();
-  const { data } = await supabase
-    .from("reviews")
-    .select("*")
-    .eq("product_id", productId)
-    .eq("status", "approved")
-    .order("created_at", { ascending: false });
-  return data ?? [];
-}

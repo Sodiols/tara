@@ -3,7 +3,6 @@
 import { useId, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useLanguage } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import { collectionLinks } from "@/data/navigation";
 import { NavigationChevron } from "./NavigationChevron";
@@ -13,7 +12,6 @@ interface MobileCollectionAccordionProps {
 }
 
 export function MobileCollectionAccordion({ onNavigate }: MobileCollectionAccordionProps) {
-  const { t, pick } = useLanguage();
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -32,7 +30,7 @@ export function MobileCollectionAccordion({ onNavigate }: MobileCollectionAccord
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between h-14 px-5 text-sm uppercase tracking-wide text-ink"
       >
-        {t("nav.collection")}
+        {"Collection"}
         <NavigationChevron open={open} size={16} />
       </button>
 
@@ -54,7 +52,7 @@ export function MobileCollectionAccordion({ onNavigate }: MobileCollectionAccord
                     active ? "text-wine" : "text-ink"
                   )}
                 >
-                  {pick(item.label)}
+                  {item.label}
                 </Link>
               );
             })}
