@@ -44,7 +44,12 @@ export type DeliveryMethod = "standard" | "express";
 export type ReviewStatus = "pending" | "approved" | "rejected";
 export type MessageStatus = "new" | "read" | "replied" | "resolved";
 export type DiscountType = "fixed" | "percentage";
-export type NotificationStatus = "queued" | "sent" | "failed" | "skipped";
+export type NotificationStatus =
+  | "queued"
+  | "sending"
+  | "sent"
+  | "failed"
+  | "skipped";
 
 export type InventoryAdjustmentReason =
   | "restock"
@@ -65,7 +70,6 @@ export interface Database {
           email: string;
           phone: string;
           avatar_url: string | null;
-          preferred_language: "en" | "bn";
           role: UserRole;
           is_active: boolean;
           last_seen_at: string | null;
@@ -92,9 +96,7 @@ export interface Database {
           id: string;
           slug: string;
           name_en: string;
-          name_bn: string;
           description_en: string | null;
-          description_bn: string | null;
           image_url: string | null;
           is_active: boolean;
           sort_order: number;
@@ -107,9 +109,7 @@ export interface Database {
           id: string;
           slug: string;
           name_en: string;
-          name_bn: string;
           description_en: string | null;
-          description_bn: string | null;
           image_url: string | null;
           starts_at: string | null;
           ends_at: string | null;
@@ -125,22 +125,18 @@ export interface Database {
           id: string;
           slug: string;
           name_en: string;
-          name_bn: string;
           description_en: string;
-          description_bn: string;
           category_id: string;
           collection_id: string | null;
           base_price: number;
           compare_at_price: number | null;
           fabric_en: string;
-          fabric_bn: string;
           product_code: string;
           status: ProductStatus;
           is_new: boolean;
           is_featured: boolean;
           is_best_seller: boolean;
           care_instructions_en: string;
-          care_instructions_bn: string;
           tags: string[];
           unstitched_details: Json | null;
           ready_made_details: Json | null;
@@ -149,9 +145,7 @@ export interface Database {
           seo_title: string | null;
           seo_description: string | null;
           material_en: string;
-          material_bn: string;
           size_guide_note_en: string;
-          size_guide_note_bn: string;
           archived_at: string | null;
         }
       >;
@@ -161,7 +155,6 @@ export interface Database {
         image_url: string;
         storage_path: string | null;
         alt_en: string;
-        alt_bn: string;
         sort_order: number;
         is_primary: boolean;
         created_at: string;
@@ -174,7 +167,6 @@ export interface Database {
           sku: string;
           size: string;
           colour_en: string;
-          colour_bn: string;
           colour_hex: string;
           price_override: number | null;
           stock_quantity: number;
@@ -233,12 +225,10 @@ export interface Database {
         product_id: string;
         product_variant_id: string;
         product_name_en: string;
-        product_name_bn: string;
         product_code: string;
         sku: string;
         size: string;
         colour_en: string;
-        colour_bn: string;
         unit_price: number;
         quantity: number;
         line_total: number;
@@ -250,7 +240,6 @@ export interface Database {
           id: string;
           code: string;
           description_en: string;
-          description_bn: string;
           discount_type: DiscountType;
           discount_value: number;
           minimum_order_amount: number;
@@ -282,7 +271,6 @@ export interface Database {
           rating: number;
           title: string | null;
           comment_en: string;
-          comment_bn: string | null;
           status: ReviewStatus;
           moderated_by: string | null;
           moderated_at: string | null;
@@ -294,7 +282,6 @@ export interface Database {
         order_id: string;
         status: OrderStatus;
         note_en: string | null;
-        note_bn: string | null;
         created_by: string | null;
         is_customer_visible: boolean;
         created_at: string;
@@ -367,12 +354,21 @@ export interface Database {
       newsletter_subscribers: Table<{
         id: string;
         email: string;
-        preferred_language: "en" | "bn";
         is_active: boolean;
+        unsubscribe_token: string;
         unsubscribed_at: string | null;
         source: string;
         created_at: string;
         updated_at: string;
+      }>;
+      bd_divisions: Table<{
+        name: string;
+        sort_order: number;
+      }>;
+      bd_districts: Table<{
+        name: string;
+        division_name: string;
+        sort_order: number;
       }>;
       store_settings: Table<{
         key: string;
@@ -478,7 +474,14 @@ export interface Database {
         };
         Returns: Json;
       };
-      unsubscribe_newsletter: { Args: { p_email: string }; Returns: boolean };
+      unsubscribe_newsletter_by_token: {
+        Args: { p_token: string };
+        Returns: boolean;
+      };
+      newsletter_unsubscribe_token: {
+        Args: Record<PropertyKey, never>;
+        Returns: string | null;
+      };
       normalize_bd_phone: { Args: { p_phone: string }; Returns: string | null };
       is_staff: { Args: Record<PropertyKey, never>; Returns: boolean };
       is_full_admin: { Args: Record<PropertyKey, never>; Returns: boolean };
@@ -509,6 +512,52 @@ export interface Database {
         };
         Returns: boolean;
       };
+      resolve_shipping_location: {
+        Args: { p_division: string; p_district: string };
+        Returns: Json | null;
+      };
+      calculate_delivery_fee: {
+        Args: { p_subtotal: number; p_division: string };
+        Returns: number;
+      };
+      search_catalogue: { Args: { p_filters: Json }; Returns: Json };
+      catalogue_facets: { Args: { p_filters: Json }; Returns: Json };
+      collection_is_visible: { Args: { p_collection_id: string }; Returns: boolean };
+      set_product_primary_image: { Args: { p_image_id: string }; Returns: Json };
+      reorder_product_images: {
+        Args: { p_product_id: string; p_image_ids: string[] };
+        Returns: Json;
+      };
+      delete_product_image: { Args: { p_image_id: string }; Returns: Json };
+      replace_cart_items: { Args: { p_items: Json }; Returns: Json };
+      merge_cart_items: { Args: { p_items: Json }; Returns: Json };
+      current_cart_state: { Args: Record<PropertyKey, never>; Returns: Json };
+      consume_public_rate_limit: {
+        Args: { p_bucket: string; p_identifier: string };
+        Returns: boolean;
+      };
+      claim_order_notifications: {
+        Args: { p_order_number: string; p_tracking_token: string };
+        Returns: Json;
+      };
+      claim_order_notifications_admin: {
+        Args: { p_order_id: string };
+        Returns: Json;
+      };
+      confirm_notification_dispatch: {
+        Args: {
+          p_id: string;
+          p_dispatch_token: string;
+          p_ok: boolean;
+          p_error?: string | null;
+        };
+        Returns: boolean;
+      };
+      store_notification_recipient: {
+        Args: { p_id: string; p_dispatch_token: string };
+        Returns: string | null;
+      };
+      requeue_notification: { Args: { p_id: string }; Returns: boolean };
     };
     Enums: {
       user_role: UserRole;

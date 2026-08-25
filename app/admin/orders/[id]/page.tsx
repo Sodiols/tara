@@ -45,7 +45,7 @@ export default async function AdminOrderDetailPage({
   const [staff, detail] = await Promise.all([requireStaff(), getAdminOrderDetail(id)]);
   if (!detail) notFound();
 
-  const { order, items, events, notes, adjustments, couponCode } = detail;
+  const { order, items, events, notes, adjustments, audit, couponCode } = detail;
   const address = addressLines(order.shipping_address);
   const pipelineIndex = FULFILMENT_PIPELINE.indexOf(order.status);
 
@@ -219,6 +219,67 @@ export default async function AdminOrderDetailPage({
                     </span>
                   </li>
                 ))}
+              </ul>
+            )}
+          </Panel>
+
+          {/*
+            Status history.
+
+            order_tracking_events above is what the customer sees, and it only
+            records the status an order moved TO. This panel is the audit trail:
+            the status it moved FROM, who moved it, when, and any internal
+            reason they gave. Nothing overwrites it, so the full history of an
+            order survives every later change.
+          */}
+          <Panel>
+            <PanelHeader
+              title="Status history"
+              description="Every change to this order, with who made it. Staff-only and never overwritten."
+            />
+            {audit.length === 0 ? (
+              <p className="px-5 py-6 font-sans text-sm text-muted">
+                No changes have been made since this order was placed.
+              </p>
+            ) : (
+              <ul className="divide-y divide-border/70">
+                {audit.map((entry) => {
+                  const before = (entry.before_value ?? {}) as Record<string, unknown>;
+                  const after = (entry.after_value ?? {}) as Record<string, unknown>;
+                  const asText = (value: unknown) =>
+                    typeof value === "string" ? value : null;
+                  const fromStatus = asText(before.status) ?? asText(before.paymentStatus);
+                  const toStatus = asText(after.status) ?? asText(after.paymentStatus);
+
+                  return (
+                    <li key={entry.id} className="px-5 py-3">
+                      <div className="flex flex-wrap items-baseline justify-between gap-2">
+                        <p className="font-sans text-sm text-ink">
+                          {fromStatus && toStatus ? (
+                            <>
+                              <span className="capitalize">{fromStatus}</span>
+                              <span className="mx-1.5 text-muted">&rarr;</span>
+                              <span className="font-medium capitalize">{toStatus}</span>
+                            </>
+                          ) : (
+                            entry.action
+                          )}
+                        </p>
+                        <span className="whitespace-nowrap font-sans text-xs text-muted">
+                          {formatDateTime(entry.created_at)}
+                        </span>
+                      </div>
+                      <p className="mt-0.5 font-sans text-xs text-muted">
+                        {entry.actor_email || "System"}
+                        {entry.actor_role ? ` · ${entry.actor_role}` : ""}
+                        {after.restocked === true ? " · stock restored" : ""}
+                      </p>
+                      {entry.reason && (
+                        <p className="mt-1 font-sans text-sm text-muted">{entry.reason}</p>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Panel>

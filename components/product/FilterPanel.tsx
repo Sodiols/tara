@@ -1,60 +1,67 @@
 "use client";
 
 import { formatPrice } from "@/lib/utils";
-import type { FilterState } from "@/hooks/useProductFilters";
+import {
+  PRICE_BANDS,
+  isPriceBandSelected,
+  togglePriceBand,
+  toggleListValue,
+  type ProductFilters,
+} from "@/lib/catalogue-filters";
 
-interface FilterPanelProps {
-  filters: FilterState;
-  setFilters: React.Dispatch<React.SetStateAction<FilterState>>;
+export interface FilterPanelProps {
+  filters: ProductFilters;
+  /** Applies a change by navigating; the server re-queries and re-renders. */
+  onChange: (next: ProductFilters) => void;
   availableSizes: string[];
   availableColours: string[];
   availableFabrics: string[];
   availableCollections: string[];
   onClearAll: () => void;
+  /** True while a filtered result is being fetched. */
+  pending?: boolean;
 }
-
-const priceRanges: [number, number][] = [
-  [0, 1500],
-  [1500, 2500],
-  [2500, 3500],
-  [3500, 10000],
-];
 
 export function FilterPanel({
   filters,
-  setFilters,
+  onChange,
   availableSizes,
   availableColours,
   availableFabrics,
   availableCollections,
   onClearAll,
+  pending = false,
 }: FilterPanelProps) {
-
-  const toggleArrayValue = (key: "sizes" | "colours" | "fabrics" | "collections", value: string) => {
-    setFilters((prev) => {
-      const current = prev[key];
-      const next = current.includes(value) ? current.filter((v) => v !== value) : [...current, value];
-      return { ...prev, [key]: next };
-    });
+  const toggleList = (
+    key: "sizes" | "colours" | "fabrics" | "collectionNames",
+    value: string,
+  ) => {
+    onChange({ ...filters, [key]: toggleListValue(filters[key], value) });
   };
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-8" aria-busy={pending}>
       <div className="flex items-center justify-between">
         <h2 className="text-sm uppercase tracking-wide text-ink font-medium">{"Filters"}</h2>
-        <button onClick={onClearAll} className="text-xs text-muted hover:text-wine underline underline-offset-2">
+        <button
+          type="button"
+          onClick={onClearAll}
+          className="text-xs text-muted hover:text-wine underline underline-offset-2"
+        >
           {"Clear All"}
         </button>
       </div>
 
-      <div>
-        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"New & Sale"}</h3>
+      <fieldset>
+        <legend className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">
+          {"New & Sale"}
+        </legend>
         <div className="flex flex-col gap-2.5">
           <label className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
             <input
               type="checkbox"
-              checked={filters.newIn}
-              onChange={(e) => setFilters((p) => ({ ...p, newIn: e.target.checked }))}
+              checked={Boolean(filters.isNew)}
+              onChange={(event) => onChange({ ...filters, isNew: event.target.checked })}
               className="w-4 h-4 accent-wine"
             />
             {"New In"}
@@ -62,129 +69,158 @@ export function FilterPanel({
           <label className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
             <input
               type="checkbox"
-              checked={filters.onSale}
-              onChange={(e) => setFilters((p) => ({ ...p, onSale: e.target.checked }))}
+              checked={Boolean(filters.onSale)}
+              onChange={(event) => onChange({ ...filters, onSale: event.target.checked })}
               className="w-4 h-4 accent-wine"
             />
             {"On Sale"}
           </label>
         </div>
-      </div>
+      </fieldset>
 
-      <div>
-        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Availability"}</h3>
+      <fieldset>
+        <legend className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">
+          {"Availability"}
+        </legend>
         <label className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
           <input
             type="checkbox"
-            checked={filters.inStockOnly}
-            onChange={(e) => setFilters((p) => ({ ...p, inStockOnly: e.target.checked }))}
+            checked={Boolean(filters.inStock)}
+            onChange={(event) => onChange({ ...filters, inStock: event.target.checked })}
             className="w-4 h-4 accent-wine"
           />
           {"In Stock Only"}
         </label>
-      </div>
+      </fieldset>
 
-      <div>
-        <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Price"}</h3>
+      <fieldset>
+        <legend className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">
+          {"Price"}
+        </legend>
         <div className="flex flex-col gap-2.5">
-          {priceRanges.map((range) => (
-            <label key={range.join("-")} className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
+          {PRICE_BANDS.map((band) => (
+            <label
+              key={`${band.min}-${band.max}`}
+              className="flex items-center gap-2.5 text-sm text-muted cursor-pointer"
+            >
               <input
                 type="checkbox"
-                checked={filters.priceRanges.some((r) => r[0] === range[0] && r[1] === range[1])}
+                checked={isPriceBandSelected(filters.priceBands, band)}
                 onChange={() =>
-                  setFilters((prev) => {
-                    const exists = prev.priceRanges.some((r) => r[0] === range[0] && r[1] === range[1]);
-                    return {
-                      ...prev,
-                      priceRanges: exists
-                        ? prev.priceRanges.filter((r) => !(r[0] === range[0] && r[1] === range[1]))
-                        : [...prev.priceRanges, range],
-                    };
+                  onChange({
+                    ...filters,
+                    // Each band is kept separate rather than merged into one
+                    // wide range, so ticking two bands means "either of these"
+                    // and not "everything between them".
+                    priceBands: togglePriceBand(filters.priceBands, band),
                   })
                 }
                 className="w-4 h-4 accent-wine"
               />
-              {formatPrice(range[0])} - {formatPrice(range[1])}
+              {formatPrice(band.min)} - {formatPrice(band.max)}
             </label>
           ))}
         </div>
-      </div>
+      </fieldset>
 
       {availableSizes.length > 0 && (
-        <div>
-          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Size"}</h3>
+        <fieldset>
+          <legend className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">
+            {"Size"}
+          </legend>
           <div className="flex flex-wrap gap-2">
-            {availableSizes.map((size) => (
-              <button
-                key={size}
-                onClick={() => toggleArrayValue("sizes", size)}
-                className={`px-3 py-1.5 text-xs border transition-colors ${
-                  filters.sizes.includes(size) ? "border-wine bg-wine text-white" : "border-border text-ink hover:border-wine"
-                }`}
-              >
-                {size}
-              </button>
-            ))}
+            {availableSizes.map((size) => {
+              const selected = Boolean(filters.sizes?.includes(size));
+              return (
+                <button
+                  key={size}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggleList("sizes", size)}
+                  className={`px-3 py-1.5 text-xs border transition-colors ${
+                    selected
+                      ? "border-wine bg-wine text-white"
+                      : "border-border text-ink hover:border-wine"
+                  }`}
+                >
+                  {size}
+                </button>
+              );
+            })}
           </div>
-        </div>
+        </fieldset>
       )}
 
       {availableColours.length > 0 && (
-        <div>
-          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Colour"}</h3>
+        <fieldset>
+          <legend className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">
+            {"Colour"}
+          </legend>
           <div className="flex flex-col gap-2.5">
             {availableColours.map((colour) => (
-              <label key={colour} className="flex items-center gap-2.5 text-sm text-muted cursor-pointer capitalize">
+              <label
+                key={colour}
+                className="flex items-center gap-2.5 text-sm text-muted cursor-pointer capitalize"
+              >
                 <input
                   type="checkbox"
-                  checked={filters.colours.includes(colour)}
-                  onChange={() => toggleArrayValue("colours", colour)}
+                  checked={Boolean(filters.colours?.includes(colour))}
+                  onChange={() => toggleList("colours", colour)}
                   className="w-4 h-4 accent-wine"
                 />
                 {colour}
               </label>
             ))}
           </div>
-        </div>
+        </fieldset>
       )}
 
       {availableFabrics.length > 0 && (
-        <div>
-          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Fabric"}</h3>
+        <fieldset>
+          <legend className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">
+            {"Fabric"}
+          </legend>
           <div className="flex flex-col gap-2.5">
             {availableFabrics.map((fabric) => (
-              <label key={fabric} className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
+              <label
+                key={fabric}
+                className="flex items-center gap-2.5 text-sm text-muted cursor-pointer"
+              >
                 <input
                   type="checkbox"
-                  checked={filters.fabrics.includes(fabric)}
-                  onChange={() => toggleArrayValue("fabrics", fabric)}
+                  checked={Boolean(filters.fabrics?.includes(fabric))}
+                  onChange={() => toggleList("fabrics", fabric)}
                   className="w-4 h-4 accent-wine"
                 />
                 {fabric}
               </label>
             ))}
           </div>
-        </div>
+        </fieldset>
       )}
 
       {availableCollections.length > 0 && (
-        <div>
-          <h3 className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">{"Collection"}</h3>
+        <fieldset>
+          <legend className="font-sans font-semibold text-xs uppercase tracking-[0.05em] text-ink mb-3">
+            {"Collection"}
+          </legend>
           <div className="flex flex-col gap-2.5">
             {availableCollections.map((collection) => (
-              <label key={collection} className="flex items-center gap-2.5 text-sm text-muted cursor-pointer">
+              <label
+                key={collection}
+                className="flex items-center gap-2.5 text-sm text-muted cursor-pointer"
+              >
                 <input
                   type="checkbox"
-                  checked={filters.collections.includes(collection)}
-                  onChange={() => toggleArrayValue("collections", collection)}
+                  checked={Boolean(filters.collectionNames?.includes(collection))}
+                  onChange={() => toggleList("collectionNames", collection)}
                   className="w-4 h-4 accent-wine"
                 />
                 {collection}
               </label>
             ))}
           </div>
-        </div>
+        </fieldset>
       )}
     </div>
   );

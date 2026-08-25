@@ -4,8 +4,11 @@ import { z } from "zod";
 import { createClient } from "../server";
 import { getUser } from "../auth";
 import { checkoutSchema } from "@/lib/validation";
-import { guardPublicAction } from "@/lib/rate-limit";
+import { guardPublicAction, consumeDurableLimit } from "@/lib/rate-limit";
 import { normalizeBdPhone } from "@/lib/phone";
+import { logger, logFailure } from "@/lib/logger";
+import { dispatchOrderNotifications } from "@/lib/email/dispatch";
+import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 import type { CartItem } from "@/types";
 import type { ActionResult } from "./auth";
 import { isSupabaseConfigured } from "../env";
@@ -68,6 +71,12 @@ function checkoutError(message: string): ActionResult {
   if (message.includes("invalid_variant")) {
     return { ok: false, message: "A selected product option is no longer available." };
   }
+  if (message.includes("invalid_shipping_location")) {
+    return {
+      ok: false,
+      message: "We could not match that division and district. Please choose them again.",
+    };
+  }
   return { ok: false, message: "Your order could not be placed. Nothing has been ordered — please try again." };
 }
 
@@ -88,7 +97,11 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
   // in Postgres and are keyed on the phone number as well.
   const { fingerprint, result: throttle } = await guardPublicAction("checkout", 8, 600);
   if (!throttle.allowed) {
-    return { ok: false, message: "You have placed several orders very recently. Please wait a few minutes before trying again." };
+    return {
+      ok: false,
+      message:
+        "You have placed several orders very recently. Please wait a few minutes before trying again.",
+    };
   }
 
   const supabase = await createClient();
@@ -104,8 +117,13 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
     .eq("is_active", true);
 
   if (variantError) {
-    console.error("[checkout] variant lookup failed:", variantError.message);
-    return { ok: false, message: "Your order could not be placed. Nothing has been ordered — please try again." };
+    logFailure("checkout.variant_lookup_failed", variantError, {
+      lines: parsed.data.items.length,
+    });
+    return {
+      ok: false,
+      message: "Your order could not be placed. Nothing has been ordered — please try again.",
+    };
   }
 
   const resolved: { variantId: string; quantity: number }[] = [];
@@ -143,19 +161,54 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
   if (error) {
     // The raw message can name SKUs and constraints, so it is logged rather
     // than returned.
-    console.error("[checkout] place_order failed:", error.message, {
+    logFailure("checkout.place_order_failed", error, {
       hasUser: Boolean(user),
+      lines: resolved.length,
     });
     return checkoutError(error.message);
   }
 
-  return { ok: true, data: data as unknown as OrderResult };
+  const order = data as unknown as OrderResult;
+  logger.info("checkout.order_placed", {
+    orderNumber: order.orderNumber,
+    replayed: order.replayed,
+    hasUser: Boolean(user),
+  });
+
+  // The order is committed. Everything from here is best-effort: an email that
+  // does not go out must never turn a successful order into a failed one, so
+  // this is awaited only far enough to start it and its own errors are handled
+  // inside. A replayed order does not re-notify -- the outbox rows for it are
+  // already sent.
+  if (!order.replayed) {
+    const { storeName } = await getPublicStoreSettings();
+    void dispatchOrderNotifications(order.orderNumber, order.trackingToken, storeName);
+  }
+
+  return { ok: true, data: order };
 }
 
-export async function placeCartOrderAction(
-  details: Omit<z.infer<typeof checkoutInput>, "items">,
-  items: CartItem[],
-) {
+/**
+ * What the checkout form sends.
+ *
+ * Written out rather than derived from the schema with `z.infer`, because the
+ * schema's *output* type is the validated one — division narrowed to the eight
+ * real divisions, phone normalised — and the browser is by definition sending
+ * the unvalidated input. Typing the boundary as the schema's output would be a
+ * claim the client cannot make.
+ */
+export interface CheckoutDetails {
+  customerName: string;
+  customerEmail?: string;
+  customerPhone: string;
+  paymentMethod?: "cash_on_delivery";
+  customerNote?: string;
+  shippingAddress: { division: string; district: string; fullAddress: string };
+  couponCode?: string;
+  idempotencyKey?: string;
+}
+
+export async function placeCartOrderAction(details: CheckoutDetails, items: CartItem[]) {
   return placeOrderAction({ ...details, items });
 }
 
@@ -174,9 +227,14 @@ export async function previewCouponAction(
   }
 
   // Coupon codes are guessable, so trying them is throttled to stop the form
-  // being used as an oracle to enumerate live promotions.
-  const { result } = await guardPublicAction("coupon", 15, 600);
-  if (!result.allowed) return { ok: false, message: "Too many coupon attempts. Please wait a few minutes." };
+  // being used as an oracle to enumerate live promotions. The in-process check
+  // is cheap; the durable one in Postgres is the authority, because a
+  // serverless deployment has many processes and each starts with an empty
+  // counter.
+  const { fingerprint, result } = await guardPublicAction("coupon", 15, 600);
+  if (!result.allowed || !(await consumeDurableLimit("coupon", fingerprint))) {
+    return { ok: false, message: "Too many coupon attempts. Please wait a few minutes." };
+  }
 
   const supabase = await createClient();
   const user = await getUser();
@@ -189,7 +247,7 @@ export async function previewCouponAction(
   });
 
   if (error) {
-    console.error("[checkout] coupon preview failed:", error.message);
+    logFailure("checkout.coupon_preview_failed", error);
     return { ok: false, message: "Could not check that coupon right now. Please try again." };
   }
 
@@ -221,9 +279,14 @@ export async function trackGuestOrderAction(orderNumber: string, trackingToken: 
   }
 
   // Tracking tokens are 48 hex characters, so brute force is impractical — but
-  // the attempt rate is capped anyway.
-  const { result } = await guardPublicAction("tracking", 20, 600);
-  if (!result.allowed) return { ok: false as const, message: "Too many tracking attempts. Please wait a few minutes." };
+  // the attempt rate is capped anyway, durably as well as in process.
+  const { fingerprint, result } = await guardPublicAction("tracking", 20, 600);
+  if (!result.allowed || !(await consumeDurableLimit("tracking", fingerprint))) {
+    return {
+      ok: false as const,
+      message: "Too many tracking attempts. Please wait a few minutes.",
+    };
+  }
 
   const trimmedNumber = orderNumber.trim().slice(0, 40);
   const trimmedToken = trackingToken.trim().slice(0, 100);

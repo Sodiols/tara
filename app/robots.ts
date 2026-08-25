@@ -28,6 +28,8 @@ export default function robots(): MetadataRoute.Robots {
           "/reset-password",
           "/auth/",
           "/track-order",
+          "/unsubscribe",
+          "/maintenance",
           "/api/",
           "/search",
         ],

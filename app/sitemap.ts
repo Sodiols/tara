@@ -2,6 +2,7 @@ import type { MetadataRoute } from "next";
 import { createPublicClient } from "@/lib/supabase/public-client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { siteConfig } from "@/data/site";
+import { logFailure } from "@/lib/logger";
 
 /**
  * Only publicly indexable pages appear here.
@@ -93,7 +94,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   } catch (error) {
     // A sitemap that 500s is worse than a sitemap listing only the known-good
     // static routes, so a database problem degrades rather than fails.
-    console.error("[sitemap] dynamic routes unavailable:", error);
+    logFailure("sitemap.dynamic_routes_unavailable", error);
     return staticRoutes;
   }
 }

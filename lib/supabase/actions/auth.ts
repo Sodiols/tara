@@ -12,6 +12,26 @@ import {
   registerSchema,
   resetPasswordSchema,
 } from "@/lib/validation";
+import { guardPublicAction, consumeDurableLimit } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+
+/**
+ * Throttles the credential-taking endpoints.
+ *
+ * Supabase Auth applies its own limits, but they are keyed on the address being
+ * tried -- which does nothing against one client working through a list of
+ * addresses. This is keyed on the client, durably, so credential stuffing is
+ * bounded across every serverless instance rather than per process.
+ *
+ * Returns null when the request may proceed, or the message to show.
+ */
+async function throttleAuth(): Promise<string | null> {
+  const { fingerprint, result } = await guardPublicAction("auth", 12, 600);
+  if (!result.allowed || !(await consumeDurableLimit("auth", fingerprint))) {
+    return "Too many attempts. Please wait a few minutes and try again.";
+  }
+  return null;
+}
 
 export type ActionResult<T = undefined> =
   | { ok: true; data?: T; message?: string }
@@ -47,13 +67,22 @@ export async function loginAction(input: unknown): Promise<ActionResult> {
   }
   if (!isSupabaseConfigured())
     return { ok: false, message: "Supabase has not been configured yet." };
+
+  const throttled = await throttleAuth();
+  if (throttled) return { ok: false, message: throttled };
+
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.signInWithPassword({
       email: parsed.data.email,
       password: parsed.data.password,
     });
-    if (error) return authError(error.message);
+    if (error) {
+      // The logger masks the address, so this records that a sign-in failed
+      // and why without accumulating a list of who has an account here.
+      logger.warn("auth.sign_in_failed", { email: parsed.data.email, reason: error.message });
+      return authError(error.message);
+    }
     if (!data.session || !data.user)
       return { ok: false, message: "Authentication could not be completed. Please try again." };
     return { ok: true, data: undefined };
@@ -73,6 +102,10 @@ export async function registerAction(input: unknown): Promise<ActionResult> {
   }
   if (!isSupabaseConfigured())
     return { ok: false, message: "Supabase has not been configured yet." };
+
+  const throttled = await throttleAuth();
+  if (throttled) return { ok: false, message: throttled };
+
   try {
     const supabase = await createClient();
     const { data, error } = await supabase.auth.signUp({
@@ -106,6 +139,12 @@ export async function forgotPasswordAction(
     return { ok: false, message: "Enter a valid email address." };
   if (!isSupabaseConfigured())
     return { ok: false, message: "Supabase has not been configured yet." };
+
+  // Throttled like sign-in: without it this is a free way to have Supabase mail
+  // an arbitrary list of addresses on someone else's behalf.
+  const throttled = await throttleAuth();
+  if (throttled) return { ok: false, message: throttled };
+
   try {
     const supabase = await createClient();
     const { error } = await supabase.auth.resetPasswordForEmail(
@@ -171,11 +210,17 @@ export async function changePasswordAction(input: unknown): Promise<ActionResult
   // unattended logged-in session can't have its password swapped out from
   // under the account owner just because updateUser() only needs an
   // active session.
+  const throttled = await throttleAuth();
+  if (throttled) return { ok: false, message: throttled };
+
   const { error: verifyError } = await supabase.auth.signInWithPassword({
     email,
     password: parsed.data.currentPassword,
   });
-  if (verifyError) return { ok: false, message: "Your current password is incorrect." };
+  if (verifyError) {
+    logger.warn("auth.password_change_rejected", { email });
+    return { ok: false, message: "Your current password is incorrect." };
+  }
 
   const { error } = await supabase.auth.updateUser({ password: parsed.data.password });
   if (error) return authError(error.message);

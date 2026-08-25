@@ -176,9 +176,11 @@ describe("input validation", () => {
     customerPhone: "+880 1712 345678",
     shippingAddress: {
       division: "Sylhet",
-      district: "Zakiganj",
-      upazila: "Zakiganj",
-      area: "Batortal",
+      // Sylhet district, not Zakiganj. This fixture used to name an upazila,
+      // because the dropdown it was written against listed upazilas as
+      // districts. The schema now validates the pair, so the fixture had to be
+      // corrected -- which is the test failing usefully.
+      district: "Sylhet",
       fullAddress: "House 12, Road 3, Batortal Bazar",
     },
     items: [{ variantId: "3f1e9a6c-1d2b-4c3a-9e5f-6a7b8c9d0e1f", quantity: 2 }],
@@ -188,6 +190,61 @@ describe("input validation", () => {
     const parsed = checkoutSchema.safeParse(validCheckout);
     assert.equal(parsed.success, true);
     if (parsed.success) assert.equal(parsed.data.customerPhone, "01712345678");
+  });
+
+  test("normalises the shipping location to its canonical spelling", () => {
+    const parsed = checkoutSchema.safeParse({
+      ...validCheckout,
+      shippingAddress: { ...validCheckout.shippingAddress, division: "  chittagong ", district: "comilla" },
+    });
+    assert.equal(parsed.success, true);
+    if (parsed.success) {
+      assert.equal(parsed.data.shippingAddress.division, "Chattogram");
+      assert.equal(parsed.data.shippingAddress.district, "Cumilla");
+    }
+  });
+
+  test("rejects a shipping location that is not a real place", () => {
+    // The old schema accepted any two strings of two characters or more, so a
+    // crafted request could create a real order for "x1 / y2" -- stock
+    // deducted, coupon spent, nothing deliverable.
+    for (const shippingAddress of [
+      { division: "x1", district: "y2", fullAddress: "House 12, Road 3" },
+      { division: "Sylhet", district: "Zakiganj", fullAddress: "House 12, Road 3" },
+      { division: "", district: "", fullAddress: "House 12, Road 3" },
+    ]) {
+      const parsed = checkoutSchema.safeParse({ ...validCheckout, shippingAddress });
+      assert.equal(parsed.success, false, JSON.stringify(shippingAddress));
+    }
+  });
+
+  test("rejects a real district paired with the wrong division", () => {
+    // Both names exist; the pair does not. A length check cannot catch this,
+    // and it is the case that reached place_order().
+    const parsed = checkoutSchema.safeParse({
+      ...validCheckout,
+      shippingAddress: { division: "Sylhet", district: "Dhaka", fullAddress: "House 12, Road 3" },
+    });
+    assert.equal(parsed.success, false);
+  });
+
+  test("drops upazila and area, which checkout no longer collects", () => {
+    const parsed = checkoutSchema.safeParse({
+      ...validCheckout,
+      shippingAddress: {
+        ...validCheckout.shippingAddress,
+        upazila: "Zakiganj",
+        area: "Batortal",
+      },
+    });
+    assert.equal(parsed.success, true);
+    if (parsed.success) {
+      assert.deepEqual(Object.keys(parsed.data.shippingAddress).sort(), [
+        "district",
+        "division",
+        "fullAddress",
+      ]);
+    }
   });
 
   test("rejects an order with no items", () => {

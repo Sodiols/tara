@@ -42,17 +42,21 @@ export default async function AdminSettingsPage() {
           facebook_url: asString("facebook_url"),
           instagram_url: asString("instagram_url"),
           tiktok_url: asString("tiktok_url"),
+          delivery_fee_inside_sylhet: asNumber("delivery_fee_inside_sylhet", 60),
+          delivery_fee_outside_sylhet: asNumber("delivery_fee_outside_sylhet", 120),
           free_delivery_threshold: asNumber("free_delivery_threshold", 1500),
-          standard_delivery_fee: asNumber("standard_delivery_fee", 100),
+          free_delivery_enabled: asBoolean("free_delivery_enabled", true),
+          free_delivery_division: asString("free_delivery_division") || "Sylhet",
           cod_enabled: asBoolean("cod_enabled", true),
           maintenance_mode: asBoolean("maintenance_mode", false),
+          order_notification_email: asString("order_notification_email"),
         }}
       />
 
       <Panel className="mt-5">
         <PanelHeader
           title="Order events"
-          description="Every order placed and every status change is recorded here by the database as it happens. TARA sends no email — this log is the record, and it is the same one staff and the store owner work from."
+          description="Every order placed and every status change is recorded here by the database as it happens. When an email provider is configured, each entry is also sent; without one they stay queued and this log is the record."
         />
         {outbox.length === 0 ? (
           <p className="px-5 py-6 font-sans text-sm text-muted">

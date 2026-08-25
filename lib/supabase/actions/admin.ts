@@ -23,9 +23,11 @@ import { slugify } from "@/lib/utils";
 import {
   EXTENSION_BY_MIME_TYPE,
   MAX_IMAGES_PER_PRODUCT,
-  MAX_IMAGE_BYTES,
-  isAllowedImageType,
 } from "@/lib/product-images";
+import { inspectImageFile } from "@/lib/image-validation";
+import { logFailure, logger } from "@/lib/logger";
+import { dispatchOrderNotificationsAsStaff } from "@/lib/email/dispatch";
+import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 
 /**
  * Admin mutations.
@@ -58,7 +60,9 @@ function checkbox(formData: FormData, name: string): boolean {
 }
 
 function logAndFail(context: string, error: { message: string }, fallback: string): ActionResult {
-  console.error(`[admin] ${context}:`, error.message);
+  // Structured, scrubbed and reported to error monitoring. The raw message can
+  // name SKUs, constraints and column values, so it never reaches the browser.
+  logFailure(`admin.${context}`, error);
   if (error.message.includes("permission_denied")) {
     return fail("Your role does not allow this action.");
   }
@@ -444,7 +448,11 @@ async function uploadProductImages(
       failed += 1;
       continue;
     }
-    if (!isAllowedImageType(file.type) || file.size > MAX_IMAGE_BYTES) {
+    // The declared MIME type is whatever the client said. The file's own bytes
+    // are checked here, so an HTML document or a script renamed to .jpg cannot
+    // be stored in a public bucket and served back from the storage origin.
+    const inspection = await inspectImageFile(file);
+    if (!inspection.ok) {
       failed += 1;
       continue;
     }
@@ -456,7 +464,7 @@ async function uploadProductImages(
       .from("product-images")
       .upload(path, file, { contentType: file.type, upsert: false });
     if (uploadError) {
-      console.error("[admin] image upload:", uploadError.message);
+      logFailure("admin.image_upload_failed", uploadError, { productId });
       failed += 1;
       continue;
     }
@@ -472,7 +480,7 @@ async function uploadProductImages(
     });
 
     if (error) {
-      console.error("[admin] image record:", error.message);
+      logFailure("admin.image_record_failed", error, { productId });
       await supabase.storage.from("product-images").remove([path]);
       failed += 1;
       continue;
@@ -495,11 +503,12 @@ export async function addProductImageAction(formData: FormData): Promise<ActionR
   if (!(file instanceof File) || file.size === 0) {
     return fail("Choose an image file to upload.");
   }
-  if (!isAllowedImageType(file.type)) {
-    return fail("Only JPEG, PNG, WebP or AVIF images are allowed.");
-  }
-  if (file.size > MAX_IMAGE_BYTES) {
-    return fail("Each image must be smaller than 5 MB.");
+
+  // Single-file uploads report the precise reason, because a staff member who
+  // picked one file deserves to be told what is wrong with it.
+  const inspection = await inspectImageFile(file);
+  if (!inspection.ok) {
+    return fail(inspection.reason ?? "That file is not a usable product image.");
   }
 
   const supabase = await createClient();
@@ -548,6 +557,15 @@ export async function addProductImageAction(formData: FormData): Promise<ActionR
     : { ok: true, message: "Image added." };
 }
 
+/**
+ * Deletes an image and, if it was the primary, promotes the next one.
+ *
+ * Both happen inside `delete_product_image()`, so the product can never end up
+ * with no primary image because the process died between two statements. The
+ * storage object is removed only after the row is gone: the other order risks a
+ * catalogue entry pointing at a file that no longer exists, which is a broken
+ * image on the storefront rather than a tidy-up job.
+ */
 export async function deleteProductImageAction(
   imageId: string,
   productId: string,
@@ -555,32 +573,23 @@ export async function deleteProductImageAction(
   await requirePermission("catalogue.manage");
   const supabase = await createClient();
 
-  const { data: image } = await supabase
-    .from("product_images")
-    .select("storage_path,is_primary")
-    .eq("id", imageId)
-    .maybeSingle();
-  if (!image) return fail("That image no longer exists.");
-
-  const { error } = await supabase.from("product_images").delete().eq("id", imageId);
-  if (error) return logAndFail("image delete", error, "Could not delete this image.");
-
-  if (image.storage_path) {
-    await supabase.storage.from("product-images").remove([image.storage_path]);
+  const { data, error } = await supabase.rpc("delete_product_image", {
+    p_image_id: imageId,
+  });
+  if (error) {
+    if (error.message.includes("image_not_found")) return fail("That image no longer exists.");
+    return logAndFail("image_delete", error, "Could not delete this image.");
   }
 
-  // Deleting the primary would otherwise leave the product with no main image,
-  // and the storefront falls back to the first row — promote it explicitly.
-  if (image.is_primary) {
-    const { data: next } = await supabase
-      .from("product_images")
-      .select("id")
-      .eq("product_id", productId)
-      .order("sort_order")
-      .limit(1)
-      .maybeSingle();
-    if (next) {
-      await supabase.from("product_images").update({ is_primary: true }).eq("id", next.id);
+  const storagePath = (data as { storagePath?: string } | null)?.storagePath;
+  if (storagePath) {
+    const { error: storageError } = await supabase.storage
+      .from("product-images")
+      .remove([storagePath]);
+    // An orphaned object costs a few kilobytes; a failed delete must not look
+    // like a failed delete to the staff member, because the row really is gone.
+    if (storageError) {
+      logFailure("admin.image_storage_orphan", storageError, { imageId, productId });
     }
   }
 
@@ -588,6 +597,19 @@ export async function deleteProductImageAction(
   return { ok: true, message: "Image deleted." };
 }
 
+/**
+ * Promotes one image to primary.
+ *
+ * A partial unique index allows only one primary per product, so the old one
+ * has to be cleared before the new one is set — and that used to be two
+ * separate statements from here. A failure between them (a dropped connection,
+ * a timeout) left the product with no primary image at all, and the storefront
+ * silently fell back to whichever row sorted first.
+ *
+ * `set_product_primary_image()` does both in one transaction and derives the
+ * product from the image row, so a request cannot pair an image with a product
+ * it does not belong to.
+ */
 export async function setPrimaryImageAction(
   imageId: string,
   productId: string,
@@ -595,24 +617,26 @@ export async function setPrimaryImageAction(
   await requirePermission("catalogue.manage");
   const supabase = await createClient();
 
-  // A partial unique index allows only one primary per product, so the old one
-  // must be cleared before the new one is set.
-  await supabase
-    .from("product_images")
-    .update({ is_primary: false })
-    .eq("product_id", productId)
-    .eq("is_primary", true);
-
-  const { error } = await supabase
-    .from("product_images")
-    .update({ is_primary: true })
-    .eq("id", imageId);
-  if (error) return logAndFail("primary image", error, "Could not update the main image.");
+  const { error } = await supabase.rpc("set_product_primary_image", {
+    p_image_id: imageId,
+  });
+  if (error) {
+    if (error.message.includes("image_not_found")) return fail("That image no longer exists.");
+    return logAndFail("primary_image", error, "Could not update the main image.");
+  }
 
   revalidatePath(`/admin/products/${productId}`);
   return { ok: true, message: "Main image updated." };
 }
 
+/**
+ * Moves one image up or down in the gallery.
+ *
+ * The whole ordering is written by `reorder_product_images()` in a single
+ * statement. It used to be one UPDATE per image issued from here, so a failure
+ * part-way through left two images claiming the same position and the gallery
+ * rendered them in an arbitrary order.
+ */
 export async function moveProductImageAction(
   imageId: string,
   productId: string,
@@ -625,7 +649,8 @@ export async function moveProductImageAction(
     .from("product_images")
     .select("id,sort_order")
     .eq("product_id", productId)
-    .order("sort_order");
+    .order("sort_order")
+    .order("id");
   if (!images?.length) return fail("Nothing to reorder.");
 
   const index = images.findIndex((image) => image.id === imageId);
@@ -634,12 +659,14 @@ export async function moveProductImageAction(
     return { ok: true, message: "Already in position." };
   }
 
-  const reordered = [...images];
+  const reordered = images.map((image) => image.id);
   [reordered[index], reordered[swapWith]] = [reordered[swapWith], reordered[index]];
 
-  for (const [position, image] of reordered.entries()) {
-    await supabase.from("product_images").update({ sort_order: position }).eq("id", image.id);
-  }
+  const { error } = await supabase.rpc("reorder_product_images", {
+    p_product_id: productId,
+    p_image_ids: reordered,
+  });
+  if (error) return logAndFail("image_reorder", error, "Could not change the image order.");
 
   revalidatePath(`/admin/products/${productId}`);
   return { ok: true, message: "Image order updated." };
@@ -675,9 +702,24 @@ export async function transitionOrderAction(formData: FormData): Promise<ActionR
   revalidatePath("/admin");
 
   if (error) {
-    console.error("[admin] order transition:", error.message);
+    logFailure("admin.order_transition_failed", error, {
+      orderId: parsed.data.orderId,
+      status: parsed.data.status,
+    });
     return fail(describeTransitionError(error.message));
   }
+
+  logger.info("admin.order_transitioned", {
+    orderId: parsed.data.orderId,
+    status: parsed.data.status,
+  });
+
+  // The status change is committed. Telling the customer is best-effort and
+  // handles its own failures — a provider outage must not make a staff member
+  // think the order did not move.
+  const { storeName } = await getPublicStoreSettings();
+  void dispatchOrderNotificationsAsStaff(parsed.data.orderId, storeName);
+
   return { ok: true, message: `Order moved to ${parsed.data.status}.` };
 }
 
@@ -994,8 +1036,11 @@ export async function saveSettingsAction(formData: FormData): Promise<ActionResu
     facebook_url: text(formData, "facebook_url"),
     instagram_url: text(formData, "instagram_url"),
     tiktok_url: text(formData, "tiktok_url"),
+    delivery_fee_inside_sylhet: text(formData, "delivery_fee_inside_sylhet"),
+    delivery_fee_outside_sylhet: text(formData, "delivery_fee_outside_sylhet"),
     free_delivery_threshold: text(formData, "free_delivery_threshold"),
-    standard_delivery_fee: text(formData, "standard_delivery_fee"),
+    free_delivery_enabled: checkbox(formData, "free_delivery_enabled"),
+    free_delivery_division: text(formData, "free_delivery_division"),
     cod_enabled: checkbox(formData, "cod_enabled"),
     maintenance_mode: checkbox(formData, "maintenance_mode"),
     order_notification_email: text(formData, "order_notification_email"),
@@ -1008,8 +1053,13 @@ export async function saveSettingsAction(formData: FormData): Promise<ActionResu
   });
 
   revalidatePath("/admin/settings");
+  // The whole storefront reads these values -- the announcement bar, the footer,
+  // the contact page, the delivery quote on every cart screen and the
+  // organisation structured data -- so the layout is revalidated rather than
+  // just this page. Without it a delivery-fee change would be charged
+  // immediately but displayed only after the next deploy.
   revalidatePath("/", "layout");
-  if (error) return logAndFail("settings save", error, "Could not save the store settings.");
+  if (error) return logAndFail("settings_save", error, "Could not save the store settings.");
   return { ok: true, message: "Store settings saved." };
 }
 

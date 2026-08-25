@@ -4,6 +4,7 @@ import { getProductBySlug, getRelatedProducts } from "@/lib/supabase/queries/pro
 import { ProductDetailClient } from "@/components/product/ProductDetailClient";
 import { siteConfig } from "@/data/site";
 import { categoryHref, humanizeSlug } from "@/lib/utils";
+import { jsonLdScriptProps } from "@/lib/json-ld";
 
 interface ProductPageProps {
   params: Promise<{ slug: string }>;
@@ -41,6 +42,7 @@ export default async function ProductPage({ params }: ProductPageProps) {
     description: product.description,
     image: product.images,
     sku: product.productCode,
+    brand: { "@type": "Brand", name: siteConfig.name },
     offers: {
       "@type": "Offer",
       priceCurrency: "BDT",
@@ -90,8 +92,14 @@ export default async function ProductPage({ params }: ProductPageProps) {
 
   return (
     <>
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(productSchema) }} />
-      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbSchema) }} />
+      {/*
+        Both blocks go through jsonLd(), which escapes `<`. A product name,
+        description or category label is staff-editable text, and one containing
+        `</script>` would otherwise close the block early and let everything
+        after it be parsed as markup.
+      */}
+      <script {...jsonLdScriptProps(productSchema)} />
+      <script {...jsonLdScriptProps(breadcrumbSchema)} />
       <ProductDetailClient product={product} relatedProducts={relatedProducts} />
     </>
   );

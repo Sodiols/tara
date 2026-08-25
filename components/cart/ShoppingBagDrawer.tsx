@@ -11,7 +11,12 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { lockBodyScroll } from "@/lib/scroll-lock";
 
-export function ShoppingBagDrawer() {
+/**
+ * The delivery line is generated from the live store settings rather than
+ * hardcoded, so it cannot keep promising a threshold or an offer that an
+ * administrator has since changed.
+ */
+export function ShoppingBagDrawer({ announcement }: { announcement: string | null }) {
   const { items, isOpen, closeBag, removeItem, updateQuantity, subtotal } = useCartStore();
 
   useEffect(() => {
@@ -95,7 +100,7 @@ export function ShoppingBagDrawer() {
                 <span className="text-muted">{"Subtotal"}</span>
                 <span className="text-ink font-medium">{formatPrice(subtotal())}</span>
               </div>
-              <p className="text-xs text-muted">{"Free delivery in Sylhet on orders above ৳1500"}</p>
+              {announcement && <p className="text-xs text-muted">{announcement}</p>}
               <Link href="/bag" onClick={closeBag}>
                 <Button variant="secondary" fullWidth>
                   {"Shopping Bag"}

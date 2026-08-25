@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "../auth";
 import { createClient } from "../server";
 import { reviewSchema } from "@/lib/validation";
+import { logFailure } from "@/lib/logger";
 import type { ActionResult } from "./auth";
 
 export async function submitReviewAction(formData: FormData): Promise<ActionResult> {
@@ -30,7 +31,7 @@ export async function submitReviewAction(formData: FormData): Promise<ActionResu
     status: "pending",
   });
   if (error) {
-    console.error("Review submission failed:", error.message);
+    logFailure("review.submit_failed", error, { userId: user.id, productId: parsed.data.productId });
     return { ok: false, message: "Your review could not be submitted." };
   }
   revalidatePath("/account/orders");

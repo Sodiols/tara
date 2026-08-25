@@ -3,9 +3,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { Facebook, Instagram } from "lucide-react";
-import { siteConfig } from "@/data/site";
 import { NewsletterForm } from "@/components/forms/NewsletterForm";
 import { Container } from "./Container";
+import type { StoreIdentity } from "@/lib/supabase/queries/settings";
 
 function TiktokIcon({ size = 18 }: { size?: number }) {
   return (
@@ -15,7 +15,19 @@ function TiktokIcon({ size = 18 }: { size?: number }) {
   );
 }
 
-export function Footer() {
+/**
+ * The store's own details come from the live settings, not from a constant, so
+ * a correction made in /admin/settings appears here on the next request. A
+ * social link that has not been filled in is hidden entirely rather than
+ * rendered as a link to nowhere.
+ */
+export function Footer({ identity }: { identity: StoreIdentity }) {
+  const socialLinks = [
+    { href: identity.facebookUrl, label: "Facebook", Icon: Facebook },
+    { href: identity.instagramUrl, label: "Instagram", Icon: Instagram },
+    { href: identity.tiktokUrl, label: "TikTok", Icon: TiktokIcon },
+  ].filter((link) => Boolean(link.href));
+
 
   const shopLinks = [
     { label: "Unstitched Three Piece", href: "/unstitched-three-piece" },
@@ -56,17 +68,22 @@ export function Footer() {
                 className="h-7 lg:h-9 w-auto"
               />
             </Link>
-            <div className="flex items-center gap-3 mt-6">
-              <a href={siteConfig.facebook} target="_blank" rel="noopener noreferrer" aria-label="Facebook" className="text-taraIvory hover:text-white transition-colors">
-                <Facebook size={18} />
-              </a>
-              <a href={siteConfig.instagram} target="_blank" rel="noopener noreferrer" aria-label="Instagram" className="text-taraIvory hover:text-white transition-colors">
-                <Instagram size={18} />
-              </a>
-              <a href={siteConfig.tiktok} target="_blank" rel="noopener noreferrer" aria-label="TikTok" className="text-taraIvory hover:text-white transition-colors">
-                <TiktokIcon size={18} />
-              </a>
-            </div>
+            {socialLinks.length > 0 && (
+              <div className="flex items-center gap-3 mt-6">
+                {socialLinks.map(({ href, label, Icon }) => (
+                  <a
+                    key={label}
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={label}
+                    className="text-taraIvory hover:text-white transition-colors"
+                  >
+                    <Icon size={18} />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
 
           <div>
@@ -128,14 +145,21 @@ export function Footer() {
           <NewsletterForm variant="dark" />
         </div>
 
+        {/*
+          The bKash and Nagad badges that used to sit here have been removed.
+          TARA takes cash on delivery only — place_order() writes
+          'cash_on_delivery' on every order and refuses anything else — so a
+          badge for a mobile wallet the store cannot accept was telling
+          customers they could pay a way they cannot. What the store does take
+          is stated instead.
+        */}
         <div className="border-t border-taraIvory/15 pt-6 flex flex-col sm:flex-row items-center justify-between gap-4 font-sans font-normal text-xs text-taraIvory/70">
           <p>
-            © {new Date().getFullYear()} {"TARA"}. {"All rights reserved."}
+            © {new Date().getFullYear()} {identity.storeName}. {"All rights reserved."}
           </p>
-          <div className="flex items-center gap-3">
-            <span className="border border-taraIvory/25 text-taraIvory/80 px-2 py-1">bKash</span>
-            <span className="border border-taraIvory/25 text-taraIvory/80 px-2 py-1">Nagad</span>
-          </div>
+          <p className="border border-taraIvory/25 text-taraIvory/80 px-3 py-1">
+            {"Cash on Delivery"}
+          </p>
         </div>
       </Container>
     </footer>

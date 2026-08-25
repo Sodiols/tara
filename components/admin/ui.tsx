@@ -289,6 +289,14 @@ export function StatTile({
 export const adminInputClass =
   "h-11 w-full rounded-control border border-border bg-taraWhite px-3 font-sans text-sm text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-taraWine disabled:bg-taraIvory disabled:text-muted";
 
+/**
+ * A native select styled to match the text inputs. Native rather than a custom
+ * listbox on purpose: keyboard navigation, type-ahead and the mobile picker all
+ * come for free and are hard to reimplement correctly.
+ */
+export const adminSelectClass =
+  "h-11 w-full rounded-control border border-border bg-taraWhite px-3 font-sans text-sm text-ink outline-none transition-colors focus:border-taraWine disabled:bg-taraIvory disabled:text-muted";
+
 export const adminTextareaClass =
   "min-h-[104px] w-full rounded-control border border-border bg-taraWhite p-3 font-sans text-sm leading-6 text-ink outline-none transition-colors placeholder:text-muted/70 focus:border-taraWine";
 

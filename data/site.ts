@@ -1,14 +1,27 @@
 /**
  * Static identity for the site.
  *
+ * These are the values that either cannot come from the database or are facts
+ * about the business rather than settings someone has yet to fill in:
+ *
+ *   name, domain, url   needed at build time for metadata, the sitemap and
+ *                       robots.txt, before any request exists
+ *   socials, address    real, long-standing values that act as the fallback
+ *                       when the corresponding store_settings row is blank
+ *
  * Phone, WhatsApp and support email are deliberately NOT here. They used to
  * hold placeholders (`+880 1XXX-XXXXXX`) that would have shipped to production;
- * they now live in `store_settings`, are editable from /admin/settings, and are
- * hidden entirely by every component while blank — a missing number is obvious,
- * an invented one is not.
+ * they live in `store_settings` and are hidden entirely by every component
+ * while blank — a missing number is obvious, an invented one is not.
  *
- * Read the live values with `getPublicStoreSettings()` from
- * lib/supabase/queries/settings.ts.
+ * Nothing should read the fields below directly to render a page. Go through
+ * `getPublicStoreSettings()` / `getStoreIdentity()` in
+ * lib/supabase/queries/settings.ts, which layers the admin's live values over
+ * these defaults — otherwise an edit in /admin/settings updates some of the
+ * site and not the rest.
+ *
+ * Bangladesh divisions and districts used to live here too, in a list that was
+ * both wrong and duplicated. They are now in data/bangladesh-geography.ts.
  */
 export const siteConfig = {
   name: "TARA",
@@ -18,29 +31,6 @@ export const siteConfig = {
   facebook: "https://facebook.com/tarabd.co",
   tiktok: "https://tiktok.com/@tarabd.co",
   instagramHandle: "@tarabd.co",
-  // The physical showroom. A real address, not a placeholder — kept static
-  // because client components in the navigation link to it directly.
+  /** The physical showroom. A real address, not a placeholder. */
   address: "Batortal Bazar, Zakiganj, Sylhet, Bangladesh",
-};
-
-export const divisions = [
-  "Sylhet",
-  "Dhaka",
-  "Chattogram",
-  "Rajshahi",
-  "Khulna",
-  "Barishal",
-  "Rangpur",
-  "Mymensingh",
-];
-
-export const districtsByDivision: Record<string, string[]> = {
-  Sylhet: ["Sylhet Sadar", "Zakiganj", "Golapganj", "Beanibazar", "Moulvibazar", "Habiganj", "Sunamganj"],
-  Dhaka: ["Dhaka", "Gazipur", "Narayanganj", "Tangail", "Manikganj"],
-  Chattogram: ["Chattogram", "Cox's Bazar", "Cumilla", "Feni"],
-  Rajshahi: ["Rajshahi", "Bogura", "Pabna", "Natore"],
-  Khulna: ["Khulna", "Jessore", "Satkhira"],
-  Barishal: ["Barishal", "Patuakhali", "Bhola"],
-  Rangpur: ["Rangpur", "Dinajpur", "Kurigram"],
-  Mymensingh: ["Mymensingh", "Jamalpur", "Netrokona"],
 };

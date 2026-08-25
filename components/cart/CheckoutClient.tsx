@@ -12,10 +12,14 @@ import { Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { formatPrice } from "@/lib/utils";
 import { isValidBdPhone, normalizeBdPhone } from "@/lib/phone";
-import { divisions, districtsByDivision } from "@/data/site";
+import {
+  DIVISIONS,
+  districtsForDivision,
+  resolveLocation,
+} from "@/data/bangladesh-geography";
+import { quoteDelivery, type DeliverySettings } from "@/lib/delivery";
 import { Container } from "@/components/layout/Container";
 import { placeCartOrderAction, previewCouponAction } from "@/lib/supabase/actions/checkout";
-import type { DeliverySettings } from "@/lib/supabase/queries/settings";
 import type { getCheckoutPrefill } from "@/lib/supabase/queries/account";
 
 interface FormErrors {
@@ -24,15 +28,16 @@ interface FormErrors {
 
 interface CheckoutClientProps {
   deliverySettings: DeliverySettings;
+  codEnabled: boolean;
   prefill: Awaited<ReturnType<typeof getCheckoutPrefill>>;
 }
 
-export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProps) {
+export function CheckoutClient({
+  deliverySettings,
+  codEnabled,
+  prefill,
+}: CheckoutClientProps) {
   const { items, subtotal, clearBag } = useCartStore();
-  const {
-    freeDeliveryThreshold: FREE_DELIVERY_THRESHOLD,
-    standardDeliveryFee: STANDARD_DELIVERY_FEE,
-  } = deliverySettings;
 
   const savedAddresses = prefill?.addresses ?? [];
   const defaultSavedAddress = savedAddresses.find((a) => a.is_default) ?? savedAddresses[0];
@@ -43,9 +48,20 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
   const [selectedAddressId, setSelectedAddressId] = useState<string>(
     defaultSavedAddress ? defaultSavedAddress.id : "new"
   );
-  const [division, setDivision] = useState(defaultSavedAddress?.division ?? "Sylhet");
-  const [district, setDistrict] = useState(
-    defaultSavedAddress?.district ?? districtsByDivision["Sylhet"][0]
+  // A saved address written before the geography was corrected may name a place
+  // that is not a district. Resolving it here means the form opens on something
+  // valid instead of quietly submitting a destination the database will reject.
+  const savedLocation = resolveLocation(
+    defaultSavedAddress?.division,
+    defaultSavedAddress?.district,
+  );
+  const [division, setDivision] = useState<string>(
+    savedLocation?.division ?? deliverySettings.freeDeliveryDivision,
+  );
+  const [district, setDistrict] = useState<string>(
+    savedLocation?.district ??
+      districtsForDivision(deliverySettings.freeDeliveryDivision)[0] ??
+      "",
   );
   const [address, setAddress] = useState(defaultSavedAddress?.full_address ?? "");
   const [notes, setNotes] = useState("");
@@ -81,10 +97,13 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
   };
 
   const subtotalValue = subtotal();
-  // One delivery option, so the fee is simply the standard charge, waived above
-  // the free-delivery threshold. `place_order()` recomputes this from
-  // store_settings and charges its own figure — this is display only.
-  const deliveryFee = subtotalValue >= FREE_DELIVERY_THRESHOLD ? 0 : STANDARD_DELIVERY_FEE;
+  // Quoted by the same function the announcement bar, the bag drawer and the bag
+  // page use, from the same settings the database prices with: free inside the
+  // eligible division above the threshold, the outside charge everywhere else
+  // regardless of order size. place_order() recomputes it server-side and
+  // charges its own figure, so this is display only — but the two now agree.
+  const deliveryQuote = quoteDelivery(subtotalValue, division, deliverySettings);
+  const deliveryFee = deliveryQuote.fee;
   const total = Math.max(0, subtotalValue + deliveryFee - couponDiscount);
 
   const handleApplyCoupon = async () => {
@@ -112,8 +131,11 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
     if (id === "new") return;
     const saved = savedAddresses.find((a) => a.id === id);
     if (!saved) return;
-    setDivision(saved.division);
-    setDistrict(saved.district);
+    const location = resolveLocation(saved.division, saved.district);
+    if (location) {
+      setDivision(location.division);
+      setDistrict(location.district);
+    }
     setAddress(saved.full_address);
     setPhone(saved.phone);
   };
@@ -126,6 +148,12 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
     if (!isValidBdPhone(phone)) next.phone = "Enter a valid Bangladesh mobile number, for example 01712345678.";
     if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) next.email = "Enter a valid email address, or leave this blank.";
     if (!address.trim()) next.address = "This field is required";
+    // The dropdowns cannot normally produce an invalid pair, but a saved address
+    // or a restored form can. place_order() refuses one outright, so catching it
+    // here turns a generic failure into an instruction.
+    if (!resolveLocation(division, district)) {
+      next.district = "Choose a division and a district that belong together.";
+    }
     if (!agreeTerms) next.agreeTerms = "Please accept the Terms and Conditions to place your order.";
     // A code typed but never applied would otherwise be sent as-is and make
     // place_order() reject the entire order. Silently dropping it instead
@@ -195,6 +223,22 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
           </p>
         )}
         <p className="mb-8 break-all text-xs text-muted">{"Tracking token"}: <strong>{trackingToken}</strong></p>
+        <Link href="/">
+          <Button variant="secondary">{"Continue Shopping"}</Button>
+        </Link>
+      </div>
+    );
+  }
+
+  if (!codEnabled) {
+    return (
+      <div className="max-w-lg mx-auto px-5 py-24 text-center">
+        <h1 className="font-serif text-3xl text-ink mb-3">{"We are not taking orders right now"}</h1>
+        <p className="text-sm text-muted mb-8">
+          {
+            "Cash on delivery is temporarily unavailable, so new orders cannot be placed. Your bag has been kept — please try again shortly."
+          }
+        </p>
         <Link href="/">
           <Button variant="secondary">{"Continue Shopping"}</Button>
         </Link>
@@ -275,7 +319,7 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
                       <strong>{saved.recipient_name}</strong> · {saved.phone}
                       <br />
                       <span className="text-muted">
-                        {[saved.full_address, saved.area, saved.upazila, saved.district, saved.division]
+                        {[saved.full_address, saved.district, saved.division]
                           .map((part) => part?.trim())
                           .filter(Boolean)
                           .join(", ")}
@@ -303,10 +347,14 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
                 disabled={selectedAddressId !== "new"}
                 onChange={(e) => {
                   setDivision(e.target.value);
-                  setDistrict(districtsByDivision[e.target.value][0]);
+                  // A district belongs to exactly one division, so changing the
+                  // division must reset it. Leaving the previous district
+                  // selected is how a pair like Sylhet / Dhaka became
+                  // submittable.
+                  setDistrict(districtsForDivision(e.target.value)[0] ?? "");
                 }}
               >
-                {divisions.map((d) => (
+                {DIVISIONS.map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>
@@ -315,10 +363,11 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
               <Select
                 label={"District"}
                 value={district}
+                error={errors.district}
                 disabled={selectedAddressId !== "new"}
                 onChange={(e) => setDistrict(e.target.value)}
               >
-                {(districtsByDivision[division] ?? []).map((d) => (
+                {districtsForDivision(division).map((d) => (
                   <option key={d} value={d}>
                     {d}
                   </option>
@@ -430,8 +479,27 @@ export function CheckoutClient({ deliverySettings, prefill }: CheckoutClientProp
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">{"Delivery"}</span>
-              <span className="text-ink">{formatPrice(deliveryFee)}</span>
+              <span className="text-ink">
+                {deliveryQuote.isFree ? "Free" : formatPrice(deliveryFee)}
+              </span>
             </div>
+            {deliveryQuote.amountToFreeDelivery != null &&
+              deliveryQuote.amountToFreeDelivery > 0 && (
+                <p className="-mt-1 text-xs text-muted">
+                  {"Add "}
+                  {formatPrice(deliveryQuote.amountToFreeDelivery)}
+                  {" more for free delivery in "}
+                  {deliverySettings.freeDeliveryDivision}
+                  {"."}
+                </p>
+              )}
+            {!deliveryQuote.isEligibleDivision && deliverySettings.freeDeliveryEnabled && (
+              <p className="-mt-1 text-xs text-muted">
+                {"Free delivery applies in "}
+                {deliverySettings.freeDeliveryDivision}
+                {" only."}
+              </p>
+            )}
             {couponDiscount > 0 && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted">{"Coupon Code"}</span>

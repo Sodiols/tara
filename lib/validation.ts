@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { normalizeBdPhone } from "./phone";
+import { DIVISIONS, resolveLocation } from "@/data/bangladesh-geography";
 
 const email = z.string().trim().toLowerCase().email().max(200);
 const password = z
@@ -63,19 +64,33 @@ export const profileSchema = z.object({
   phone: bangladeshPhone,
 });
 
-export const addressSchema = z.object({
-  id: z.string().uuid().optional(),
-  recipientName: z.string().trim().min(2).max(100),
-  phone: bangladeshPhone,
-  division: z.string().trim().min(2).max(80),
-  district: z.string().trim().min(2).max(80),
-  upazila: z.string().trim().min(2).max(80),
-  area: z.string().trim().min(2).max(160),
-  postalCode: z.string().trim().max(20).optional(),
-  fullAddress: z.string().trim().min(8).max(500),
-  deliveryNote: z.string().trim().max(500).optional(),
-  isDefault: z.boolean().default(false),
-});
+// upazila and area are no longer collected. The columns still exist and still
+// hold what historic addresses were saved with; migration 0009 gave them a
+// default so an address needs only division, district and the street address.
+export const addressSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    recipientName: z.string().trim().min(2).max(100),
+    phone: bangladeshPhone,
+    division: z.string().trim().min(2).max(80),
+    district: z.string().trim().min(2).max(80),
+    postalCode: z.string().trim().max(20).optional(),
+    fullAddress: z.string().trim().min(8).max(500),
+    deliveryNote: z.string().trim().max(500).optional(),
+    isDefault: z.boolean().default(false),
+  })
+  .transform((value, ctx) => {
+    const resolved = resolveLocation(value.division, value.district);
+    if (!resolved) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["district"],
+        message: "Choose a division and a district that belong together.",
+      });
+      return z.NEVER;
+    }
+    return { ...value, division: resolved.division, district: resolved.district };
+  });
 
 export const checkoutSchema = z.object({
   customerName: z.string().trim().min(2).max(100),
@@ -87,15 +102,31 @@ export const checkoutSchema = z.object({
   // longer presents would only create orders the store cannot fulfil.
   paymentMethod: z.literal("cash_on_delivery").default("cash_on_delivery"),
   customerNote: z.string().trim().max(500).optional(),
-  // Upazila and area are no longer collected at checkout. place_order()
-  // validates fullAddress, district and division only, so the database-level
-  // guarantee is unchanged. The saved address book still stores both, and
-  // historic orders keep whatever they were placed with.
-  shippingAddress: z.object({
-    division: z.string().min(2),
-    district: z.string().min(2),
-    fullAddress: z.string().min(8),
-  }),
+  // Division and district are validated as a pair against the real Bangladesh
+  // geography, not merely length-checked. place_order() re-runs the same check
+  // in the database before it locks a single row of stock.
+  shippingAddress: z
+    .object({
+      division: z.string().trim().min(2).max(80),
+      district: z.string().trim().min(2).max(80),
+      fullAddress: z.string().trim().min(8).max(500),
+    })
+    .transform((value, ctx) => {
+      const resolved = resolveLocation(value.division, value.district);
+      if (!resolved) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["district"],
+          message: "Choose a division and a district that belong together.",
+        });
+        return z.NEVER;
+      }
+      return {
+        division: resolved.division,
+        district: resolved.district,
+        fullAddress: value.fullAddress,
+      };
+    }),
   couponCode: z.string().trim().max(50).optional(),
   items: z
     .array(
@@ -295,6 +326,8 @@ export const adminCouponSchema = z
     { path: ["expiresAt"], message: "The expiry must be after the start date." },
   );
 
+// Every field here is written to store_settings and read back by something the
+// customer can see. There is no setting in this schema the application ignores.
 export const adminSettingsSchema = z.object({
   store_name: z.string().trim().min(1).max(80),
   support_phone: z.union([bangladeshPhone, z.literal("")]),
@@ -304,10 +337,17 @@ export const adminSettingsSchema = z.object({
   facebook_url: z.union([z.string().trim().url().max(300), z.literal("")]),
   instagram_url: z.union([z.string().trim().url().max(300), z.literal("")]),
   tiktok_url: z.union([z.string().trim().url().max(300), z.literal("")]),
+  delivery_fee_inside_sylhet: z.coerce.number().min(0).max(100_000),
+  delivery_fee_outside_sylhet: z.coerce.number().min(0).max(100_000),
   free_delivery_threshold: z.coerce.number().min(0).max(1_000_000),
-  standard_delivery_fee: z.coerce.number().min(0).max(100_000),
+  free_delivery_enabled: z.boolean(),
+  // Restricted to the eight real divisions: a free-text value here would create
+  // a rule that can never match, and every customer would silently be charged.
+  free_delivery_division: z.enum(DIVISIONS),
   cod_enabled: z.boolean(),
   maintenance_mode: z.boolean(),
+  // Where the store's own "new order" notification is sent. Private — never
+  // exposed to the storefront — and now genuinely used by lib/email.
   order_notification_email: z.union([email, z.literal("")]),
 });
 

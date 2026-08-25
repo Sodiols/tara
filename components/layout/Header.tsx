@@ -14,8 +14,9 @@ import { useHasMounted } from "@/hooks/useHasMounted";
 import { Container } from "./Container";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
+import type { StoreIdentity } from "@/lib/supabase/queries/settings";
 
-export function Header() {
+export function Header({ identity }: { identity: StoreIdentity }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const hasMounted = useHasMounted();
@@ -124,7 +125,11 @@ export function Header() {
         </div>
       </Container>
 
-      <MobileNavigation isOpen={mobileNavOpen} onClose={() => setMobileNavOpen(false)} />
+      <MobileNavigation
+        isOpen={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        identity={identity}
+      />
       <SearchOverlay isOpen={searchOpen} onClose={() => setSearchOpen(false)} />
     </header>
   );

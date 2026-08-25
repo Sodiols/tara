@@ -112,7 +112,6 @@ export default async function AdminNewsletterPage({
               <thead>
                 <tr>
                   <Th>Email</Th>
-                  <Th>Language</Th>
                   <Th>Status</Th>
                   <Th align="right">Subscribed</Th>
                   <Th align="right">Unsubscribed</Th>
@@ -123,7 +122,6 @@ export default async function AdminNewsletterPage({
                 {rows.map((subscriber) => (
                   <tr key={subscriber.id} className="transition-colors hover:bg-taraIvory/40">
                     <Td className="break-all">{subscriber.email}</Td>
-                    <Td className="uppercase">{subscriber.preferred_language}</Td>
                     <Td>
                       <ActiveBadge active={subscriber.is_active} />
                     </Td>

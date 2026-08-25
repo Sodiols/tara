@@ -165,9 +165,6 @@ export default async function AdminCustomerDetailPage({
                 <span className="text-muted">Not set</span>
               )}
             </DetailRow>
-            <DetailRow label="Language">
-              {profile.preferred_language === "bn" ? "Bangla" : "English"}
-            </DetailRow>
             <DetailRow label="Registered">{formatDateTime(profile.created_at)}</DetailRow>
           </dl>
           {/*

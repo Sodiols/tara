@@ -133,15 +133,37 @@ export interface OrderFilters {
   sort?: "newest" | "oldest" | "highest" | "lowest";
 }
 
+/** Exactly the columns the orders table renders, and nothing else. */
+export type AdminOrderRow = Pick<
+  Tables<"orders">,
+  | "id"
+  | "order_number"
+  | "customer_name"
+  | "customer_phone"
+  | "status"
+  | "payment_status"
+  | "total"
+  | "risk_flags"
+  | "created_at"
+>;
+
 export async function getAdminOrders(
   filters: OrderFilters,
-): Promise<PagedResult<Tables<"orders">>> {
+): Promise<PagedResult<AdminOrderRow>> {
   await requirePermission("orders.view");
   const supabase = await createClient();
   const page = filters.page ?? 1;
   const [from, to] = range(page, DEFAULT_PAGE_SIZE);
 
-  let query = supabase.from("orders").select("*", { count: "exact" });
+  // Explicit columns: the list renders eight of them, and `select("*")` would
+  // ship the tracking token, the idempotency key and the client fingerprint to
+  // the browser for every row on every page.
+  let query = supabase
+    .from("orders")
+    .select(
+      "id,order_number,customer_name,customer_phone,status,payment_status,total,risk_flags,created_at",
+      { count: "exact" },
+    );
 
   if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
   if (filters.paymentStatus && filters.paymentStatus !== "all") {
@@ -177,7 +199,11 @@ export async function getAdminOrders(
       query = query.order("created_at", { ascending: false });
   }
 
-  const { data, count } = await query.range(from, to);
+  // Two orders placed in the same millisecond, or two with the same total, are
+  // otherwise returned in whatever order the planner chooses -- which can
+  // differ between page 1 and page 2, so a row appears twice and another is
+  // never shown. The id breaks every tie deterministically.
+  const { data, count } = await query.order("id").range(from, to);
   return { rows: data ?? [], total: count ?? 0, page, pageSize: DEFAULT_PAGE_SIZE };
 }
 
@@ -216,6 +242,18 @@ export async function getAdminOrderDetail(orderId: string) {
       .maybeSingle(),
   ]);
 
+  // The audit trail for this order: who moved it, from what to what, and when.
+  // order_tracking_events is the customer's view and only ever records the new
+  // status; this is the record that answers "why is this order cancelled and
+  // who did it".
+  const { data: auditRows } = await supabase
+    .from("admin_audit_log")
+    .select("id,action,actor_email,actor_role,before_value,after_value,reason,created_at")
+    .eq("entity_type", "order")
+    .eq("entity_id", orderId)
+    .order("created_at", { ascending: false })
+    .limit(50);
+
   let couponCode: string | null = null;
   if (redemption.data?.coupon_id) {
     const { data: coupon } = await supabase
@@ -232,23 +270,34 @@ export async function getAdminOrderDetail(orderId: string) {
     events: events.data ?? [],
     notes: notes.data ?? [],
     adjustments: adjustments.data ?? [],
+    audit: auditRows ?? [],
     couponCode,
   };
 }
 
-/** Minimal, print-safe projection used by the invoice and packing slip. */
+/**
+ * Minimal, print-safe projection used by the invoice and packing slip.
+ *
+ * Explicitly listed rather than `select("*")`: a printed document is the copy
+ * most likely to be handed to a courier or filed by a customer, and it has no
+ * business carrying the order's tracking token, idempotency key, client
+ * fingerprint or risk flags. Listing the columns also means a column added to
+ * `orders` later cannot arrive on a printout by accident.
+ */
 export async function getOrderForPrint(orderId: string) {
   await requirePermission("orders.view");
   const supabase = await createClient();
   const { data: order } = await supabase
     .from("orders")
-    .select("*")
+    .select(
+      "id,order_number,status,payment_status,payment_method,delivery_method,customer_name,customer_email,customer_phone,shipping_address,customer_note,subtotal,delivery_fee,discount_amount,total,currency,created_at,updated_at",
+    )
     .eq("id", orderId)
     .maybeSingle();
   if (!order) return null;
   const { data: items } = await supabase
     .from("order_items")
-    .select("*")
+    .select("id,product_name_en,product_code,sku,size,colour_en,unit_price,quantity,line_total")
     .eq("order_id", orderId)
     .order("created_at");
   return { order, items: items ?? [] };
@@ -287,6 +336,7 @@ export async function getAdminProducts(filters: ProductFilters) {
 
   const { data, count } = await query
     .order("updated_at", { ascending: false })
+    .order("id")
     .range(from, to);
 
   type Row = Tables<"products"> & {
@@ -393,6 +443,7 @@ export async function getInventory(filters: InventoryFilters) {
 
   const { data, count } = await query
     .order("stock_quantity", { ascending: true })
+    .order("id")
     .range(from, to);
 
   let rows = (data ?? []) as unknown as InventoryRow[];
@@ -436,6 +487,7 @@ export async function getAdminCustomers(filters: { page?: number; search?: strin
 
   const { data, count } = await query
     .order("created_at", { ascending: false })
+    .order("id")
     .range(from, to);
   return { rows: data ?? [], total: count ?? 0, page, pageSize: DEFAULT_PAGE_SIZE };
 }
@@ -444,9 +496,11 @@ export async function getCustomerDetail(profileId: string) {
   await requirePermission("customers.view");
   const supabase = await createClient();
 
+  // Explicit columns: a back-office screen showing a customer record should
+  // never widen just because a column was added to `profiles`.
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select("id,full_name,email,phone,role,is_active,created_at,last_seen_at")
     .eq("id", profileId)
     .maybeSingle();
   if (!profile) return null;
@@ -508,6 +562,7 @@ export async function getAdminCoupons(filters: { page?: number; search?: string;
 
   const { data, count } = await query
     .order("created_at", { ascending: false })
+    .order("id")
     .range(from, to);
   return { rows: data ?? [], total: count ?? 0, page, pageSize: DEFAULT_PAGE_SIZE };
 }
@@ -534,6 +589,7 @@ export async function getAdminReviews(filters: {
 
   const { data, count } = await query
     .order("created_at", { ascending: false })
+    .order("id")
     .range(from, to);
 
   type Row = Tables<"reviews"> & { products: { name_en: string; slug: string } | null };
@@ -567,6 +623,7 @@ export async function getAdminMessages(filters: {
 
   const { data, count } = await query
     .order("created_at", { ascending: false })
+    .order("id")
     .range(from, to);
   return { rows: data ?? [], total: count ?? 0, page, pageSize: DEFAULT_PAGE_SIZE };
 }
@@ -590,6 +647,7 @@ export async function getNewsletterSubscribers(filters: {
 
   const { data, count } = await query
     .order("created_at", { ascending: false })
+    .order("id")
     .range(from, to);
   return { rows: data ?? [], total: count ?? 0, page, pageSize: DEFAULT_PAGE_SIZE };
 }
@@ -618,6 +676,7 @@ export async function getAuditLog(filters: {
 
   const { data, count } = await query
     .order("created_at", { ascending: false })
+    .order("id")
     .range(from, to);
   return { rows: data ?? [], total: count ?? 0, page, pageSize: DEFAULT_PAGE_SIZE };
 }
@@ -625,7 +684,10 @@ export async function getAuditLog(filters: {
 export async function getAdminSettings() {
   await requirePermission("settings.manage");
   const supabase = await createClient();
-  const { data } = await supabase.from("store_settings").select("*").order("key");
+  const { data } = await supabase
+    .from("store_settings")
+    .select("key,value,is_public,label")
+    .order("key");
   const map = new Map<string, unknown>();
   for (const row of data ?? []) map.set(row.key, row.value);
   return { rows: data ?? [], value: (key: string) => map.get(key) };
@@ -634,9 +696,11 @@ export async function getAdminSettings() {
 export async function getNotificationOutbox(limit = 20) {
   await requirePermission("settings.manage");
   const supabase = await createClient();
+  // The dispatch token is deliberately not selected: it is the credential that
+  // lets a sender confirm a notification, and nothing on this page needs it.
   const { data } = await supabase
     .from("notification_outbox")
-    .select("*")
+    .select("id,template,recipient,payload,status,attempts,last_error,created_at,sent_at")
     .order("created_at", { ascending: false })
     .limit(limit);
   return data ?? [];

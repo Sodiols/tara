@@ -34,8 +34,21 @@ function firstExisting(basePath) {
   return null;
 }
 
+/**
+ * `import "server-only"` is a build-time marker, not a runtime dependency: it
+ * exists so a bundler fails loudly if a server module is pulled into a client
+ * bundle. On the server it resolves to an empty module, which is exactly what
+ * this maps it to — otherwise every test that touches a server-only file dies
+ * on ERR_MODULE_NOT_FOUND before a single assertion runs.
+ */
+const EMPTY_MODULE = "data:text/javascript,export{}";
+
 registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier === "server-only" || specifier === "client-only") {
+      return { url: EMPTY_MODULE, shortCircuit: true };
+    }
+
     // tsconfig "paths": { "@/*": ["./*"] }
     if (specifier.startsWith("@/")) {
       const resolved = firstExisting(path.join(projectRoot, specifier.slice(2)));

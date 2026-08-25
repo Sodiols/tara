@@ -13,7 +13,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatPrice } from "@/lib/utils";
 import { Container } from "@/components/layout/Container";
 import { previewCouponAction } from "@/lib/supabase/actions/checkout";
-import type { DeliverySettings } from "@/lib/supabase/queries/settings";
+import { freeDeliveryHeadline, quoteDelivery, type DeliverySettings } from "@/lib/delivery";
 
 interface BagClientProps {
   deliverySettings: DeliverySettings;
@@ -29,11 +29,19 @@ export function BagClient({ deliverySettings }: BagClientProps) {
   const [checkingCoupon, setCheckingCoupon] = useState(false);
 
   const subtotalValue = subtotal();
-  const deliveryFee =
-    subtotalValue === 0 || subtotalValue >= deliverySettings.freeDeliveryThreshold
-      ? 0
-      : deliverySettings.standardDeliveryFee;
+  // The destination is not known until checkout, so the bag quotes the rate for
+  // the free-delivery division -- the lowest the customer could pay -- and says
+  // so. Quoting a single flat fee here, as this page used to, was wrong for
+  // everyone outside Sylhet and wrong again for everyone inside it who had
+  // passed the threshold.
+  const deliveryQuote = quoteDelivery(
+    subtotalValue,
+    deliverySettings.freeDeliveryDivision,
+    deliverySettings,
+  );
+  const deliveryFee = subtotalValue === 0 ? 0 : deliveryQuote.fee;
   const total = Math.max(0, subtotalValue + deliveryFee - couponDiscount);
+  const deliveryHeadline = freeDeliveryHeadline(deliverySettings);
 
   const handleMoveToWishlist = (item: (typeof items)[number]) => {
     addWishlistItem({
@@ -158,7 +166,9 @@ export function BagClient({ deliverySettings }: BagClientProps) {
             </div>
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">{"Delivery"}</span>
-              <span className="text-ink">{formatPrice(deliveryFee)}</span>
+              <span className="text-ink">
+                {deliveryFee === 0 ? "Free" : `From ${formatPrice(deliveryFee)}`}
+              </span>
             </div>
             {couponDiscount > 0 && (
               <div className="flex items-center justify-between text-sm">
@@ -166,7 +176,12 @@ export function BagClient({ deliverySettings }: BagClientProps) {
                 <span className="text-wine">-{formatPrice(couponDiscount)}</span>
               </div>
             )}
-            <p className="text-xs text-muted -mt-2">{"Free delivery in Sylhet on orders above ৳1500"}</p>
+            <p className="text-xs text-muted -mt-2">
+              {"The exact delivery charge depends on your division and is confirmed at checkout."}
+            </p>
+            {deliveryHeadline && (
+              <p className="text-xs text-muted -mt-2">{deliveryHeadline}</p>
+            )}
 
             <div className="flex flex-col gap-2 border-t border-border pt-4">
               <label htmlFor="coupon" className="text-xs uppercase tracking-wide text-muted">

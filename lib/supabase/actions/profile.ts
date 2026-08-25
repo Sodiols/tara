@@ -5,6 +5,7 @@ import { requireUser } from "../auth";
 import { createClient } from "../server";
 import { isSupabaseConfigured } from "../env";
 import { addressSchema, profileSchema } from "@/lib/validation";
+import { logFailure } from "@/lib/logger";
 import type { ActionResult } from "./auth";
 
 export async function updateProfileAction(input: unknown): Promise<ActionResult> {
@@ -23,7 +24,7 @@ export async function updateProfileAction(input: unknown): Promise<ActionResult>
     })
     .eq("id", user.id);
   if (error) {
-    console.error("Profile update failed:", error.message);
+    logFailure("profile.update_failed", error, { userId: user.id });
     return { ok: false, message: "Your changes could not be saved." };
   }
   revalidatePath("/account");
@@ -45,8 +46,6 @@ export async function saveAddressAction(input: unknown): Promise<ActionResult> {
     phone: parsed.data.phone,
     division: parsed.data.division,
     district: parsed.data.district,
-    upazila: parsed.data.upazila,
-    area: parsed.data.area,
     postal_code: parsed.data.postalCode || null,
     full_address: parsed.data.fullAddress,
     delivery_note: parsed.data.deliveryNote || null,
@@ -57,7 +56,16 @@ export async function saveAddressAction(input: unknown): Promise<ActionResult> {
     : supabase.from("addresses").insert(payload);
   const { error } = await query;
   if (error) {
-    console.error("Address save failed:", error.message);
+    // The database re-validates the division/district pair with the same
+    // function checkout uses, so a stale form cannot save an undeliverable
+    // address even though the schema above already checked it.
+    if (error.message.includes("invalid_shipping_location")) {
+      return {
+        ok: false,
+        message: "Choose a division and a district that belong together.",
+      };
+    }
+    logFailure("address.save_failed", error, { userId: user.id });
     return { ok: false, message: "Your changes could not be saved." };
   }
   revalidatePath("/account/addresses");

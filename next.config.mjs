@@ -1,51 +1,29 @@
 /** @type {import('next').NextConfig} */
 
-// Derived from the env var (rather than hardcoded) so this keeps working
-// across dev/staging/prod Supabase projects without a manual config edit.
+// Derived from the env var (rather than hardcoded) so this keeps working across
+// dev/staging/prod Supabase projects without a manual config edit.
 function supabaseOrigin() {
   try {
     const url = new URL(process.env.NEXT_PUBLIC_SUPABASE_URL ?? "");
-    return { hostname: url.hostname, origin: url.origin };
+    return { hostname: url.hostname };
   } catch {
-    return { hostname: undefined, origin: undefined };
+    return { hostname: undefined };
   }
 }
 
 const supabase = supabaseOrigin();
-const isDev = process.env.NODE_ENV !== "production";
 
 /**
- * Content Security Policy.
+ * The Content-Security-Policy is NOT here any more.
  *
- * Built from the origins this application actually talks to:
- *   - Supabase REST/Auth/Realtime (connect-src, from the env var)
- *   - Supabase Storage + Unsplash for product imagery (img-src)
- *   - next/font/google, which self-hosts the font files at build time, so no
- *     fonts.googleapis.com entry is needed at runtime
+ * It is built per request in lib/supabase/proxy.ts, because it now carries a
+ * per-request nonce. A static header cannot: a nonce that is the same for every
+ * response is exactly as useful to an attacker as 'unsafe-inline', which is
+ * what the policy used to allow for scripts.
  *
- * 'unsafe-inline' is required in style-src because Next.js and Tailwind emit
- * inline style attributes, and in script-src during development for React Fast
- * Refresh. In production script-src stays on 'self' plus the inline JSON-LD
- * block, which is why 'unsafe-eval' is dev-only.
+ * Everything below is genuinely static and belongs in the build config.
  */
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https://images.unsplash.com" +
-    (supabase.origin ? ` ${supabase.origin}` : ""),
-  "font-src 'self' data:",
-  `connect-src 'self'${supabase.origin ? ` ${supabase.origin} ${supabase.origin.replace("https://", "wss://")}` : ""}${isDev ? " ws: http://localhost:*" : ""}`,
-  "frame-ancestors 'none'",
-  "form-action 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-src 'none'",
-  ...(isDev ? [] : ["upgrade-insecure-requests"]),
-].join("; ");
-
 const securityHeaders = [
-  { key: "Content-Security-Policy", value: contentSecurityPolicy },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
@@ -70,10 +48,13 @@ const nextConfig = {
   },
   images: {
     formats: ["image/avif", "image/webp"],
-    // 75 is the default used by product and lifestyle photography. The brand
-    // wordmark is rendered small and has fine serifs, so it is served at 90 —
-    // Next 16 refuses any quality not listed here.
+    // next/image re-encodes every product photograph to AVIF or WebP at the
+    // size the layout actually asks for, and does not carry EXIF through — so a
+    // 4000px original uploaded by staff is never what reaches a phone.
     qualities: [75, 90],
+    // A year: the URL contains the source, the width and the quality, so a
+    // different rendition is a different URL and this can be cached hard.
+    minimumCacheTTL: 31536000,
     remotePatterns: [
       {
         protocol: "https",
@@ -104,6 +85,12 @@ const nextConfig = {
           { key: "Cache-Control", value: "private, no-store, max-age=0" },
           { key: "X-Robots-Tag", value: "noindex, nofollow" },
         ],
+      },
+      {
+        // The health endpoint is polled by uptime monitors; a cached answer
+        // would report health the instance no longer has.
+        source: "/api/health",
+        headers: [{ key: "Cache-Control", value: "no-store" }],
       },
     ];
   },

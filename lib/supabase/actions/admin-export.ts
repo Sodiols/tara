@@ -2,6 +2,7 @@
 
 import { requirePermission } from "../auth";
 import { createClient } from "../server";
+import { logFailure } from "@/lib/logger";
 
 /**
  * CSV export for the newsletter list.
@@ -35,7 +36,7 @@ export async function exportNewsletterCsvAction(activeOnly: boolean): Promise<Ex
   const supabase = await createClient();
   let query = supabase
     .from("newsletter_subscribers")
-    .select("email,preferred_language,is_active,created_at,unsubscribed_at,source")
+    .select("email,is_active,created_at,unsubscribed_at,source")
     .order("created_at", { ascending: false })
     .limit(20000);
 
@@ -43,25 +44,19 @@ export async function exportNewsletterCsvAction(activeOnly: boolean): Promise<Ex
 
   const { data, error } = await query;
   if (error) {
-    console.error("[admin] newsletter export:", error.message);
+    logFailure("admin.newsletter_export_failed", error);
     return { ok: false, message: "The export could not be generated." };
   }
 
-  const header = [
-    "email",
-    "language",
-    "status",
-    "subscribed_at",
-    "unsubscribed_at",
-    "source",
-  ];
+  // No language column: the store is English only, so it carried no
+  // information and migration 0011 removed the field it came from.
+  const header = ["email", "status", "subscribed_at", "unsubscribed_at", "source"];
   const lines = [header.join(",")];
 
   for (const row of data ?? []) {
     lines.push(
       [
         csvCell(row.email),
-        csvCell(row.preferred_language),
         csvCell(row.is_active ? "active" : "unsubscribed"),
         csvCell(row.created_at),
         csvCell(row.unsubscribed_at ?? ""),

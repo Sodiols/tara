@@ -1,16 +1,29 @@
 import type { Metadata } from "next";
-import { getProductsByCategory } from "@/lib/supabase/queries/products";
-import { ProductListingClient } from "@/components/product/ProductListingClient";
-import { parseListingParams, type ListingSearchParams } from "@/lib/product-listing";
+import { ProductListingSection } from "@/components/product/ProductListingSection";
+import type { ListingSearchParams } from "@/lib/product-listing";
+import { siteConfig } from "@/data/site";
 
 export const metadata: Metadata = {
   title: "Ready Three Piece",
   description:
-    "Shop ready-to-wear three piece sets from TARA, tailored for an effortless fit — from everyday cotton to festive embellished styles.",
+    "Shop ready-to-wear three piece sets from TARA — stitched, finished and sized, ready to wear straight away.",
+  alternates: { canonical: `${siteConfig.url}/ready-three-piece` },
 };
 
-export default async function ReadyPage({ searchParams }: { searchParams: ListingSearchParams }) {
-  const parsed = await parseListingParams(searchParams);
-  const result = await getProductsByCategory("ready-three-piece", parsed.filters);
-  return <ProductListingClient title="Ready Three Piece" products={result.products} initialFilters={parsed.initialFilters} initialSort={parsed.initialSort} />;
+/**
+ * The canonical URL is the bare path, without the filter query.
+ *
+ * Every combination of size, colour, price band, sort and page is a distinct
+ * URL that renders substantially the same set of products. Left uncanonicalised
+ * they compete with each other and with this page in the index, and the crawl
+ * budget goes on permutations instead of products.
+ */
+export default async function Page({ searchParams }: { searchParams: ListingSearchParams }) {
+  return (
+    <ProductListingSection
+      title="Ready Three Piece"
+      searchParams={searchParams}
+      scope={{ category: "ready-three-piece" }}
+    />
+  );
 }

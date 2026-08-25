@@ -4,7 +4,7 @@ import Link from "next/link";
 import { X, User, Heart, Headset, KeyRound, LogOut, MapPin, Package, Truck } from "lucide-react";
 import { navItems } from "./DesktopNavigation";
 import { MobileCollectionAccordion } from "./MobileCollectionAccordion";
-import { siteConfig } from "@/data/site";
+import type { StoreIdentity } from "@/lib/supabase/queries/settings";
 import { createPortal } from "react-dom";
 import { useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -17,9 +17,10 @@ import { lockBodyScroll } from "@/lib/scroll-lock";
 interface MobileNavigationProps {
   isOpen: boolean;
   onClose: () => void;
+  identity: StoreIdentity;
 }
 
-export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
+export function MobileNavigation({ isOpen, onClose, identity }: MobileNavigationProps) {
   const [authenticated, setAuthenticated] = useState(false);
   const clearBag = useCartStore((s) => s.clearBag);
   const clearWishlist = useWishlistStore((s) => s.replaceItems);
@@ -122,12 +123,12 @@ export function MobileNavigation({ isOpen, onClose }: MobileNavigationProps) {
             <Headset size={17} /> {"Customer Support"}
           </Link>
           <a
-            href={`https://maps.google.com/?q=${encodeURIComponent(siteConfig.address)}`}
+            href={`https://maps.google.com/?q=${encodeURIComponent(identity.storeAddress)}`}
             target="_blank"
             rel="noopener noreferrer"
             className="flex items-center gap-3 min-h-12 py-3 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
           >
-            <MapPin size={17} className="shrink-0" /> {siteConfig.address}
+            <MapPin size={17} className="shrink-0" /> {identity.storeAddress}
           </a>
           {authenticated && (
             <form

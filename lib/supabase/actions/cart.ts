@@ -2,95 +2,92 @@
 
 import { requireUser } from "../auth";
 import { createClient } from "../server";
+import { logFailure } from "@/lib/logger";
 import type { CartItem } from "@/types";
 
-async function resolveCartRows(items: CartItem[]) {
-  const supabase = await createClient();
-  if (!supabase) return [];
-  const rows: { product_variant_id: string; quantity: number }[] = [];
+/**
+ * Server-side cart persistence.
+ *
+ * Both operations are a single database call into a SECURITY DEFINER function
+ * that resolves every line, validates it and swaps the contents inside one
+ * transaction.
+ *
+ * What this replaced mattered: `persistCartAction` used to DELETE every row and
+ * then INSERT the replacement set as two separate statements, so a failure
+ * between them left a signed-in customer with an empty cart and no way to tell
+ * what had been in it. It also issued one SELECT per line to resolve the
+ * variant, which on a twenty-line cart was twenty round trips before the write
+ * even started.
+ */
 
-  for (const item of items.slice(0, 100)) {
-    const { data: variant } = await supabase
-      .from("product_variants")
-      .select("id,stock_quantity")
-      .eq("product_id", item.productId)
-      .eq("size", item.size.replaceAll("Undready", "Unstitched"))
-      .eq("colour_en", item.colour)
-      .eq("is_active", true)
-      .maybeSingle();
-    if (!variant || variant.stock_quantity < 1) continue;
-    rows.push({
-      product_variant_id: variant.id,
-      quantity: Math.min(20, variant.stock_quantity, Math.max(1, item.quantity)),
-    });
-  }
+function toCartItems(payload: unknown): CartItem[] {
+  if (!Array.isArray(payload)) return [];
 
-  return rows;
+  return payload.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const row = entry as Record<string, unknown>;
+    const productId = typeof row.productId === "string" ? row.productId : null;
+    const slug = typeof row.slug === "string" ? row.slug : null;
+    if (!productId || !slug) return [];
+
+    return [
+      {
+        productId,
+        slug,
+        name: typeof row.name === "string" ? row.name : "",
+        image: typeof row.image === "string" ? row.image : "",
+        price: typeof row.price === "number" ? row.price : Number(row.price) || 0,
+        size: typeof row.size === "string" ? row.size : "",
+        colour: typeof row.colour === "string" ? row.colour : "",
+        quantity:
+          typeof row.quantity === "number" ? row.quantity : Number(row.quantity) || 1,
+      },
+    ];
+  });
 }
 
+/** The lines the database needs. Prices and names are never trusted from here. */
+function toPayload(items: CartItem[]) {
+  return items.slice(0, 100).map((item) => ({
+    productId: item.productId,
+    size: item.size,
+    colour: item.colour,
+    quantity: item.quantity,
+  }));
+}
+
+/** Replaces the stored cart with exactly what the browser is holding. */
 export async function persistCartAction(items: CartItem[]) {
   const user = await requireUser("/account");
   const supabase = await createClient();
-  if (!supabase) return { ok: false as const };
-  const { data: cart } = await supabase.from("carts").select("id").eq("user_id", user.id).single();
-  if (!cart) return { ok: false as const };
 
-  const rows = await resolveCartRows(items);
-  const { error: deleteError } = await supabase.from("cart_items").delete().eq("cart_id", cart.id);
-  if (deleteError) return { ok: false as const };
-  if (!rows.length) return { ok: true as const };
+  const { error } = await supabase.rpc("replace_cart_items", {
+    p_items: toPayload(items),
+  });
 
-  const { error } = await supabase.from("cart_items").insert(
-    rows.map((row) => ({ ...row, cart_id: cart.id }))
-  );
-  return { ok: !error };
+  if (error) {
+    logFailure("cart.persist_failed", error, { userId: user.id, lines: items.length });
+    return { ok: false as const };
+  }
+  return { ok: true as const };
 }
 
+/**
+ * Merges a guest's local cart into the stored one at sign-in and returns the
+ * result, so the browser adopts the server's view rather than its own.
+ */
 export async function syncCartAction(items: CartItem[]) {
   const user = await requireUser("/account");
   const supabase = await createClient();
-  if (!supabase) return { ok: false as const, items: [] as CartItem[] };
-  const { data: cart } = await supabase.from("carts").select("id").eq("user_id", user.id).single();
-  if (!cart) return { ok: false as const, items: [] as CartItem[] };
 
-  const rows = await resolveCartRows(items);
-  for (const row of rows) {
-    const { data: existing } = await supabase
-      .from("cart_items")
-      .select("id,quantity")
-      .eq("cart_id", cart.id)
-      .eq("product_variant_id", row.product_variant_id)
-      .maybeSingle();
-    if (existing) {
-      await supabase.from("cart_items").update({ quantity: Math.min(20, existing.quantity + row.quantity) }).eq("id", existing.id);
-    } else {
-      await supabase.from("cart_items").insert({ cart_id: cart.id, ...row });
-    }
+  const { data, error } = await supabase.rpc("merge_cart_items", {
+    p_items: toPayload(items),
+  });
+
+  if (error) {
+    logFailure("cart.sync_failed", error, { userId: user.id, lines: items.length });
+    return { ok: false as const, items: [] as CartItem[] };
   }
 
-  const { data: dbItems } = await supabase.from("cart_items").select("*").eq("cart_id", cart.id);
-  if (!dbItems?.length) return { ok: true as const, items: [] as CartItem[] };
-  const variantIds = dbItems.map((item) => item.product_variant_id);
-  const { data: variants } = await supabase.from("product_variants").select("*").in("id", variantIds);
-  const productIds = [...new Set((variants ?? []).map((variant) => variant.product_id))];
-  const [{ data: products }, { data: images }] = await Promise.all([
-    supabase.from("products").select("*").in("id", productIds),
-    supabase.from("product_images").select("*").in("product_id", productIds).order("sort_order"),
-  ]);
-  const hydrated = dbItems.flatMap((dbItem) => {
-    const variant = variants?.find((value) => value.id === dbItem.product_variant_id);
-    const product = products?.find((value) => value.id === variant?.product_id);
-    if (!variant || !product) return [];
-    return [{
-      productId: product.id,
-      slug: product.slug,
-      name: product.name_en,
-      image: images?.find((image) => image.product_id === product.id)?.image_url ?? "",
-      price: Number(variant.price_override ?? product.base_price),
-      size: variant.size,
-      colour: variant.colour_en,
-      quantity: dbItem.quantity,
-    }];
-  });
-  return { ok: true as const, items: hydrated };
+  return { ok: true as const, items: toCartItems(data) };
 }

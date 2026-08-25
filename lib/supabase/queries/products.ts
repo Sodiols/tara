@@ -1,203 +1,126 @@
 import "server-only";
 
-import type { CategorySlug, Product, Review } from "@/types";
-import type { Database, Json } from "@/types/database";
-import { products as seedProducts } from "@/data/products";
+import type { CategorySlug, ColourOption, Product, Review } from "@/types";
+import type { Json } from "@/types/database";
 import { createClient } from "../server";
 import { isSupabaseConfigured } from "../env";
+import { logger, logFailure } from "@/lib/logger";
+import { describeMissingMigration } from "../errors";
 
-type ProductRow = Database["public"]["Tables"]["products"]["Row"];
-type ProductImageRow = Database["public"]["Tables"]["product_images"]["Row"];
-type ProductVariantRow =
-  Database["public"]["Tables"]["product_variants"]["Row"];
-type ReviewRow = Database["public"]["Tables"]["reviews"]["Row"];
-
-export interface ProductFilters {
-  category?: CategorySlug;
-  collection?: string;
-  query?: string;
-  minPrice?: number;
-  maxPrice?: number;
-  sizes?: string[];
-  colours?: string[];
-  fabric?: string;
-  inStock?: boolean;
-  isNew?: boolean;
-  onSale?: boolean;
-  featured?: boolean;
-  bestSeller?: boolean;
-  sort?: "newest" | "price-low" | "price-high" | "popular";
-  page?: number;
-  pageSize?: number;
+/**
+ * Logs a catalogue failure, distinguishing "the migration has not been applied"
+ * from a genuine fault.
+ *
+ * The first is by far the most likely cause of an empty storefront on a fresh
+ * environment, and it has a one-line fix — so it is reported as an instruction
+ * rather than as an exception, and it is not sent to error monitoring, where it
+ * would be an alert nobody can act on from a dashboard.
+ */
+function logCatalogueFailure(
+  event: string,
+  error: unknown,
+  functionName: string,
+  context: Record<string, unknown> = {},
+) {
+  const migrationHint = describeMissingMigration(error, functionName);
+  if (migrationHint) {
+    logger.error(`${event}.migration_missing`, { ...context, detail: migrationHint });
+    return;
+  }
+  logFailure(event, error, context);
 }
+import {
+  DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE,
+  MAX_REVEALED_PAGES,
+  MAX_REVEALED_PRODUCTS,
+  type ProductFilters,
+} from "@/lib/catalogue-filters";
 
-export function productFiltersFromParams(params: Record<string, string | string[] | undefined>): ProductFilters {
-  const text = (key: string) => {
-    const value = params[key];
-    return Array.isArray(value) ? value[0] : value;
-  };
-  const list = (key: string) => text(key)?.split(",").map((value) => value.trim()).filter(Boolean);
-  const minPrice = Number(text("minPrice"));
-  const maxPrice = Number(text("maxPrice"));
-  const sortValue = text("sort");
-  return {
-    query: text("q"),
-    minPrice: Number.isFinite(minPrice) && minPrice >= 0 ? minPrice : undefined,
-    maxPrice: Number.isFinite(maxPrice) && maxPrice >= 0 ? maxPrice : undefined,
-    sizes: list("size"),
-    colours: list("colour"),
-    fabric: text("fabric"),
-    inStock: text("availability") === "in-stock",
-    isNew: text("new") === "true",
-    onSale: text("sale") === "true",
-    sort: sortValue === "price-low" || sortValue === "price-high" || sortValue === "popular" ? sortValue : "newest",
-    page: Math.max(1, Number(text("page")) || 1),
-    pageSize: 24,
-  };
-}
+// The URL encoding lives in lib/catalogue-filters.ts because the filter
+// sidebar, which runs in the browser, has to produce exactly the same query
+// string this module parses. Re-exported so callers have one import.
+export {
+  DEFAULT_PAGE_SIZE,
+  MAX_PAGE_SIZE,
+  paramsFromProductFilters,
+  productFiltersFromParams,
+} from "@/lib/catalogue-filters";
+export type {
+  CatalogueSort,
+  PriceBand,
+  ProductFilters,
+  SearchParamRecord,
+} from "@/lib/catalogue-filters";
+
+const clampPageSize = (value: number | undefined) =>
+  Math.min(MAX_PAGE_SIZE, Math.max(1, value ?? DEFAULT_PAGE_SIZE));
 
 export interface ProductPage {
   products: Product[];
+  /** Number of products matching the filters across the whole catalogue. */
   total: number;
   page: number;
   pageSize: number;
   hasMore: boolean;
 }
 
-type QueryError = { code?: string; message?: string } | null;
-
-function isMissingCatalogSchema(error: QueryError) {
-  return Boolean(
-    error &&
-      (error.code === "PGRST205" ||
-        error.message?.includes("Could not find the table")),
-  );
+export interface CatalogueFacets {
+  sizes: string[];
+  colours: string[];
+  fabrics: string[];
+  collections: string[];
+  minPrice: number;
+  maxPrice: number;
+  total: number;
 }
 
-function fallbackProducts(filters: ProductFilters = {}): ProductPage {
-  const page = Math.max(1, filters.page ?? 1);
-  const pageSize = Math.min(48, Math.max(1, filters.pageSize ?? 24));
-  const normalizedCollection = filters.collection?.replaceAll("-", " ").toLowerCase();
-  const searchTerm = filters.query?.trim().toLowerCase();
-  let filtered = seedProducts.filter((product) => {
-    if (filters.category && product.category !== filters.category) return false;
-    if (
-      normalizedCollection &&
-      product.collection.replaceAll("-", " ").toLowerCase() !== normalizedCollection
-    ) return false;
-    if (
-      searchTerm &&
-      ![
-        product.name,
-        product.productCode,
-        product.fabric,
-        product.collection,
-        ...product.tags,
-      ].some((value) => value.toLowerCase().includes(searchTerm))
-    ) return false;
-    if (filters.minPrice != null && product.price < filters.minPrice) return false;
-    if (filters.maxPrice != null && product.price > filters.maxPrice) return false;
-    if (
-      filters.fabric &&
-      !product.fabric.toLowerCase().includes(filters.fabric.toLowerCase())
-    ) return false;
-    if (filters.isNew && !product.isNew) return false;
-    if (filters.onSale && !product.isSale) return false;
-    if (filters.featured && !product.isFeatured) return false;
-    if (filters.bestSeller && !product.isBestSeller) return false;
-    if (filters.inStock && product.stock < 1) return false;
-    if (
-      filters.sizes?.length &&
-      !product.sizes.some((size) => filters.sizes?.includes(size))
-    ) return false;
-    if (
-      filters.colours?.length &&
-      !product.colours.some((colour) => filters.colours?.includes(colour.name))
-    ) return false;
-    return true;
-  });
+export const EMPTY_FACETS: CatalogueFacets = {
+  sizes: [],
+  colours: [],
+  fabrics: [],
+  collections: [],
+  minPrice: 0,
+  maxPrice: 0,
+  total: 0,
+};
 
-  filtered = [...filtered].sort((a, b) => {
-    if (filters.sort === "price-low") return a.price - b.price;
-    if (filters.sort === "price-high") return b.price - a.price;
-    if (filters.sort === "popular")
-      return b.rating * b.reviewCount - a.rating * a.reviewCount;
-    return Number(b.isNew) - Number(a.isNew);
-  });
+/**
+ * The catalogue read layer.
+ *
+ * Every listing goes through `public.search_catalogue()`, which applies every
+ * filter — including the variant-level ones — inside the database, sorts with a
+ * deterministic tiebreak, paginates, and reports the true total for the whole
+ * filtered set. See supabase/migrations/0009_catalogue_geography_and_delivery.sql for why that
+ * matters: filtering after the page had already been chosen made most of the
+ * catalogue unreachable as soon as a shopper ticked a size.
+ *
+ * There is no offline fallback catalogue any more. An unconfigured environment
+ * or a missing table means real misconfiguration, and it surfaces as an empty
+ * result and a loud server log rather than as demonstration products quietly
+ * standing in for the real ones.
+ */
 
-  const total = filtered.length;
-  const start = (page - 1) * pageSize;
-  return {
-    products: filtered.slice(start, start + pageSize),
-    total,
-    page,
-    pageSize,
-    hasMore: start + pageSize < total,
-  };
-}
-
-// The static seed catalog may only stand in for a broken/unconfigured
-// database outside production. In production, an unconfigured Supabase env
-// var or a missing catalog table always means real misconfiguration (a
-// cleared env var, an incomplete migration) — it must surface as an empty
-// result and a loud server log for administrators to notice and fix, never
-// as demonstration products silently served in place of the real catalog.
-const ALLOW_DEV_CATALOG_FALLBACK = process.env.NODE_ENV !== "production";
-
-function emptyProductPage(filters: ProductFilters): ProductPage {
-  return {
-    products: [],
-    total: 0,
-    page: Math.max(1, filters.page ?? 1),
-    pageSize: Math.min(48, Math.max(1, filters.pageSize ?? 24)),
-    hasMore: false,
-  };
-}
-
-function devFallbackProductPage(filters: ProductFilters, reason: string): ProductPage {
-  if (ALLOW_DEV_CATALOG_FALLBACK) return fallbackProducts(filters);
-  console.error(
-    `[catalog] Product listing unavailable in production (${reason}). Serving an empty result instead of demonstration data — check NEXT_PUBLIC_SUPABASE_URL/NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and that supabase/TARA_COMPLETE_SETUP.sql has been run.`,
-  );
-  return emptyProductPage(filters);
-}
-
-function devFallbackProductList(filters: ProductFilters, reason: string): Product[] {
-  if (ALLOW_DEV_CATALOG_FALLBACK) return fallbackProducts(filters).products;
-  console.error(
-    `[catalog] Product search unavailable in production (${reason}). Returning no results instead of demonstration data.`,
-  );
-  return [];
-}
-
-function devFallbackProductBySlug(slug: string, reason: string): Product | null {
-  if (ALLOW_DEV_CATALOG_FALLBACK) return seedProducts.find((product) => product.slug === slug) ?? null;
-  console.error(
-    `[catalog] Product lookup unavailable in production (${reason}). Returning not-found instead of demonstration data.`,
-  );
-  return null;
-}
+// ---------------------------------------------------------------------------
+// Row -> Product
+// ---------------------------------------------------------------------------
 
 /**
  * `unstitched_details` and `ready_made_details` are jsonb, and rows written by
  * the bilingual build stored every field as `{ en, bn }`. The storefront is
  * English only and its types say `string`, so a blind cast would render
- * "[object Object]" on the product page for every existing product.
- *
- * Read the English side out, and pass a value that is already a plain string
- * straight through so rows written from here on need no special case.
+ * "[object Object]" on the product page for every one of those products.
  */
 function englishField(value: unknown): string {
   if (typeof value === "string") return value;
   if (value && typeof value === "object") {
     const bilingual = value as { en?: unknown; bn?: unknown };
     if (typeof bilingual.en === "string") return bilingual.en;
-    if (typeof bilingual.bn === "string") return bilingual.bn;
   }
   return "";
 }
 
-function localizedJson(value: Json | null): Product["unstitchedDetails"] {
+function unstitchedDetails(value: unknown): Product["unstitchedDetails"] {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const row = value as Record<string, unknown>;
   return {
@@ -210,7 +133,7 @@ function localizedJson(value: Json | null): Product["unstitchedDetails"] {
   };
 }
 
-function readyMadeJson(value: Json | null): Product["readyMadeDetails"] {
+function readyMadeDetails(value: unknown): Product["readyMadeDetails"] {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const row = value as Record<string, unknown>;
   const measurements = Array.isArray(row.sizeMeasurements) ? row.sizeMeasurements : [];
@@ -230,216 +153,236 @@ function readyMadeJson(value: Json | null): Product["readyMadeDetails"] {
   };
 }
 
-async function hydrateProducts(rows: ProductRow[]): Promise<Product[]> {
-  if (rows.length === 0) return [];
-  const supabase = await createClient();
-  const ids = rows.map((row) => row.id);
+const asString = (value: unknown, fallback = "") =>
+  typeof value === "string" ? value : fallback;
+const asNumber = (value: unknown, fallback = 0) => {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+};
+const asStringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 
-  const [imagesResult, variantsResult, reviewsResult, categoryResult, collectionResult] =
-    await Promise.all([
-      supabase
-        .from("product_images")
-        .select("*")
-        .in("product_id", ids)
-        .order("sort_order"),
-      supabase
-        .from("product_variants")
-        .select("*")
-        .in("product_id", ids)
-        .eq("is_active", true),
-      supabase
-        .from("reviews")
-        .select("*")
-        .in("product_id", ids)
-        .eq("status", "approved")
-        .order("created_at", { ascending: false }),
-      supabase
-        .from("categories")
-        .select("id,slug,name_en")
-        .in("id", [...new Set(rows.map((row) => row.category_id))]),
-      supabase
-        .from("collections")
-        .select("id,name_en")
-        .in(
-          "id",
-          [...new Set(rows.map((row) => row.collection_id).filter(Boolean))] as string[],
-        ),
-    ]);
-
-  const images = (imagesResult.data ?? []) as ProductImageRow[];
-  const variants = (variantsResult.data ?? []) as ProductVariantRow[];
-  const reviews = (reviewsResult.data ?? []) as ReviewRow[];
-  const categoryById = new Map(
-    (categoryResult.data ?? []).map((item) => [
-      item.id,
-      { slug: item.slug, name: item.name_en },
-    ]),
-  );
-  const collectionById = new Map(
-    (collectionResult.data ?? []).map((item) => [item.id, item.name_en]),
-  );
-
-  return rows.map((row) => {
-    const productImages = images.filter((image) => image.product_id === row.id);
-    const productVariants = variants.filter(
-      (variant) => variant.product_id === row.id,
-    );
-    const colours = [
-      ...new Map(
-        productVariants.map((variant) => [
-          variant.colour_en,
-          {
-            name: variant.colour_en,
-            hex: variant.colour_hex,
-          },
-        ]),
-      ).values(),
-    ];
-    const productReviews: Review[] = reviews
-      .filter((review) => review.product_id === row.id)
-      .map((review) => ({
-        id: review.id,
-        author: review.author_name,
-        rating: review.rating,
-        date: review.created_at.slice(0, 10),
-        comment: review.comment_en,
-      }));
-
-    return {
-      id: row.id,
-      slug: row.slug,
-      name: row.name_en,
-      description: row.description_en,
-      // The slug is whatever staff created in /admin/categories — it is NOT
-      // limited to the four built-in routes, so it is carried through as-is
-      // rather than being cast to a union it may not belong to. The display
-      // name travels with it so no screen has to guess a label from the slug.
-      category: categoryById.get(row.category_id)?.slug ?? "collection",
-      categoryName: categoryById.get(row.category_id)?.name,
-      price: Number(row.base_price),
-      previousPrice:
-        row.compare_at_price == null ? undefined : Number(row.compare_at_price),
-      images: productImages.map((image) => image.image_url),
-      colours,
-      sizes: [...new Set(productVariants.map((variant) => variant.size))],
-      fabric: row.fabric_en,
-      stock: productVariants.reduce(
-        (total, variant) => total + variant.stock_quantity,
-        0,
-      ),
-      tags: row.tags,
-      collection: row.collection_id
-        ? collectionById.get(row.collection_id) ?? ""
-        : "",
-      isNew: row.is_new,
-      isSale: row.compare_at_price != null,
-      isFeatured: row.is_featured,
-      isBestSeller: row.is_best_seller,
-      rating: Number(row.average_rating),
-      reviewCount: row.review_count,
-      productCode: row.product_code,
-      careInstructions: row.care_instructions_en,
-      unstitchedDetails: localizedJson(row.unstitched_details),
-      readyMadeDetails: readyMadeJson(row.ready_made_details),
-      reviews: productReviews,
-    };
+function asColours(value: unknown): ColourOption[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const colour = entry as { name?: unknown; hex?: unknown };
+    const name = asString(colour.name).trim();
+    if (!name) return [];
+    return [{ name, hex: asString(colour.hex, "#000000") }];
   });
 }
 
-export async function getProducts(
-  filters: ProductFilters = {},
-): Promise<ProductPage> {
+/** Maps one row of `search_catalogue().items` onto the storefront's Product. */
+function toProduct(raw: unknown, reviews: Review[] = []): Product | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as Record<string, unknown>;
+  const id = asString(row.id);
+  const slug = asString(row.slug);
+  if (!id || !slug) return null;
+
+  const previousPrice = row.previousPrice == null ? undefined : asNumber(row.previousPrice);
+
+  return {
+    id,
+    slug,
+    name: asString(row.name),
+    description: asString(row.description),
+    category: asString(row.category, "collection"),
+    categoryName: asString(row.categoryName) || undefined,
+    price: asNumber(row.price),
+    previousPrice,
+    images: asStringArray(row.images),
+    colours: asColours(row.colours),
+    sizes: asStringArray(row.sizes),
+    fabric: asString(row.fabric),
+    stock: asNumber(row.stock),
+    tags: asStringArray(row.tags),
+    collection: asString(row.collection),
+    isNew: row.isNew === true,
+    isSale: row.isSale === true,
+    isFeatured: row.isFeatured === true,
+    isBestSeller: row.isBestSeller === true,
+    rating: asNumber(row.rating),
+    reviewCount: asNumber(row.reviewCount),
+    productCode: asString(row.productCode),
+    careInstructions: asString(row.careInstructions),
+    unstitchedDetails: unstitchedDetails(row.unstitchedDetails),
+    readyMadeDetails: readyMadeDetails(row.readyMadeDetails),
+    // Listing pages carry no review bodies: the card shows a star rating, which
+    // comes from the denormalised average on the product row.
+    reviews,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Queries
+// ---------------------------------------------------------------------------
+
+function emptyPage(filters: ProductFilters): ProductPage {
+  return {
+    products: [],
+    total: 0,
+    page: Math.max(1, filters.page ?? 1),
+    pageSize: clampPageSize(filters.pageSize),
+    hasMore: false,
+  };
+}
+
+function toRpcFilters(filters: ProductFilters, limit: number, offset: number): Json {
+  return {
+    categorySlug: filters.category ?? null,
+    collectionSlug: filters.collection ?? null,
+    query: filters.query ?? null,
+    priceBands: filters.priceBands ?? null,
+    sizes: filters.sizes ?? null,
+    colours: filters.colours ?? null,
+    fabrics: filters.fabrics ?? null,
+    collectionNames: filters.collectionNames ?? null,
+    inStock: filters.inStock ?? false,
+    onSale: filters.onSale ?? false,
+    isNew: filters.isNew ?? false,
+    featured: filters.featured ?? false,
+    bestSeller: filters.bestSeller ?? false,
+    sort: filters.sort ?? "newest",
+    limit,
+    offset,
+  } as Json;
+}
+
+/**
+ * One page of the catalogue, plus the true total.
+ *
+ * `page` is cumulative on purpose: page 3 returns products 1–72 in one query,
+ * not products 49–72. That is what makes the "Load More" listing survive a
+ * refresh — the URL says how much has been revealed, and the server renders
+ * exactly that much — while a first visit still downloads only 24 products.
+ */
+export async function getProducts(filters: ProductFilters = {}): Promise<ProductPage> {
   const page = Math.max(1, filters.page ?? 1);
-  const pageSize = Math.min(48, Math.max(1, filters.pageSize ?? 24));
-  if (!isSupabaseConfigured()) return devFallbackProductPage(filters, "Supabase not configured");
+  const pageSize = clampPageSize(filters.pageSize);
+
+  if (!isSupabaseConfigured()) {
+    logger.error("catalogue.not_configured", {
+      detail:
+        "The product listing is empty because Supabase is not configured. Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.",
+    });
+    return emptyPage(filters);
+  }
+
+  // The listing is cumulative: page 3 means "the first 72 products", so that a
+  // refresh re-renders everything the shopper had revealed. The ceiling matches
+  // the one search_catalogue() enforces, so the two can never disagree about
+  // how much was returned.
+  const limit = Math.min(MAX_REVEALED_PRODUCTS, pageSize * page);
   const supabase = await createClient();
+  const { data, error } = await supabase.rpc("search_catalogue", {
+    p_filters: toRpcFilters(filters, limit, 0),
+  });
 
-  let categoryId: string | undefined;
-  let collectionId: string | undefined;
-  if (filters.category) {
-    const { data, error } = await supabase
-      .from("categories")
-      .select("id")
-      .eq("slug", filters.category)
-      .maybeSingle();
-    if (isMissingCatalogSchema(error)) return devFallbackProductPage(filters, "categories table missing");
-    categoryId = data?.id;
-    if (!categoryId) return { products: [], total: 0, page, pageSize, hasMore: false };
-  }
-  if (filters.collection) {
-    const { data, error } = await supabase
-      .from("collections")
-      .select("id")
-      .eq("slug", filters.collection)
-      .maybeSingle();
-    if (isMissingCatalogSchema(error)) return devFallbackProductPage(filters, "collections table missing");
-    collectionId = data?.id;
-    if (!collectionId) return { products: [], total: 0, page, pageSize, hasMore: false };
-  }
-
-  let query = supabase
-    .from("products")
-    .select("*", { count: "exact" })
-    .eq("status", "active");
-  if (categoryId) query = query.eq("category_id", categoryId);
-  if (collectionId) query = query.eq("collection_id", collectionId);
-  if (filters.query) {
-    const safe = filters.query.replaceAll(/[%(),]/g, " ").trim();
-    query = query.or(
-      `name_en.ilike.%${safe}%,product_code.ilike.%${safe}%`,
-    );
-  }
-  if (filters.minPrice != null) query = query.gte("base_price", filters.minPrice);
-  if (filters.maxPrice != null) query = query.lte("base_price", filters.maxPrice);
-  if (filters.fabric) query = query.ilike("fabric_en", `%${filters.fabric}%`);
-  if (filters.isNew) query = query.eq("is_new", true);
-  if (filters.onSale) query = query.not("compare_at_price", "is", null);
-  if (filters.featured) query = query.eq("is_featured", true);
-  if (filters.bestSeller) query = query.eq("is_best_seller", true);
-
-  if (filters.sort === "price-low") query = query.order("base_price");
-  else if (filters.sort === "price-high")
-    query = query.order("base_price", { ascending: false });
-  else if (filters.sort === "popular")
-    query = query.order("review_count", { ascending: false });
-  else query = query.order("created_at", { ascending: false });
-
-  const start = (page - 1) * pageSize;
-  const { data, count, error } = await query.range(start, start + pageSize - 1);
   if (error) {
-    if (isMissingCatalogSchema(error)) return devFallbackProductPage(filters, "products table missing");
-    console.error("Product query failed:", error.message);
-    return { products: [], total: 0, page, pageSize, hasMore: false };
+    logCatalogueFailure("catalogue.search_failed", error, "search_catalogue", { page, pageSize });
+    return emptyPage(filters);
   }
 
-  let rows = data ?? [];
-  if (
-    filters.sizes?.length ||
-    filters.colours?.length ||
-    filters.inStock
-  ) {
-    const { data: variants } = await supabase
-      .from("product_variants")
-      .select("product_id,size,colour_en,stock_quantity")
-      .in("product_id", rows.map((row) => row.id))
-      .eq("is_active", true);
-    const allowed = new Set(
-      (variants ?? [])
-        .filter(
-          (variant) =>
-            (!filters.sizes?.length || filters.sizes.includes(variant.size)) &&
-            (!filters.colours?.length ||
-              filters.colours.includes(variant.colour_en)) &&
-            (!filters.inStock || variant.stock_quantity > 0),
-        )
-        .map((variant) => variant.product_id),
-    );
-    rows = rows.filter((row) => allowed.has(row.id));
+  const result = (data ?? {}) as { total?: unknown; items?: unknown };
+  const items = Array.isArray(result.items) ? result.items : [];
+  const products = items
+    .map((item) => toProduct(item))
+    .filter((product): product is Product => product !== null);
+  const total = asNumber(result.total, products.length);
+
+  return {
+    products,
+    total,
+    page,
+    pageSize,
+    // Stops offering more once the cumulative ceiling is reached: past that
+    // point another request cannot return anything new, and a "Load More"
+    // button that does nothing is worse than none.
+    hasMore: products.length < total && products.length < MAX_REVEALED_PRODUCTS,
+  };
+}
+
+/**
+ * A single slice of the catalogue, for the "Load More" fetch.
+ *
+ * Unlike getProducts() this returns exactly one page, so appending it to what
+ * the browser already holds never repeats or skips a product — the ordering is
+ * deterministic in the database.
+ */
+export async function getProductSlice(
+  filters: ProductFilters,
+  page: number,
+): Promise<ProductPage> {
+  const pageSize = clampPageSize(filters.pageSize);
+  const safePage = Math.max(1, Math.min(MAX_REVEALED_PAGES, page));
+
+  if (!isSupabaseConfigured()) return emptyPage({ ...filters, page: safePage });
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("search_catalogue", {
+    p_filters: toRpcFilters(filters, pageSize, (safePage - 1) * pageSize),
+  });
+
+  if (error) {
+    logCatalogueFailure("catalogue.slice_failed", error, "search_catalogue", {
+      page: safePage,
+      pageSize,
+    });
+    return emptyPage({ ...filters, page: safePage });
   }
 
-  const products = await hydrateProducts(rows);
-  const total = count ?? products.length;
-  return { products, total, page, pageSize, hasMore: start + pageSize < total };
+  const result = (data ?? {}) as { total?: unknown; items?: unknown };
+  const items = Array.isArray(result.items) ? result.items : [];
+  const products = items
+    .map((item) => toProduct(item))
+    .filter((product): product is Product => product !== null);
+  const total = asNumber(result.total, products.length);
+
+  return {
+    products,
+    total,
+    page: safePage,
+    pageSize,
+    hasMore: safePage * pageSize < total && safePage < MAX_REVEALED_PAGES,
+  };
+}
+
+/**
+ * The sidebar's options, computed across the whole scope rather than the page
+ * on screen — otherwise a filter disappears from the sidebar as soon as you
+ * page past the products that offered it.
+ */
+export async function getCatalogueFacets(
+  scope: Pick<ProductFilters, "category" | "collection" | "query"> = {},
+): Promise<CatalogueFacets> {
+  if (!isSupabaseConfigured()) return EMPTY_FACETS;
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("catalogue_facets", {
+    p_filters: {
+      categorySlug: scope.category ?? null,
+      collectionSlug: scope.collection ?? null,
+      query: scope.query ?? null,
+    } as Json,
+  });
+
+  if (error) {
+    logCatalogueFailure("catalogue.facets_failed", error, "catalogue_facets");
+    return EMPTY_FACETS;
+  }
+
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    sizes: asStringArray(row.sizes),
+    colours: asStringArray(row.colours),
+    fabrics: asStringArray(row.fabrics),
+    collections: asStringArray(row.collections),
+    minPrice: asNumber(row.minPrice),
+    maxPrice: asNumber(row.maxPrice),
+    total: asNumber(row.total),
+  };
 }
 
 export async function getNewArrivals(limit = 8) {
@@ -474,9 +417,10 @@ export interface PublicCollection {
  * A collection a shopper is allowed to see right now.
  *
  * Returns null for one that does not exist, has been deactivated, or is
- * scheduled outside its own start/end window — the same rule the sitemap
- * applies, so a collection is never reachable by URL while being deliberately
- * withheld from crawlers.
+ * scheduled outside its own start/end window. Every collection entry point goes
+ * through this — the dynamic route, the four hand-written seasonal pages, the
+ * navigation and the sidebar filter — so a collection can never be withheld
+ * from one surface while remaining reachable through another.
  */
 export async function getPublicCollectionBySlug(
   slug: string,
@@ -501,57 +445,121 @@ export async function getPublicCollectionBySlug(
     description: data.description_en,
   };
 }
-export async function searchProducts(query: string, limit = 12) {
-  const term = query.trim();
-  if (term.length < 2) return [];
-  if (!isSupabaseConfigured())
-    return devFallbackProductList({ query: term, pageSize: limit }, "Supabase not configured");
+
+/** Every collection a shopper may currently browse, for the navigation. */
+export async function getVisibleCollections(): Promise<PublicCollection[]> {
+  if (!isSupabaseConfigured()) return [];
   const supabase = await createClient();
-  const safe = term.replaceAll(/[%(),]/g, " ");
-  const [directResult, taggedResult, categoryResult, collectionResult] = await Promise.all([
-    supabase.from("products").select("*").eq("status", "active").or(`name_en.ilike.%${safe}%,product_code.ilike.%${safe}%`).limit(limit),
-    supabase.from("products").select("*").eq("status", "active").contains("tags", [term.toLowerCase()]).limit(limit),
-    supabase.from("categories").select("id").eq("is_active", true).or(`name_en.ilike.%${safe}%`),
-    supabase.from("collections").select("id").eq("is_active", true).or(`name_en.ilike.%${safe}%`),
-  ]);
-  if (
-    [directResult.error, taggedResult.error, categoryResult.error, collectionResult.error]
-      .some(isMissingCatalogSchema)
-  ) {
-    return devFallbackProductList({ query: term, pageSize: limit }, "products table missing");
-  }
-  const direct = directResult.data;
-  const tagged = taggedResult.data;
-  const categories = categoryResult.data;
-  const collections = collectionResult.data;
-  const [categoryProducts, collectionProducts] = await Promise.all([
-    categories?.length
-      ? supabase.from("products").select("*").eq("status", "active").in("category_id", categories.map((item) => item.id)).limit(limit)
-      : Promise.resolve({ data: [] as ProductRow[] }),
-    collections?.length
-      ? supabase.from("products").select("*").eq("status", "active").in("collection_id", collections.map((item) => item.id)).limit(limit)
-      : Promise.resolve({ data: [] as ProductRow[] }),
-  ]);
-  const unique = new Map<string, ProductRow>();
-  [...(direct ?? []), ...(tagged ?? []), ...(categoryProducts.data ?? []), ...(collectionProducts.data ?? [])]
-    .forEach((row) => unique.set(row.id, row));
-  return hydrateProducts([...unique.values()].slice(0, limit));
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabase
+    .from("collections")
+    .select("slug,name_en,description_en,sort_order")
+    .eq("is_active", true)
+    .or(`starts_at.is.null,starts_at.lte.${nowIso}`)
+    .or(`ends_at.is.null,ends_at.gt.${nowIso}`)
+    .order("sort_order");
+
+  if (error || !data) return [];
+  return data.map((row) => ({
+    slug: row.slug,
+    name: row.name_en,
+    description: row.description_en,
+  }));
 }
 
-export async function getProductBySlug(slug: string) {
-  if (!isSupabaseConfigured())
-    return devFallbackProductBySlug(slug, "Supabase not configured");
+export async function searchProducts(query: string, limit = 12): Promise<Product[]> {
+  const term = query.trim();
+  if (term.length < 2) return [];
+  return (await getProducts({ query: term, pageSize: Math.min(MAX_PAGE_SIZE, limit) })).products;
+}
+
+/**
+ * One product, with its approved reviews.
+ *
+ * This is the only place review bodies are read. The listing pages show a star
+ * rating from the product's denormalised average instead, so a 24-product grid
+ * no longer drags several hundred review rows across the wire to render none of
+ * them.
+ */
+export async function getProductBySlug(slug: string): Promise<Product | null> {
+  if (!isSupabaseConfigured()) return null;
+
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("products")
-    .select("*")
-    .eq("slug", slug)
-    .eq("status", "active")
-    .maybeSingle();
-  if (isMissingCatalogSchema(error))
-    return devFallbackProductBySlug(slug, "products table missing");
-  if (error || !data) return null;
-  return (await hydrateProducts([data]))[0] ?? null;
+  const { data, error } = await supabase.rpc("search_catalogue", {
+    p_filters: { slug, limit: 1, offset: 0 } as Json,
+  });
+
+  if (error) {
+    logCatalogueFailure("catalogue.product_lookup_failed", error, "search_catalogue", { slug });
+    return null;
+  }
+
+  const items = Array.isArray((data as { items?: unknown })?.items)
+    ? (data as { items: unknown[] }).items
+    : [];
+  const product = toProduct(items[0]);
+  if (!product) return null;
+
+  const { data: reviewRows } = await supabase
+    .from("reviews")
+    .select("id,author_name,rating,created_at,comment_en")
+    .eq("product_id", product.id)
+    .eq("status", "approved")
+    .order("created_at", { ascending: false })
+    .limit(50);
+
+  product.reviews = (reviewRows ?? []).map((review) => ({
+    id: review.id,
+    author: review.author_name,
+    rating: review.rating,
+    date: review.created_at.slice(0, 10),
+    comment: review.comment_en,
+  }));
+
+  return product;
+}
+
+/**
+ * Several products by slug, in one query.
+ *
+ * The wishlist rail and the recently-viewed rail each hold a list of slugs. The
+ * catalogue API used to resolve them with one getProductBySlug() per slug, and
+ * each of those hydrated images, variants, reviews, category and collection —
+ * so a twelve-slug request became dozens of database round trips for a strip of
+ * thumbnails.
+ */
+export async function getProductsBySlugs(slugs: string[]): Promise<Product[]> {
+  const unique = [...new Set(slugs.map((slug) => slug.trim()).filter(Boolean))].slice(0, 24);
+  if (unique.length === 0 || !isSupabaseConfigured()) return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("search_catalogue", {
+    p_filters: { slugs: unique, limit: unique.length, offset: 0 } as Json,
+  });
+
+  if (error) {
+    logCatalogueFailure("catalogue.slug_lookup_failed", error, "search_catalogue", {
+      count: unique.length,
+    });
+    return [];
+  }
+
+  const items = Array.isArray((data as { items?: unknown })?.items)
+    ? (data as { items: unknown[] }).items
+    : [];
+  const bySlug = new Map(
+    items
+      .map((item) => toProduct(item))
+      .filter((product): product is Product => product !== null)
+      .map((product) => [product.slug, product]),
+  );
+
+  // Returned in the order the caller asked for, so a "recently viewed" rail
+  // stays in the order the customer actually viewed them.
+  return unique.flatMap((slug) => {
+    const product = bySlug.get(slug);
+    return product ? [product] : [];
+  });
 }
 
 export async function getRelatedProducts(product: Product, limit = 4) {
@@ -561,4 +569,3 @@ export async function getRelatedProducts(product: Product, limit = 4) {
   });
   return result.products.filter((item) => item.id !== product.id).slice(0, limit);
 }
-

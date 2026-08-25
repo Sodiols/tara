@@ -5,9 +5,8 @@ import Link from "next/link";
 import { Sparkles, HeartHandshake, Leaf, MapPin } from "lucide-react";
 import { img, stockImages } from "@/lib/images";
 import { Button } from "@/components/ui/Button";
-import { siteConfig } from "@/data/site";
 
-export function AboutClient() {
+export function AboutClient({ storeAddress }: { storeAddress: string }) {
 
   const values = [
     {
@@ -109,7 +108,7 @@ export function AboutClient() {
         <div className="max-w-[700px] mx-auto px-5 md:px-8 lg:px-12 text-center">
           <MapPin size={30} strokeWidth={1.25} className="text-wine mx-auto mb-4" />
           <h2 className="font-serif text-3xl text-ink mb-3">{"Visit Us in Sylhet"}</h2>
-          <p className="text-muted mb-8">{siteConfig.address}</p>
+          <p className="text-muted mb-8">{storeAddress}</p>
           <div className="flex flex-wrap gap-4 justify-center">
             <Link href="/contact">
               <Button variant="outline">{"Contact Us"}</Button>
