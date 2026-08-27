@@ -69,8 +69,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
     ...(categoryPath
       ? [
           {
-            // The category's real name, not its URL slug — "Ready Three Piece"
-            // rather than "ready-three-piece".
+            // The category's real name, not its URL slug — "Two Piece" rather
+            // than "ready-three-piece". The two differ deliberately: the slug is
+            // the stable identifier, the name is the wording.
             name: product.categoryName ?? humanizeSlug(product.category),
             item: `${siteConfig.url}${categoryPath}`,
           },

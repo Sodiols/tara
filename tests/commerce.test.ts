@@ -173,15 +173,14 @@ describe("store time zone", () => {
 describe("input validation", () => {
   const validCheckout = {
     customerName: "Ayesha Rahman",
+    customerEmail: "ayesha@example.com",
     customerPhone: "+880 1712 345678",
     shippingAddress: {
-      division: "Sylhet",
-      // Sylhet district, not Zakiganj. This fixture used to name an upazila,
-      // because the dropdown it was written against listed upazilas as
-      // districts. The schema now validates the pair, so the fixture had to be
-      // corrected -- which is the test failing usefully.
-      district: "Sylhet",
-      fullAddress: "House 12, Road 3, Batortal Bazar",
+      address: "House 12, Road 3, Batortal Bazar",
+      apartment: "",
+      city: "Sylhet",
+      postalCode: "3100",
+      deliveryZone: "inside_sylhet" as const,
     },
     items: [{ variantId: "3f1e9a6c-1d2b-4c3a-9e5f-6a7b8c9d0e1f", quantity: 2 }],
   };
@@ -192,59 +191,100 @@ describe("input validation", () => {
     if (parsed.success) assert.equal(parsed.data.customerPhone, "01712345678");
   });
 
-  test("normalises the shipping location to its canonical spelling", () => {
-    const parsed = checkoutSchema.safeParse({
-      ...validCheckout,
-      shippingAddress: { ...validCheckout.shippingAddress, division: "  chittagong ", district: "comilla" },
-    });
-    assert.equal(parsed.success, true);
-    if (parsed.success) {
-      assert.equal(parsed.data.shippingAddress.division, "Chattogram");
-      assert.equal(parsed.data.shippingAddress.district, "Cumilla");
+  test("the delivery zone is restricted to the two real zones", () => {
+    // The zone is what the delivery fee is calculated from, on both sides. A
+    // free-text value would reach calculate_delivery_fee_for_zone() and be
+    // priced as "outside" -- silently charging a Sylhet customer the wrong fee.
+    for (const deliveryZone of ["dhaka", "inside", "", "INSIDE_SYLHET", null, 1]) {
+      const parsed = checkoutSchema.safeParse({
+        ...validCheckout,
+        shippingAddress: { ...validCheckout.shippingAddress, deliveryZone },
+      });
+      assert.equal(parsed.success, false, `accepted zone ${JSON.stringify(deliveryZone)}`);
+    }
+
+    for (const deliveryZone of ["inside_sylhet", "outside_sylhet"] as const) {
+      const parsed = checkoutSchema.safeParse({
+        ...validCheckout,
+        shippingAddress: { ...validCheckout.shippingAddress, deliveryZone },
+      });
+      assert.equal(parsed.success, true, deliveryZone);
     }
   });
 
-  test("rejects a shipping location that is not a real place", () => {
-    // The old schema accepted any two strings of two characters or more, so a
-    // crafted request could create a real order for "x1 / y2" -- stock
-    // deducted, coupon spent, nothing deliverable.
+  test("requires a street address and a city", () => {
     for (const shippingAddress of [
-      { division: "x1", district: "y2", fullAddress: "House 12, Road 3" },
-      { division: "Sylhet", district: "Zakiganj", fullAddress: "House 12, Road 3" },
-      { division: "", district: "", fullAddress: "House 12, Road 3" },
+      { ...validCheckout.shippingAddress, address: "" },
+      { ...validCheckout.shippingAddress, address: "Road 3" },
+      { ...validCheckout.shippingAddress, city: "" },
+      { ...validCheckout.shippingAddress, city: "S" },
     ]) {
       const parsed = checkoutSchema.safeParse({ ...validCheckout, shippingAddress });
       assert.equal(parsed.success, false, JSON.stringify(shippingAddress));
     }
   });
 
-  test("rejects a real district paired with the wrong division", () => {
-    // Both names exist; the pair does not. A length check cannot catch this,
-    // and it is the case that reached place_order().
+  test("apartment and postal code are optional and normalise to null when blank", () => {
     const parsed = checkoutSchema.safeParse({
       ...validCheckout,
-      shippingAddress: { division: "Sylhet", district: "Dhaka", fullAddress: "House 12, Road 3" },
+      shippingAddress: { ...validCheckout.shippingAddress, apartment: "", postalCode: "" },
     });
-    assert.equal(parsed.success, false);
+    assert.equal(parsed.success, true);
+    if (parsed.success) {
+      assert.equal(parsed.data.shippingAddress.apartment, null);
+      assert.equal(parsed.data.shippingAddress.postalCode, null);
+    }
   });
 
-  test("drops upazila and area, which checkout no longer collects", () => {
+  test("a postal code that is filled in has to look like one", () => {
+    // Optional, but not a place to put anything at all: a stored value that is
+    // obviously not a postal code is worse than an absent one, because a
+    // courier will try to use it.
+    for (const postalCode of ["31", "31000", "abcd", "3 100"]) {
+      const parsed = checkoutSchema.safeParse({
+        ...validCheckout,
+        shippingAddress: { ...validCheckout.shippingAddress, postalCode },
+      });
+      assert.equal(parsed.success, false, `accepted postal code ${postalCode}`);
+    }
+  });
+
+  test("checkout no longer accepts a division or a district", () => {
+    // Those fields were removed from the form, and the schema strips anything
+    // it does not declare -- so a stale client cannot keep sending them and
+    // have them silently written onto the order.
     const parsed = checkoutSchema.safeParse({
       ...validCheckout,
       shippingAddress: {
         ...validCheckout.shippingAddress,
+        division: "Sylhet",
+        district: "Sylhet",
         upazila: "Zakiganj",
-        area: "Batortal",
       },
     });
     assert.equal(parsed.success, true);
     if (parsed.success) {
       assert.deepEqual(Object.keys(parsed.data.shippingAddress).sort(), [
-        "district",
-        "division",
-        "fullAddress",
+        "address",
+        "apartment",
+        "city",
+        "deliveryZone",
+        "postalCode",
       ]);
     }
+  });
+
+  test("a valid customer email is required for confirmation and receipt", () => {
+    const { customerEmail: _unused, ...withoutEmail } = {
+      ...validCheckout,
+      customerEmail: "",
+    };
+    assert.equal(checkoutSchema.safeParse(withoutEmail).success, false);
+    assert.equal(checkoutSchema.safeParse({ ...validCheckout, customerEmail: "not-an-email" }).success, false);
+    assert.equal(
+      checkoutSchema.safeParse({ ...validCheckout, customerEmail: "a@b.com" }).success,
+      true,
+    );
   });
 
   test("rejects an order with no items", () => {
@@ -372,7 +412,7 @@ describe("input validation", () => {
   });
 
   test("a category slug must be lowercase, hyphenated and free of path characters", () => {
-    const base = { nameEn: "Ready Three Piece" };
+    const base = { nameEn: "Two Piece" };
     for (const slug of ["Ready Piece", "ready/piece", "../etc/passwd", "ready--piece", "-ready"]) {
       assert.equal(
         adminCategorySchema.safeParse({ ...base, slug }).success,

@@ -19,22 +19,21 @@ import {
 } from "@/components/admin/ui";
 import { OrderStatusBadge, PaymentStatusBadge } from "@/components/admin/status";
 import { OrderActions } from "@/components/admin/OrderActions";
-import type { Json } from "@/types/database";
+import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
+import { formatOrderAddress } from "@/lib/order-address";
+import { deliveryZoneLabel } from "@/lib/delivery";
+import { formatSizeLabel } from "@/lib/product-size";
 
-function addressLines(raw: Json | null): string[] {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
-  const address = raw as Record<string, unknown>;
-  const pick = (key: string) => {
-    const value = address[key];
-    return typeof value === "string" && value.trim() ? value.trim() : null;
-  };
-  return [
-    pick("fullAddress"),
-    [pick("area"), pick("upazila")].filter(Boolean).join(", ") || null,
-    [pick("district"), pick("division")].filter(Boolean).join(", ") || null,
-    pick("postalCode"),
-  ].filter((line): line is string => Boolean(line));
-}
+/**
+ * Both address shapes render here.
+ *
+ * `formatOrderAddress()` understands the legacy division/district snapshot and
+ * the current address/city/zone one, so an order placed before the checkout
+ * change still shows the address the courier was actually given. The three
+ * admin screens used to each carry their own copy of this logic, which is how
+ * the invoice and the packing slip came to format the same address two
+ * different ways.
+ */
 
 export default async function AdminOrderDetailPage({
   params,
@@ -42,11 +41,19 @@ export default async function AdminOrderDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const [staff, detail] = await Promise.all([requireStaff(), getAdminOrderDetail(id)]);
+  const [staff, detail, settings] = await Promise.all([
+    requireStaff(),
+    getAdminOrderDetail(id),
+    getPublicStoreSettings(),
+  ]);
   if (!detail) notFound();
 
   const { order, items, events, notes, adjustments, audit, couponCode } = detail;
-  const address = addressLines(order.shipping_address);
+  const shipping = formatOrderAddress(order.shipping_address, {
+    inside: deliveryZoneLabel("inside_sylhet", settings.delivery),
+    outside: deliveryZoneLabel("outside_sylhet", settings.delivery),
+  });
+  const address = shipping.lines;
   const pipelineIndex = FULFILMENT_PIPELINE.indexOf(order.status);
 
   const printLinkClass =
@@ -162,7 +169,7 @@ export default async function AdminOrderDetailPage({
                     </Td>
                     <Td>
                       <span className="block">
-                        {item.size} · {item.colour_en}
+                        {formatSizeLabel(item.size)} · {item.colour_en}
                       </span>
                       <span className="block font-sans text-xs text-muted">SKU {item.sku}</span>
                     </Td>
@@ -400,6 +407,17 @@ export default async function AdminOrderDetailPage({
                 </address>
               ) : (
                 <p className="font-sans text-sm text-muted">No address recorded.</p>
+              )}
+              {/*
+                The zone the order was actually priced from. Worth showing
+                explicitly: it is what the delivery fee was calculated against,
+                so a query about the charge is answered here rather than by
+                guessing from the city.
+              */}
+              {shipping.zoneLabel && (
+                <Badge tone="neutral" className="mt-3">
+                  {shipping.zoneLabel}
+                </Badge>
               )}
               {order.customer_note && (
                 <div className="mt-4 rounded-control border border-border bg-taraIvory/60 p-3">

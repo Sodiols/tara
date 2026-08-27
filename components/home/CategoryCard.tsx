@@ -7,10 +7,9 @@ interface CategoryCardProps {
   name: string;
   exploreLabel: string;
   href: string;
-  priority?: boolean;
 }
 
-export function CategoryCard({ image, name, exploreLabel, href, priority }: CategoryCardProps) {
+export function CategoryCard({ image, name, exploreLabel, href }: CategoryCardProps) {
   return (
     <Link
       href={href}
@@ -20,8 +19,7 @@ export function CategoryCard({ image, name, exploreLabel, href, priority }: Cate
         src={image}
         alt={name}
         fill
-        priority={priority}
-        sizes="(max-width: 768px) 100vw, 33vw"
+        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 50vw, 25vw"
         className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
       />
       <div className="absolute inset-0 bg-gradient-to-t from-ink/55 via-ink/5 to-transparent" />

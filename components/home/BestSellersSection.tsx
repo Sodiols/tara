@@ -1,5 +1,3 @@
-"use client";
-
 import type { Product } from "@/types";
 import { ProductCarousel } from "@/components/product/ProductCarousel";
 import { Container } from "@/components/layout/Container";

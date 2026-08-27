@@ -1,5 +1,3 @@
-"use client";
-
 import Image from "next/image";
 import { Container } from "@/components/layout/Container";
 import { LinkButton } from "@/components/ui/Button";
@@ -24,10 +22,10 @@ export function HeroSection() {
             </p>
             <div className="flex flex-wrap gap-4 mt-9">
               <LinkButton href="/new-arrivals" size="lg">
-                {"Unstitched Three Piece"}
+                {"Unready Three Piece"}
               </LinkButton>
               <LinkButton href="/collection" variant="secondary" size="lg">
-                {"Ready Three Piece"}
+                {"Two Piece"}
               </LinkButton>
             </div>
           </div>
@@ -38,7 +36,7 @@ export function HeroSection() {
               alt="Woman wearing a beige TARA three piece with maroon embroidery and a matching dupatta"
               fill
               priority
-              quality={90}
+              quality={75}
               sizes="(max-width: 1024px) 100vw, 52vw"
               // Anchored to the top rather than the centre. This panel is
               // portrait while the photograph is landscape, so on tablet widths

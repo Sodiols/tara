@@ -3,6 +3,9 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getOrderForPrint } from "@/lib/supabase/queries/admin";
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
+import { formatOrderAddress } from "@/lib/order-address";
+import { deliveryZoneLabel } from "@/lib/delivery";
+import { formatSizeLabel } from "@/lib/product-size";
 import { formatDate } from "@/lib/format";
 import { formatBdPhone } from "@/lib/phone";
 import { PrintToolbar } from "@/components/admin/PrintDocument";
@@ -13,20 +16,16 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
-function addressLines(raw: Json | null): string[] {
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
-  const address = raw as Record<string, unknown>;
-  const pick = (key: string) => {
-    const value = address[key];
-    return typeof value === "string" && value.trim() ? value.trim() : null;
-  };
-  return [
-    pick("fullAddress"),
-    [pick("area"), pick("upazila")].filter(Boolean).join(", ") || null,
-    [pick("district"), pick("division")].filter(Boolean).join(", ") || null,
-    pick("postalCode"),
-  ].filter((line): line is string => Boolean(line));
-}
+/**
+ * Both address shapes render here.
+ *
+ * `formatOrderAddress()` understands the legacy division/district snapshot and
+ * the current address/city/zone one, so an order placed before the checkout
+ * change still shows the address the courier was actually given. The three
+ * admin screens used to each carry their own copy of this logic, which is how
+ * the invoice and the packing slip came to format the same address two
+ * different ways.
+ */
 
 export default async function PackingSlipPage({
   params,
@@ -41,7 +40,11 @@ export default async function PackingSlipPage({
   if (!detail) notFound();
 
   const { order, items } = detail;
-  const address = addressLines(order.shipping_address);
+  const shipping = formatOrderAddress(order.shipping_address, {
+    inside: deliveryZoneLabel("inside_sylhet", settings.delivery),
+    outside: deliveryZoneLabel("outside_sylhet", settings.delivery),
+  });
+  const address = shipping.lines;
   const totalUnits = items.reduce((sum, item) => sum + item.quantity, 0);
 
   return (
@@ -133,7 +136,7 @@ export default async function PackingSlipPage({
                 <td className="border-b border-border/60 py-3 font-medium">
                   {item.product_name_en}
                 </td>
-                <td className="border-b border-border/60 py-3">{item.size}</td>
+                <td className="border-b border-border/60 py-3">{formatSizeLabel(item.size)}</td>
                 <td className="border-b border-border/60 py-3">{item.colour_en}</td>
                 <td className="border-b border-border/60 py-3 font-mono text-xs">{item.sku}</td>
                 <td className="border-b border-border/60 py-3 text-right text-base font-semibold">

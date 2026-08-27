@@ -4,8 +4,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { Heart } from "lucide-react";
 import { useWishlistStore } from "@/store/wishlistStore";
-import { useCartStore } from "@/store/cartStore";
 import { useToastStore } from "@/store/toastStore";
+import { useAddToCart } from "@/hooks/useAddToCart";
+import { ONE_SIZE } from "@/lib/product-size";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { Container } from "@/components/layout/Container";
 import { PriceDisplay } from "@/components/product/PriceDisplay";
@@ -18,20 +19,22 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 
 export function WishlistClient() {
   const { items, removeItem } = useWishlistStore();
-  const addItem = useCartStore((s) => s.addItem);
+  const addToCart = useAddToCart();
   const { addToast } = useToastStore();
 
   const handleMoveToBag = async (item: (typeof items)[number]) => {
     const response = await fetch(`/api/products?slugs=${encodeURIComponent(item.slug)}`);
     const [product] = response.ok ? await response.json() as Product[] : [];
-    if (!product) return addToast("A selected product option is no longer available.");
-    addItem({
+    if (!product) {
+      return addToast("A selected product option is no longer available.", "error");
+    }
+    addToCart({
       productId: item.productId,
       slug: item.slug,
       name: item.name,
       image: item.image,
       price: item.price,
-      size: product.sizes[0] ?? "One Size",
+      size: product.sizes[0] ?? ONE_SIZE,
       colour: product.colours[0]?.name ?? "",
       quantity: 1,
     });
@@ -42,7 +45,6 @@ export function WishlistClient() {
         await toggleWishlistAction(item.productId, false);
       }
     }
-    addToast("Add to Cart");
   };
 
   const handleRemove = async (productId: string) => {
@@ -51,7 +53,7 @@ export function WishlistClient() {
       const supabase = createClient();
       if ((await supabase.auth.getUser()).data.user) {
         const result = await toggleWishlistAction(productId, false);
-        if (!result) addToast("Your changes could not be saved.");
+        if (!result) addToast("Your changes could not be saved.", "error");
       }
     }
   };

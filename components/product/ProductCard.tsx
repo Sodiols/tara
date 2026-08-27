@@ -5,12 +5,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { Eye } from "lucide-react";
 import type { Product } from "@/types";
-import { useCartStore } from "@/store/cartStore";
-import { useToastStore } from "@/store/toastStore";
+import { useAddToCart } from "@/hooks/useAddToCart";
 import { PriceDisplay } from "./PriceDisplay";
 import { WishlistButton } from "./WishlistButton";
 import { Button } from "@/components/ui/Button";
 import { resolveCategoryLabel } from "@/lib/utils";
+import { ONE_SIZE } from "@/lib/product-size";
 
 interface ProductCardProps {
   product: Product;
@@ -18,8 +18,7 @@ interface ProductCardProps {
 }
 
 export function ProductCard({ product, onQuickView }: ProductCardProps) {
-  const addItem = useCartStore((s) => s.addItem);
-  const { addToast } = useToastStore();
+  const addToCart = useAddToCart();
   const [hovered, setHovered] = useState(false);
 
   const secondaryImage = product.images[1] ?? product.images[0];
@@ -27,17 +26,16 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
   const handleAddToBag = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    addItem({
+    addToCart({
       productId: product.id,
       slug: product.slug,
       name: product.name,
       image: product.images[0],
       price: product.price,
-      size: product.sizes[0] ?? "One Size",
+      size: product.sizes[0] ?? ONE_SIZE,
       colour: product.colours[0]?.name ?? "",
       quantity: 1,
     });
-    addToast("Add to Cart");
   };
 
   return (
@@ -57,13 +55,13 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
           sizes="(max-width: 768px) 50vw, 25vw"
           className={`object-cover transition-opacity duration-300 ${hovered && product.images[1] ? "opacity-0" : "opacity-100"}`}
         />
-        {product.images[1] && (
+        {product.images[1] && hovered && (
           <Image
             src={secondaryImage}
             alt=""
             fill
             sizes="(max-width: 768px) 50vw, 25vw"
-            className={`object-cover transition-opacity duration-300 absolute inset-0 ${hovered ? "opacity-100" : "opacity-0"}`}
+            className="object-cover absolute inset-0"
           />
         )}
 

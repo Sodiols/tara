@@ -1,5 +1,15 @@
 import { test, expect } from "./fixtures";
 
+async function openMobileFilters(
+  page: import("@playwright/test").Page,
+  projectName: string,
+) {
+  if (projectName !== "mobile") return;
+  if (await page.getByRole("dialog", { name: /^filters$/i }).isVisible().catch(() => false)) return;
+  await page.getByRole("button", { name: /^filters/i }).click();
+  await expect(page.getByRole("dialog", { name: /^filters$/i })).toBeVisible();
+}
+
 /**
  * The catalogue: filtering, sorting, pagination and URL state.
  *
@@ -11,8 +21,9 @@ import { test, expect } from "./fixtures";
  */
 
 test.describe("filters live in the URL", () => {
-  test("choosing a filter puts it in the address bar", async ({ page }) => {
+  test("choosing a filter puts it in the address bar", async ({ page }, testInfo) => {
     await page.goto("/new-arrivals");
+    await openMobileFilters(page, testInfo.project.name);
 
     const inStock = page.getByRole("checkbox", { name: /in stock only/i }).first();
     await inStock.check();
@@ -21,35 +32,43 @@ test.describe("filters live in the URL", () => {
     await expect(inStock).toBeChecked();
   });
 
-  test("a filtered listing survives a reload", async ({ page }) => {
+  test("a filtered listing survives a reload", async ({ page }, testInfo) => {
     await page.goto("/new-arrivals?availability=in-stock&sort=price-low");
+    await openMobileFilters(page, testInfo.project.name);
     await expect(page.getByRole("checkbox", { name: /in stock only/i }).first()).toBeChecked();
     await expect(page.getByLabel(/sort by/i)).toHaveValue("price-low");
 
     await page.reload();
+    await openMobileFilters(page, testInfo.project.name);
     await expect(page.getByRole("checkbox", { name: /in stock only/i }).first()).toBeChecked();
     await expect(page.getByLabel(/sort by/i)).toHaveValue("price-low");
   });
 
-  test("the back button undoes a filter", async ({ page }) => {
+  test("the back button undoes a filter", async ({ page }, testInfo) => {
     await page.goto("/new-arrivals");
+    await openMobileFilters(page, testInfo.project.name);
     await page.getByRole("checkbox", { name: /on sale/i }).first().check();
     await page.waitForURL(/sale=true/, { timeout: 20_000 });
 
     await page.goBack();
     await expect(page).not.toHaveURL(/sale=true/);
+    await openMobileFilters(page, testInfo.project.name);
     await expect(page.getByRole("checkbox", { name: /on sale/i }).first()).not.toBeChecked();
   });
 
-  test("two price bands are kept apart in the URL", async ({ page }) => {
+  test("two price bands are kept apart in the URL", async ({ page }, testInfo) => {
     // Ticking two non-adjacent bands must not collapse into one wide range.
     await page.goto("/collection");
+    await openMobileFilters(page, testInfo.project.name);
     const bands = page.getByRole("checkbox", { name: /৳/ });
     const count = await bands.count();
     test.skip(count < 4, "The price filter offers fewer than four bands here.");
 
     await bands.nth(0).check();
     await page.waitForURL(/price=/, { timeout: 20_000 });
+    if (testInfo.project.name === "mobile" && !(await bands.nth(3).isVisible().catch(() => false))) {
+      await openMobileFilters(page, testInfo.project.name);
+    }
     await bands.nth(3).check();
     await page.waitForURL(/price=[^&]*,/, { timeout: 20_000 });
 
@@ -59,8 +78,9 @@ test.describe("filters live in the URL", () => {
     expect(url.searchParams.get("minPrice")).toBeNull();
   });
 
-  test("clearing all filters returns to the bare path", async ({ page }) => {
+  test("clearing all filters returns to the bare path", async ({ page }, testInfo) => {
     await page.goto("/new-arrivals?availability=in-stock&sale=true");
+    await openMobileFilters(page, testInfo.project.name);
     await page.getByRole("button", { name: /clear all/i }).first().click();
     await page.waitForURL((url) => url.search === "", { timeout: 20_000 });
   });

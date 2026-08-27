@@ -5,8 +5,8 @@ import { resolveDivision, type Division } from "@/data/bangladesh-geography";
  *
  * The announcement bar, the bag drawer, the bag page, the checkout summary, the
  * order record, the invoice and the packing slip all read the fee from this
- * module, and `public.calculate_delivery_fee()` in
- * supabase/migrations/0009_catalogue_geography_and_delivery.sql implements exactly the
+ * module, and `calculate_delivery_fee_for_zone()` in
+ * supabase/migrations/0013_checkout_delivery_zone.sql implements exactly the
  * same branches. The database stays authoritative — `place_order()` recomputes
  * the fee and writes its own figure — so this module exists to make sure the
  * number a customer is shown is the number they will actually be charged.
@@ -17,9 +17,27 @@ import { resolveDivision, type Division } from "@/data/bangladesh-geography";
  *   subtotal reaches the threshold. Everywhere else pays the outside-Sylhet
  *   charge no matter how large the order is.
  *
- * Every part of it is configurable from /admin/settings, so a later change of
- * mind is a settings edit rather than a code change.
+ * DELIVERY ZONES
+ * --------------
+ * Checkout no longer asks for a division and a district. It asks the one
+ * question the price actually depends on: inside Sylhet, or outside it. That is
+ * the `DeliveryZone`, and it is what the customer picks, what travels to the
+ * server, and what the order stores.
+ *
+ * Division is still understood, because saved addresses and every order placed
+ * before this release carry one — `zoneForDivision()` maps it across. But a
+ * division is never invented from a zone: an order shipping outside Sylhet
+ * records that it ships outside Sylhet, not a guess at which division it is.
  */
+
+/** The two zones the customer chooses between. */
+export type DeliveryZone = "inside_sylhet" | "outside_sylhet";
+
+export const DELIVERY_ZONES: readonly DeliveryZone[] = ["inside_sylhet", "outside_sylhet"];
+
+export function isDeliveryZone(value: unknown): value is DeliveryZone {
+  return value === "inside_sylhet" || value === "outside_sylhet";
+}
 
 export interface DeliverySettings {
   /** Charge for an address inside the free-delivery division. */
@@ -46,38 +64,53 @@ export interface DeliveryQuote {
   fee: number;
   /** True when the fee was waived by the free-delivery rule. */
   isFree: boolean;
+  /** The zone this quote was priced for. */
+  zone: DeliveryZone;
   /** True when the address is in the free-delivery-eligible division. */
   isEligibleDivision: boolean;
   /**
    * How much more the customer would have to spend to qualify. Null when they
-   * already qualify, or when their division can never qualify.
+   * already qualify, or when their zone can never qualify.
    */
   amountToFreeDelivery: number | null;
 }
 
 /**
- * Quotes delivery for a subtotal and a destination.
+ * The zone a division belongs to.
  *
- * An unrecognised or missing division is priced as "outside": it is the higher
- * of the two charges, so a display bug can never quote a customer less than the
- * database will charge. Checkout rejects an unrecognised division outright, so
- * this branch only ever affects the pre-address screens.
+ * Used for saved addresses and for orders placed before checkout asked the
+ * question directly. An unrecognised or missing division resolves to "outside",
+ * which is the safe direction: it is the higher of the two charges, so a
+ * display bug can never quote a customer less than the database will charge.
  */
-export function quoteDelivery(
-  subtotal: number,
+export function zoneForDivision(
   division: unknown,
+  settings: DeliverySettings = DEFAULT_DELIVERY_SETTINGS,
+): DeliveryZone {
+  const resolved = resolveDivision(division);
+  return resolved === settings.freeDeliveryDivision ? "inside_sylhet" : "outside_sylhet";
+}
+
+/**
+ * Quotes delivery for a subtotal and a chosen zone.
+ *
+ * This is the primary entry point: it takes the thing the customer actually
+ * selected rather than a location the price has to be inferred from.
+ */
+export function quoteDeliveryForZone(
+  subtotal: number,
+  zone: DeliveryZone,
   settings: DeliverySettings = DEFAULT_DELIVERY_SETTINGS,
 ): DeliveryQuote {
   const amount = Number.isFinite(subtotal) && subtotal > 0 ? subtotal : 0;
-  const resolved = resolveDivision(division);
-  const isEligibleDivision = resolved === settings.freeDeliveryDivision;
-
+  const isEligibleDivision = zone === "inside_sylhet";
   const baseFee = Math.max(0, isEligibleDivision ? settings.insideFee : settings.outsideFee);
 
   if (!isEligibleDivision || !settings.freeDeliveryEnabled) {
     return {
       fee: baseFee,
       isFree: baseFee === 0,
+      zone,
       isEligibleDivision,
       amountToFreeDelivery: null,
     };
@@ -85,15 +118,31 @@ export function quoteDelivery(
 
   const threshold = Math.max(0, settings.freeDeliveryThreshold);
   if (amount >= threshold) {
-    return { fee: 0, isFree: true, isEligibleDivision, amountToFreeDelivery: 0 };
+    return { fee: 0, isFree: true, zone, isEligibleDivision, amountToFreeDelivery: 0 };
   }
 
   return {
     fee: baseFee,
     isFree: baseFee === 0,
+    zone,
     isEligibleDivision,
     amountToFreeDelivery: threshold - amount,
   };
+}
+
+/**
+ * Quotes delivery for a subtotal and a destination division.
+ *
+ * Kept for the saved address book and for rendering historic orders, both of
+ * which hold a division rather than a zone. New code should prefer
+ * `quoteDeliveryForZone()`.
+ */
+export function quoteDelivery(
+  subtotal: number,
+  division: unknown,
+  settings: DeliverySettings = DEFAULT_DELIVERY_SETTINGS,
+): DeliveryQuote {
+  return quoteDeliveryForZone(subtotal, zoneForDivision(division, settings), settings);
 }
 
 /** Convenience wrapper for the many places that only need the number. */
@@ -103,6 +152,22 @@ export function deliveryFeeFor(
   settings?: DeliverySettings,
 ): number {
   return quoteDelivery(subtotal, division, settings).fee;
+}
+
+/**
+ * The customer-facing name of a zone.
+ *
+ * Derived from the configured division rather than hardcoded to "Sylhet", so
+ * moving the free-delivery offer to another division relabels the checkout
+ * instead of leaving it lying.
+ */
+export function deliveryZoneLabel(
+  zone: DeliveryZone,
+  settings: DeliverySettings = DEFAULT_DELIVERY_SETTINGS,
+): string {
+  return zone === "inside_sylhet"
+    ? `Inside ${settings.freeDeliveryDivision}`
+    : `Outside ${settings.freeDeliveryDivision}`;
 }
 
 /**

@@ -13,7 +13,12 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatPrice } from "@/lib/utils";
 import { Container } from "@/components/layout/Container";
 import { previewCouponAction } from "@/lib/supabase/actions/checkout";
-import { freeDeliveryHeadline, quoteDelivery, type DeliverySettings } from "@/lib/delivery";
+import { formatSizeLabel } from "@/lib/product-size";
+import {
+  freeDeliveryHeadline,
+  quoteDeliveryForZone,
+  type DeliverySettings,
+} from "@/lib/delivery";
 
 interface BagClientProps {
   deliverySettings: DeliverySettings;
@@ -21,6 +26,7 @@ interface BagClientProps {
 
 export function BagClient({ deliverySettings }: BagClientProps) {
   const { items, removeItem, updateQuantity, subtotal } = useCartStore();
+  const hasHydrated = useCartStore((state) => state.hasHydrated);
   const addWishlistItem = useWishlistStore((s) => s.addItem);
   const { addToast } = useToastStore();
   const [coupon, setCoupon] = useState("");
@@ -29,16 +35,11 @@ export function BagClient({ deliverySettings }: BagClientProps) {
   const [checkingCoupon, setCheckingCoupon] = useState(false);
 
   const subtotalValue = subtotal();
-  // The destination is not known until checkout, so the bag quotes the rate for
-  // the free-delivery division -- the lowest the customer could pay -- and says
-  // so. Quoting a single flat fee here, as this page used to, was wrong for
-  // everyone outside Sylhet and wrong again for everyone inside it who had
-  // passed the threshold.
-  const deliveryQuote = quoteDelivery(
-    subtotalValue,
-    deliverySettings.freeDeliveryDivision,
-    deliverySettings,
-  );
+  // The delivery area is not chosen until checkout, so the bag quotes the
+  // inside rate -- the lowest the customer could pay -- and says so. Quoting a
+  // single flat fee here, as this page used to, was wrong for everyone outside
+  // Sylhet and wrong again for everyone inside it who had passed the threshold.
+  const deliveryQuote = quoteDeliveryForZone(subtotalValue, "inside_sylhet", deliverySettings);
   const deliveryFee = subtotalValue === 0 ? 0 : deliveryQuote.fee;
   const total = Math.max(0, subtotalValue + deliveryFee - couponDiscount);
   const deliveryHeadline = freeDeliveryHeadline(deliverySettings);
@@ -79,6 +80,20 @@ export function BagClient({ deliverySettings }: BagClientProps) {
     setCouponMessage("");
   };
 
+  if (!hasHydrated) {
+    return (
+      <Container className="py-8 sm:py-12 lg:py-14">
+        <Breadcrumb items={[{ label: "Shopping Bag" }]} />
+        <h1 className="mt-3 mb-8 font-serif text-3xl text-ink sm:text-4xl lg:text-[2.75rem]">
+          {"Shopping Bag"}
+        </h1>
+        <p className="py-16 text-center text-sm text-muted" role="status">
+          {"Loading your bag…"}
+        </p>
+      </Container>
+    );
+  }
+
   return (
     <Container className="py-8 sm:py-12 lg:py-14">
       <Breadcrumb items={[{ label: "Shopping Bag" }]} />
@@ -99,7 +114,7 @@ export function BagClient({ deliverySettings }: BagClientProps) {
         <div className="grid lg:grid-cols-3 gap-10">
           <div className="lg:col-span-2 flex flex-col divide-y divide-border">
             {items.map((item) => (
-              <div key={`${item.productId}-${item.size}-${item.colour}`} className="flex gap-4 py-6 first:pt-0">
+              <div key={`${item.productId}-${item.size}-${item.colour}`} data-testid="cart-line" className="flex gap-4 py-6 first:pt-0">
                 <Link href={`/product/${item.slug}`} className="relative w-24 h-[120px] sm:w-28 sm:h-[140px] shrink-0 bg-beige">
                   <Image src={item.image} alt={item.name} fill sizes="120px" className="object-cover" />
                 </Link>
@@ -113,7 +128,7 @@ export function BagClient({ deliverySettings }: BagClientProps) {
                     </span>
                   </div>
                   <p className="text-xs text-muted mt-1">
-                    {item.size} / {item.colour}
+                    {formatSizeLabel(item.size)} / {item.colour}
                   </p>
                   <div className="flex items-center justify-between mt-auto pt-3">
                     <div className="flex items-center rounded-control border border-border">
@@ -124,7 +139,7 @@ export function BagClient({ deliverySettings }: BagClientProps) {
                       >
                         <Minus size={14} />
                       </button>
-                      <span className="w-8 text-center text-sm">{item.quantity}</span>
+                      <span className="w-8 text-center text-sm" data-testid="cart-quantity">{item.quantity}</span>
                       <button
                         aria-label="Increase quantity"
                         className="p-2.5 hover:bg-beige transition-colors"
@@ -177,7 +192,7 @@ export function BagClient({ deliverySettings }: BagClientProps) {
               </div>
             )}
             <p className="text-xs text-muted -mt-2">
-              {"The exact delivery charge depends on your division and is confirmed at checkout."}
+              {"The exact delivery charge depends on your delivery area and is confirmed at checkout."}
             </p>
             {deliveryHeadline && (
               <p className="text-xs text-muted -mt-2">{deliveryHeadline}</p>

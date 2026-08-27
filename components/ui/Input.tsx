@@ -8,6 +8,14 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   /** Guidance shown before anything goes wrong — e.g. a password rule. */
   hint?: string;
   success?: boolean;
+  /**
+   * Class applied to the field's wrapper rather than to the input itself.
+   *
+   * Needed so a field can span a column in a grid: `className` lands on the
+   * `<input>`, which is not the grid item, so a `sm:col-span-2` there does
+   * nothing.
+   */
+  containerClassName?: string;
 }
 
 /**
@@ -23,10 +31,10 @@ function describedBy(inputId: string | undefined, hint?: string, error?: string)
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
-  ({ label, error, hint, success, id, className, ...props }, ref) => {
+  ({ label, error, hint, success, id, className, containerClassName, ...props }, ref) => {
     const inputId = id ?? props.name ?? (label ? slugify(label) : undefined);
     return (
-      <div className="flex flex-col gap-1.5">
+      <div className={cn("flex flex-col gap-1.5", containerClassName)}>
         {label && (
           <label htmlFor={inputId} className="font-sans font-medium text-sm text-ink">
             {label}

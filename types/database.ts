@@ -334,6 +334,11 @@ export interface Database {
         status: NotificationStatus;
         attempts: number;
         last_error: string | null;
+        order_id: string | null;
+        contact_message_id: string | null;
+        provider_message_id: string | null;
+        dispatch_token: string | null;
+        claimed_at: string | null;
         created_at: string;
         sent_at: string | null;
       }>;
@@ -504,6 +509,19 @@ export interface Database {
         };
         Returns: string;
       };
+      review_eligibility: {
+        Args: { p_product_id: string };
+        Returns: Json;
+      };
+      submit_verified_review: {
+        Args: {
+          p_product_id: string;
+          p_rating: number;
+          p_title: string;
+          p_comment: string;
+        };
+        Returns: Json;
+      };
       subscribe_newsletter: {
         Args: {
           p_email: string;
@@ -544,6 +562,23 @@ export interface Database {
         Args: { p_order_id: string };
         Returns: Json;
       };
+      claim_contact_notification: {
+        Args: { p_message_id: string; p_customer_email: string };
+        Returns: Json;
+      };
+      claim_notification_admin: { Args: { p_id: string }; Returns: Json };
+      notification_order_snapshot: {
+        Args: { p_id: string; p_dispatch_token: string };
+        Returns: Json;
+      };
+      notification_contact_snapshot: {
+        Args: { p_id: string; p_dispatch_token: string };
+        Returns: Json;
+      };
+      get_customer_receipt: {
+        Args: { p_order_number: string; p_tracking_token?: string | null };
+        Returns: Json;
+      };
       confirm_notification_dispatch: {
         Args: {
           p_id: string;
@@ -553,11 +588,22 @@ export interface Database {
         };
         Returns: boolean;
       };
+      confirm_notification_dispatch_v2: {
+        Args: {
+          p_id: string;
+          p_dispatch_token: string;
+          p_status: "sent" | "failed" | "skipped";
+          p_error?: string | null;
+          p_provider_message_id?: string | null;
+        };
+        Returns: boolean;
+      };
       store_notification_recipient: {
         Args: { p_id: string; p_dispatch_token: string };
         Returns: string | null;
       };
       requeue_notification: { Args: { p_id: string }; Returns: boolean };
+      can_send_test_email: { Args: Record<PropertyKey, never>; Returns: boolean };
     };
     Enums: {
       user_role: UserRole;

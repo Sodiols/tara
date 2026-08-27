@@ -29,7 +29,11 @@ export async function GET(request: NextRequest) {
 
   const query = request.nextUrl.searchParams.get("q")?.trim().slice(0, 100);
   if (query) {
-    return NextResponse.json(await searchProducts(query, 8));
+    return NextResponse.json(await searchProducts(query, 8), {
+      headers: {
+        "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=120",
+      },
+    });
   }
 
   const slugs = request.nextUrl.searchParams
@@ -42,7 +46,11 @@ export async function GET(request: NextRequest) {
     .slice(0, MAX_SLUGS);
 
   if (slugs?.length) {
-    return NextResponse.json(await getProductsBySlugs(slugs));
+    return NextResponse.json(await getProductsBySlugs(slugs), {
+      headers: {
+        "Cache-Control": "public, max-age=0, s-maxage=60, stale-while-revalidate=300",
+      },
+    });
   }
 
   return NextResponse.json([]);

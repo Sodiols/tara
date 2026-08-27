@@ -1,11 +1,16 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type { Product } from "@/types";
 import { ProductCard } from "./ProductCard";
-import { QuickViewModal } from "./QuickViewModal";
 import { cn } from "@/lib/utils";
+
+const QuickViewModal = dynamic(
+  () => import("./QuickViewModal").then((module) => module.QuickViewModal),
+  { ssr: false },
+);
 
 interface ProductCarouselProps {
   products: Product[];
@@ -67,7 +72,9 @@ export function ProductCarousel({ products }: ProductCarouselProps) {
       >
         <ChevronRight size={18} />
       </button>
-      <QuickViewModal product={quickViewProduct} onClose={() => setQuickViewProduct(null)} />
+      {quickViewProduct ? (
+        <QuickViewModal product={quickViewProduct} onClose={() => setQuickViewProduct(null)} />
+      ) : null}
     </div>
   );
 }

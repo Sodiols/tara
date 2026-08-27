@@ -4,9 +4,9 @@ import type { ListingSearchParams } from "@/lib/product-listing";
 import { siteConfig } from "@/data/site";
 
 export const metadata: Metadata = {
-  title: "Ready Three Piece",
+  title: "Two Piece",
   description:
-    "Shop ready-to-wear three piece sets from TARA — stitched, finished and sized, ready to wear straight away.",
+    "Shop ready-to-wear two piece sets from TARA — stitched, finished and sized, ready to wear straight away.",
   alternates: { canonical: `${siteConfig.url}/ready-three-piece` },
 };
 
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 export default async function Page({ searchParams }: { searchParams: ListingSearchParams }) {
   return (
     <ProductListingSection
-      title="Ready Three Piece"
+      title="Two Piece"
       searchParams={searchParams}
       scope={{ category: "ready-three-piece" }}
     />

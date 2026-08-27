@@ -3,41 +3,16 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { logger, logFailure } from "@/lib/logger";
+import { parseOrderReceiptSnapshot } from "@/lib/order-receipt";
+import { generateOrderReceiptPdf } from "@/lib/pdf/order-receipt";
+import { getStoreIdentity } from "@/lib/supabase/queries/settings";
 import { getEmailProvider, isEmailConfigured } from "./provider";
-import { buildNotificationEmail, type NotificationPayload } from "./templates";
-
-/**
- * Drains the notification outbox for one order.
- *
- * THE RULE THIS EXISTS TO ENFORCE
- * -------------------------------
- * An order that has been written must never fail because an email did not go
- * out. `place_order()` has already committed by the time this runs; the stock is
- * deducted, the coupon is spent, the customer has an order number. So every path
- * through this module swallows its own failure, records it on the outbox row,
- * and returns. The caller does not await a result it would act on.
- *
- * HOW IT IS AUTHORISED WITHOUT A SERVICE ROLE KEY
- * -----------------------------------------------
- * `notification_outbox` holds customer email addresses, so anon cannot read it —
- * correctly. Rather than introducing a service-role key (which bypasses row
- * level security entirely and this project deliberately does not use anywhere),
- * the database hands out work through `claim_order_notifications()`, which
- * requires the order's 192-bit tracking token as proof that the caller is the
- * request that just created the order. Each claimed row comes with a single-use
- * dispatch token that `confirm_notification_dispatch()` checks, so knowing a
- * row id is not enough to mark somebody else's notification as sent.
- *
- * Claiming also moves the row to 'sending', so a retry cannot send twice; a row
- * stuck in 'sending' because the process died becomes claimable again after five
- * minutes.
- */
+import { buildContactNotificationEmail, buildOrderNotificationEmail, type ContactNotificationSnapshot } from "./templates";
 
 interface ClaimedNotification {
   id: string;
   template: string;
   recipient: string;
-  payload: NotificationPayload;
   dispatchToken: string;
 }
 
@@ -47,142 +22,124 @@ function toClaimed(raw: unknown): ClaimedNotification[] {
     if (!entry || typeof entry !== "object") return [];
     const row = entry as Record<string, unknown>;
     if (typeof row.id !== "string" || typeof row.dispatchToken !== "string") return [];
-    return [
-      {
-        id: row.id,
-        template: typeof row.template === "string" ? row.template : "",
-        recipient: typeof row.recipient === "string" ? row.recipient : "",
-        payload: (row.payload ?? {}) as NotificationPayload,
-        dispatchToken: row.dispatchToken,
-      },
-    ];
+    return [{ id: row.id, template: typeof row.template === "string" ? row.template : "", recipient: typeof row.recipient === "string" ? row.recipient : "", dispatchToken: row.dispatchToken }];
   });
 }
 
-async function deliver(
-  supabase: Awaited<ReturnType<typeof createClient>>,
-  claimed: ClaimedNotification[],
-  storeName: string,
-) {
+function parseContact(value: unknown): ContactNotificationSnapshot | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== "string" || typeof row.name !== "string" || typeof row.email !== "string" || typeof row.message !== "string") return null;
+  return {
+    id: row.id,
+    name: row.name,
+    email: row.email,
+    phone: typeof row.phone === "string" ? row.phone : "",
+    subject: typeof row.subject === "string" ? row.subject : "",
+    message: row.message,
+    createdAt: typeof row.createdAt === "string" ? row.createdAt : "",
+  };
+}
+
+async function confirm(supabase: Awaited<ReturnType<typeof createClient>>, notification: ClaimedNotification, status: "sent" | "failed" | "skipped", error?: string, providerId?: string) {
+  const result = await supabase.rpc("confirm_notification_dispatch_v2", {
+    p_id: notification.id,
+    p_dispatch_token: notification.dispatchToken,
+    p_status: status,
+    p_error: error ?? null,
+    p_provider_message_id: providerId ?? null,
+  });
+  if (result.error) logFailure("email.confirm_failed", result.error, { notificationId: notification.id, status });
+}
+
+async function deliver(supabase: Awaited<ReturnType<typeof createClient>>, claimed: ClaimedNotification[]) {
   const provider = getEmailProvider();
+  const store = await getStoreIdentity();
 
   for (const notification of claimed) {
-    let recipient = notification.recipient;
+    try {
+      let recipient = notification.recipient;
+      if (recipient === "store") {
+        const { data, error } = await supabase.rpc("store_notification_recipient", { p_id: notification.id, p_dispatch_token: notification.dispatchToken });
+        if (error) throw error;
+        recipient = typeof data === "string" ? data.trim() : "";
+      }
+      if (!recipient) {
+        await confirm(supabase, notification, "skipped", "No recipient configured");
+        continue;
+      }
 
-    // The store's own copy goes to the private order_notification_email
-    // setting, which anon cannot read directly. The database returns it only to
-    // a caller holding this row's dispatch token.
-    if (recipient === "store") {
-      const { data } = await supabase.rpc("store_notification_recipient", {
-        p_id: notification.id,
-        p_dispatch_token: notification.dispatchToken,
-      });
-      recipient = typeof data === "string" ? data : "";
+      let message;
+      if (notification.template === "admin_contact_message") {
+        const { data, error } = await supabase.rpc("notification_contact_snapshot", { p_id: notification.id, p_dispatch_token: notification.dispatchToken });
+        if (error) throw error;
+        const contact = parseContact(data);
+        if (!contact) throw new Error("Contact notification snapshot is unavailable");
+        message = buildContactNotificationEmail(recipient, contact, store);
+      } else {
+        const { data, error } = await supabase.rpc("notification_order_snapshot", { p_id: notification.id, p_dispatch_token: notification.dispatchToken });
+        if (error) throw error;
+        const snapshot = parseOrderReceiptSnapshot(data);
+        if (!snapshot) throw new Error("Order notification snapshot is unavailable");
+        message = buildOrderNotificationEmail(notification.template, recipient, snapshot, store);
+        if (message && notification.template === "order_placed" && notification.recipient !== "store") {
+          const receipt = await generateOrderReceiptPdf(snapshot, store);
+          message.attachments = [{ filename: `TARA-Order-${snapshot.order.orderNumber}.pdf`, content: receipt, contentType: "application/pdf" }];
+        }
+      }
+
+      if (!message) {
+        await confirm(supabase, notification, "skipped", "No email is configured for this event");
+        continue;
+      }
+      message.idempotencyKey = `tara-notification-${notification.id}`;
+      const outcome = await provider.send(message);
+      await confirm(supabase, notification, outcome.status, outcome.status === "sent" ? undefined : outcome.reason, outcome.status === "sent" ? outcome.providerId : undefined);
+      logger.info("email.dispatched", { notificationId: notification.id, template: notification.template, outcome: outcome.status });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message.slice(0, 300) : "Notification delivery failed";
+      await confirm(supabase, notification, "failed", reason);
+      logFailure("email.notification_failed", error, { notificationId: notification.id, template: notification.template });
     }
-
-    if (!recipient) {
-      await supabase.rpc("confirm_notification_dispatch", {
-        p_id: notification.id,
-        p_dispatch_token: notification.dispatchToken,
-        p_ok: false,
-        p_error: "No recipient configured",
-      });
-      continue;
-    }
-
-    const message = buildNotificationEmail(
-      notification.template,
-      recipient,
-      notification.payload,
-      storeName,
-    );
-
-    if (!message) {
-      // A status with no customer-facing email. Recorded as handled rather than
-      // left queued forever.
-      await supabase.rpc("confirm_notification_dispatch", {
-        p_id: notification.id,
-        p_dispatch_token: notification.dispatchToken,
-        p_ok: true,
-        p_error: null,
-      });
-      continue;
-    }
-
-    const outcome = await provider.send(message);
-
-    await supabase.rpc("confirm_notification_dispatch", {
-      p_id: notification.id,
-      p_dispatch_token: notification.dispatchToken,
-      p_ok: outcome.status === "sent",
-      p_error: outcome.status === "sent" ? null : outcome.reason,
-    });
-
-    logger.info("email.dispatched", {
-      template: notification.template,
-      outcome: outcome.status,
-      // Masked by the logger's redaction rules.
-      recipient,
-    });
   }
 }
 
-/**
- * Sends the notifications for an order the caller has just created.
- *
- * Fire-and-forget by design. Call it without awaiting from a checkout path, or
- * await it where a slightly slower response is acceptable — either way it
- * cannot throw.
- */
-export async function dispatchOrderNotifications(
-  orderNumber: string,
-  trackingToken: string,
-  storeName: string,
-): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-
-  // Nothing to do, but the outbox rows stay 'queued' so an administrator can
-  // see exactly what would have been sent and retry once a provider is set up.
-  if (!isEmailConfigured()) {
-    logger.debug("email.not_configured", { orderNumber });
-    return;
-  }
-
-  try {
-    const supabase = await createClient();
-    const { data, error } = await supabase.rpc("claim_order_notifications", {
-      p_order_number: orderNumber,
-      p_tracking_token: trackingToken,
-    });
-    if (error) throw error;
-
-    await deliver(supabase, toClaimed(data), storeName);
-  } catch (error) {
-    // The order exists and is correct. A failed notification is a problem for
-    // the operator, not for the customer's order.
-    logFailure("email.dispatch_failed", error, { orderNumber });
-  }
-}
-
-/**
- * The same, for a staff member who has just moved an order's status. Authorised
- * by the caller's own `orders.view` permission rather than a tracking token.
- */
-export async function dispatchOrderNotificationsAsStaff(
-  orderId: string,
-  storeName: string,
-): Promise<void> {
+export async function dispatchOrderNotifications(orderNumber: string, trackingToken: string, _storeName?: string): Promise<void> {
   if (!isSupabaseConfigured() || !isEmailConfigured()) return;
-
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc("claim_order_notifications_admin", {
-      p_order_id: orderId,
-    });
+    const { data, error } = await supabase.rpc("claim_order_notifications", { p_order_number: orderNumber, p_tracking_token: trackingToken });
     if (error) throw error;
+    await deliver(supabase, toClaimed(data));
+  } catch (error) { logFailure("email.dispatch_failed", error, { orderNumber }); }
+}
 
-    await deliver(supabase, toClaimed(data), storeName);
-  } catch (error) {
-    logFailure("email.dispatch_failed", error, { orderId });
-  }
+export async function dispatchOrderNotificationsAsStaff(orderId: string, _storeName?: string): Promise<void> {
+  if (!isSupabaseConfigured() || !isEmailConfigured()) return;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("claim_order_notifications_admin", { p_order_id: orderId });
+    if (error) throw error;
+    await deliver(supabase, toClaimed(data));
+  } catch (error) { logFailure("email.dispatch_failed", error, { orderId }); }
+}
+
+export async function dispatchContactNotification(messageId: string, customerEmail: string): Promise<void> {
+  if (!isSupabaseConfigured() || !isEmailConfigured()) return;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("claim_contact_notification", { p_message_id: messageId, p_customer_email: customerEmail });
+    if (error) throw error;
+    await deliver(supabase, toClaimed(data));
+  } catch (error) { logFailure("email.contact_dispatch_failed", error, { messageId }); }
+}
+
+export async function dispatchNotificationAsAdmin(notificationId: string): Promise<void> {
+  if (!isSupabaseConfigured() || !isEmailConfigured()) return;
+  try {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc("claim_notification_admin", { p_id: notificationId });
+    if (error) throw error;
+    await deliver(supabase, toClaimed(data));
+  } catch (error) { logFailure("email.admin_retry_failed", error, { notificationId }); }
 }

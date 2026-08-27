@@ -44,6 +44,10 @@ migration has been applied.
 | `0009_catalogue_geography_and_delivery.sql` | Everything a customer touches. `bd_divisions` / `bd_districts` (8 divisions, 64 districts) and `resolve_shipping_location()`; the delivery settings and `calculate_delivery_fee()`; `search_catalogue()` and `catalogue_facets()` — every filter applied before pagination, a deterministic sort, a true result count and no review bodies; `collection_is_visible()`; a `place_order()` that validates the destination before locking stock and prices delivery by the Sylhet rule; and the address book reduced to division and district, validated by the same function checkout uses. |
 | `0010_security_operations_and_email.sql` | The operational half. Storage writes require `catalogue.manage`; atomic `set_product_primary_image()`, `reorder_product_images()`, `delete_product_image()`, `replace_cart_items()` and `merge_cart_items()`; `consume_public_rate_limit()` for the endpoints that had no durable limit; token-based newsletter unsubscribe (and the email-based function dropped); five dead settings removed; and the claim/confirm pair that lets the server drain `notification_outbox` without a service-role key. |
 | `0011_drop_bengali_columns.sql` | **The only migration that destroys data.** Drops every `_bn` column and both `preferred_language` columns, and rebuilds the product search index. Separate so it can be reviewed — or deferred indefinitely — on its own: 0009 and 0010 work whether or not it has run. |
+| `0012_repair_function_grants.sql` | The authoritative EXECUTE grant list, and the fix for the fault below. Re-run it any time the back office stops being able to save. |
+| `0013_checkout_delivery_zone_and_hijab.sql` | Checkout asks for a delivery zone (inside/outside Sylhet) instead of a division and district. Adds `calculate_delivery_fee_for_zone()` and `normalize_shipping_address()`, and a `place_order()` that accepts the new shipping shape **and** the legacy one. Adds the Hijab category. |
+| `0014_rename_category_wording.sql` | Renames two categories for customers — Ready Three Piece → **Two Piece**, Unstitched Three Piece → **Unready Three Piece** — and the placeholder size `Unstitched` → `Unready`. **The slugs are not renamed** (see 0007 for why). `order_items.size` is left alone: order snapshots are not rewritten. |
+| `0015_email_receipts_reviews_and_contact_notifications.sql` | Adds verified-purchase review eligibility/submission RPCs, contact-message outbox records, token-scoped order/contact snapshots for email and receipts, exact provider delivery results, secure staff retry, and a durable test-email rate limit. It is additive and does not recreate existing tables or policies. |
 
 ---
 
@@ -155,6 +159,87 @@ select public.resolve_shipping_location('Sylhet', 'Dhaka');     -- null (wrong d
 -- Every settings key still in the table.
 select key, is_public from public.store_settings order by key;
 ```
+
+---
+
+## If the back office stops being able to save anything
+
+Symptom: the admin panel loads, staff can sign in and read, but every write —
+order status, payment status, stock, settings, coupons, roles — fails. Often the
+storefront catalogue is empty for signed-out visitors at the same time.
+
+Check:
+
+```sql
+select public.has_permission('orders.view');
+```
+
+If that raises `42501 permission denied for function has_permission`, the
+EXECUTE grants have been stripped. Run:
+
+```sql
+-- supabase/migrations/0012_repair_function_grants.sql
+```
+
+**How it happens.** `0000_baseline_schema.sql` used to end with
+`revoke execute on all functions in schema public …` followed by a grant list
+of the nine functions that existed when it was written. The file is documented
+as safe to re-run — and it is, for objects. It was not for grants: running it a
+second time, after 0002, re-executed that REVOKE and restored only its own nine,
+silently removing EXECUTE from every function the later migrations had granted.
+
+Nothing errors and nothing logs, because the functions still exist and the
+policies still exist. The back office simply loses the ability to write.
+
+The REVOKE has been removed from the baseline, so this cannot recur. `0012` is
+now the single authoritative grant list and is idempotent.
+
+---
+
+## Replaying the baseline
+
+`0000_baseline_schema.sql` builds a **fresh** database. It is not a repair tool
+for one that has already been migrated, and running it on one stops with:
+
+```
+ERROR: 42703: column "name_bn" does not exist
+LINE 435: to_tsvector('simple', coalesce(name_en,'') || ' ' || coalesce(name_bn,'') …
+```
+
+`0011` dropped every Bengali column; the baseline still describes the schema
+that had them. The file is wrapped in a single `begin; … commit;`, so a failure
+anywhere rolls the whole thing back — **the database is unchanged, and nothing
+needs repairing afterwards.**
+
+Do not patch line 435 to get past it. That index is the first of roughly forty
+references the baseline makes to a pre-`0011` schema, and the ones after it are
+worse than an error:
+
+| Line | What replaying it would do |
+| --- | --- |
+| 353, 368, 402, 408 | `add column if not exists` re-creates `care_instructions_bn`, `comment_bn` and `preferred_language` — columns `0011` deliberately dropped |
+| 734 | `create or replace function public.place_order(…)` installs the **2024 bilingual** version, discarding the COD/delivery-zone rewrites from `0004`, `0006`, `0008`, `0009` and `0013`. Checkout would start writing `product_name_bn` again and rejecting the shipping shape the site sends |
+| 698, 906, 978, 1044 | same overwrite for `validate_coupon`, `admin_update_order_status`, `get_guest_order_tracking` and `subscribe_newsletter` |
+| 1296–1305 | re-seeds the category names, undoing `0014`'s *Two Piece* and *Unready Three Piece* wording |
+
+To find out what a database is actually missing, run the state check rather than
+the baseline:
+
+```sql
+select
+  to_regclass('public.products')                                    as schema_installed,
+  to_regprocedure('public.calculate_delivery_fee_for_zone(numeric,text)')
+                                                                    as migration_0013,
+  (select name_en from public.categories where slug = 'ready-three-piece')
+                                                                    as should_be_two_piece,
+  exists (select 1 from information_schema.columns
+          where table_name = 'products' and column_name = 'name_bn')
+                                                                    as before_0011;
+```
+
+Then run only the migration files above the level it reports, in filename order.
+If the back office is refusing to save, run `0012` — that one is a repair tool
+and is safe to re-run at any time.
 
 ---
 

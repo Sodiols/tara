@@ -1,11 +1,13 @@
 "use server";
 
+import { after } from "next/server";
 import { contactSchema, newsletterSchema } from "@/lib/validation";
 import { createClient } from "../server";
 import { isSupabaseConfigured } from "../env";
 import { guardPublicAction, consumeDurableLimit } from "@/lib/rate-limit";
 import { logFailure } from "@/lib/logger";
 import type { ActionResult } from "./auth";
+import { dispatchContactNotification } from "@/lib/email/dispatch";
 
 /**
  * Public, unauthenticated forms.
@@ -74,7 +76,7 @@ export async function submitContactAction(input: unknown): Promise<ActionResult>
   }
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("submit_contact_message", {
+  const { data, error } = await supabase.rpc("submit_contact_message", {
     p_name: parsed.data.name,
     p_email: parsed.data.email,
     p_phone: parsed.data.phone || "",
@@ -86,6 +88,11 @@ export async function submitContactAction(input: unknown): Promise<ActionResult>
   if (error) {
     logFailure("contact.submit_failed", error);
     return publicError(error.message);
+  }
+  if (typeof data === "string") {
+    after(async () => {
+      await dispatchContactNotification(data, parsed.data.email);
+    });
   }
   return { ok: true, message: "Your message has been sent. We'll get back to you soon." };
 }

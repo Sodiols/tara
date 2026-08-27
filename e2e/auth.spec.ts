@@ -22,7 +22,7 @@ test.describe("registration and sign-in", () => {
 
     await page.getByRole("button", { name: /create account|register|sign up/i }).click();
     // Nothing should have been submitted with an empty form.
-    await expect(page).toHaveURL(/\/register/);
+    await expect(page).toHaveURL(/\/login\?mode=register/);
   });
 
   test("an invalid sign-in is refused without saying which field was wrong", async ({ page }) => {
@@ -41,7 +41,7 @@ test.describe("registration and sign-in", () => {
     await page.getByLabel(/email/i).first().fill("nobody@example.com");
     await page.getByRole("button", { name: /send|reset/i }).first().click();
     // The same confirmation regardless, so the form cannot enumerate accounts.
-    await expect(page.getByText(/check your (email|inbox)|if that address/i)).toBeVisible({
+    await expect(page.getByText(/check your (email|inbox)|if (that address|an account exists)/i)).toBeVisible({
       timeout: 20_000,
     });
   });
@@ -90,6 +90,9 @@ test.describe("signed-in customer", () => {
     await expect(page).toHaveURL(/\/login/);
   });
 
+  // The saved address book still collects a division and a district: it is a
+  // reusable record, and the geography is what validates it. Checkout no longer
+  // shows either -- see e2e/purchase.spec.ts.
   test("a saved address must name a real division and district", async ({ page }) => {
     await signIn(page, CUSTOMER_EMAIL, CUSTOMER_PASSWORD);
     await page.goto("/account/addresses");

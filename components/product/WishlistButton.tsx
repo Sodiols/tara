@@ -6,7 +6,6 @@ import { useToastStore } from "@/store/toastStore";
 import { useHasMounted } from "@/hooks/useHasMounted";
 import type { Product } from "@/types";
 import { cn } from "@/lib/utils";
-import { createClient } from "@/lib/supabase/client";
 import { toggleWishlistAction } from "@/lib/supabase/actions/wishlist";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 
@@ -33,7 +32,7 @@ export function WishlistButton({ product, className }: WishlistButtonProps) {
       previousPrice: product.previousPrice,
     });
     const user = isSupabaseConfigured()
-      ? (await createClient().auth.getUser()).data.user
+      ? (await (await import("@/lib/supabase/client")).createClient().auth.getUser()).data.user
       : null;
     if (user) {
       const saved = await toggleWishlistAction(product.id, !active);

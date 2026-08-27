@@ -1,7 +1,8 @@
 import "server-only";
 
 import { cache } from "react";
-import { createClient } from "../server";
+import { unstable_cache } from "next/cache";
+import { createPublicServerClient } from "../public-server";
 import { isSupabaseConfigured } from "../env";
 import { siteConfig } from "@/data/site";
 import {
@@ -72,10 +73,10 @@ const DEFAULTS: PublicStoreSettings = {
  * Cached per render pass: the header, footer, checkout and invoice all want
  * these values, and one round trip is enough for all of them.
  */
-export const getPublicStoreSettings = cache(async (): Promise<PublicStoreSettings> => {
+const readPublicStoreSettings = unstable_cache(async (): Promise<PublicStoreSettings> => {
   if (!isSupabaseConfigured()) return DEFAULTS;
 
-  const supabase = await createClient();
+  const supabase = createPublicServerClient();
   const { data, error } = await supabase.from("store_settings").select("key,value");
   if (error || !data) return DEFAULTS;
 
@@ -125,7 +126,14 @@ export const getPublicStoreSettings = cache(async (): Promise<PublicStoreSetting
     codEnabled: asBoolean("cod_enabled", DEFAULTS.codEnabled),
     maintenanceMode: asBoolean("maintenance_mode", DEFAULTS.maintenanceMode),
   };
+}, ["public-store-settings-v1"], {
+  revalidate: 60,
+  tags: ["store-settings"],
 });
+
+// React cache deduplicates callers inside one render; the Next data cache
+// shares the same public result across requests and server instances.
+export const getPublicStoreSettings = cache(readPublicStoreSettings);
 
 export async function getDeliverySettings(): Promise<DeliverySettings> {
   return (await getPublicStoreSettings()).delivery;

@@ -4,9 +4,9 @@ import type { ListingSearchParams } from "@/lib/product-listing";
 import { siteConfig } from "@/data/site";
 
 export const metadata: Metadata = {
-  title: "Unstitched Three Piece",
+  title: "Unready Three Piece",
   description:
-    "Shop premium unstitched three piece sets from TARA — lawn, cotton, and georgette fabrics with hand embroidery, ready to be tailored to your fit.",
+    "Shop premium unready three piece sets from TARA — lawn, cotton, and georgette fabrics with hand embroidery, ready to be tailored to your fit.",
   alternates: { canonical: `${siteConfig.url}/unstitched-three-piece` },
 };
 
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 export default async function Page({ searchParams }: { searchParams: ListingSearchParams }) {
   return (
     <ProductListingSection
-      title="Unstitched Three Piece"
+      title="Unready Three Piece"
       searchParams={searchParams}
       scope={{ category: "unstitched-three-piece" }}
     />

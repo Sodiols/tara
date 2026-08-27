@@ -16,6 +16,7 @@ import {
   adminInputClass,
 } from "@/components/admin/ui";
 import { StockBadge } from "@/components/admin/status";
+import { formatSizeLabel } from "@/lib/product-size";
 import { InventoryAdjuster } from "@/components/admin/InventoryAdjuster";
 
 type SearchParams = {
@@ -210,7 +211,7 @@ export default async function AdminInventoryPage({
                             className="inline-block h-3 w-3 rounded-full border border-border"
                             style={{ backgroundColor: variant.colour_hex }}
                           />
-                          {variant.size} · {variant.colour_en}
+                          {formatSizeLabel(variant.size)} · {variant.colour_en}
                         </span>
                       </Td>
                       <Td className="font-mono text-xs">{variant.sku}</Td>
@@ -234,7 +235,7 @@ export default async function AdminInventoryPage({
                           variantId={variant.id}
                           sku={variant.sku}
                           currentStock={variant.stock_quantity}
-                          label={`${variant.products?.name_en ?? "Product"} — ${variant.size} / ${variant.colour_en}`}
+                          label={`${variant.products?.name_en ?? "Product"} — ${formatSizeLabel(variant.size)} / ${variant.colour_en}`}
                         />
                       </Td>
                     </tr>

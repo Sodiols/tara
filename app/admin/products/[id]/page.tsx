@@ -5,18 +5,47 @@ import { formatDateTime } from "@/lib/format";
 import { PageHeader, Badge } from "@/components/admin/ui";
 import { ProductStatusBadge } from "@/components/admin/status";
 import { ProductForm } from "@/components/admin/ProductForm";
-import { ProductInventory } from "@/components/admin/ProductInventory";
+import { ProductVariants } from "@/components/admin/ProductVariants";
+import { ProductImageLibrary } from "@/components/admin/ProductImageManager";
+import { ProductCreatedBanner } from "@/components/admin/ProductCreatedBanner";
 
+/**
+ * The product editor.
+ *
+ * The section order depends on why the staff member is here. Straight after
+ * creation (`?created=1`) the images are done and the variants are not, so
+ * variants come first and the page scrolls to them. On an ordinary edit the
+ * usual order applies: what the product is, what it looks like, then what can
+ * be bought.
+ */
 export default async function EditProductPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ created?: string }>;
 }) {
   const { id } = await params;
+  const { created } = await searchParams;
   const data = await getProductEditorData(id);
   if (!data) notFound();
 
   const { product, categories, collections, variants, images } = data;
+  const justCreated = created === "1";
+
+  const productForm = (
+    <ProductForm product={product} categories={categories} collections={collections} />
+  );
+  const variantsPanel = (
+    <ProductVariants
+      productId={product.id}
+      productCode={product.product_code}
+      productName={product.name_en}
+      variants={variants}
+      autoOpen={justCreated}
+    />
+  );
+  const imagesPanel = <ProductImageLibrary productId={product.id} images={images} />;
 
   return (
     <>
@@ -42,10 +71,14 @@ export default async function EditProductPage({
         }
       />
 
+      {justCreated && (
+        <ProductCreatedBanner imageCount={images.length} variantCount={variants.length} />
+      )}
+
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <ProductStatusBadge status={product.status} />
         <Badge tone="neutral">{product.product_code}</Badge>
-        <Badge tone="neutral">
+        <Badge tone={variants.length === 0 ? "warning" : "neutral"}>
           {variants.length} variant{variants.length === 1 ? "" : "s"}
         </Badge>
         <Badge tone="neutral">
@@ -59,13 +92,19 @@ export default async function EditProductPage({
       </div>
 
       <div className="flex flex-col gap-5">
-        <ProductForm product={product} categories={categories} collections={collections} />
-        <ProductInventory
-          productId={product.id}
-          productName={product.name_en}
-          variants={variants}
-          images={images}
-        />
+        {justCreated ? (
+          <>
+            {variantsPanel}
+            {productForm}
+            {imagesPanel}
+          </>
+        ) : (
+          <>
+            {productForm}
+            {imagesPanel}
+            {variantsPanel}
+          </>
+        )}
       </div>
     </>
   );

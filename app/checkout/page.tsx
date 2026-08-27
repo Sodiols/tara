@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { CheckoutClient } from "@/components/cart/CheckoutClient";
+import { CartCheckoutClient } from "@/components/cart/CartCheckoutClient";
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 import { getCheckoutPrefill } from "@/lib/supabase/queries/account";
 
@@ -18,12 +18,13 @@ export default async function CheckoutPage() {
   ]);
 
   return (
-    <CheckoutClient
+    <CartCheckoutClient
       deliverySettings={settings.delivery}
       // Cash on delivery is the only method, so switching it off closes
       // ordering. The form says so up front rather than letting a customer fill
       // it in and meet `cod_disabled` from the database at the last step.
       codEnabled={settings.codEnabled}
+      supportPhone={settings.supportPhone}
       prefill={prefill}
     />
   );

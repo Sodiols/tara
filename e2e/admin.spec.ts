@@ -103,5 +103,32 @@ test.describe("admin panel", () => {
     await firstProduct.click();
     await page.waitForURL("**/admin/products/**");
     await expect(page.getByRole("heading").first()).toBeVisible();
+
+    // The editor shows the images the product HAS, and keeps the uploader
+    // behind a button: on this screen adding more is optional extra management,
+    // not the next step of a workflow the staff member has already finished.
+    const images = page.locator("#images");
+    await expect(images).toBeVisible();
+    await expect(images.getByText(/\d+ \/ 12 images/)).toBeVisible();
+    await expect(images.locator('input[type="file"]')).toHaveCount(0);
+
+    await images.getByRole("button", { name: /add images/i }).click();
+    await expect(images.getByText(/add product images/i)).toBeVisible();
+  });
+
+  test("the create screen asks for the images once, before the product exists", async ({
+    page,
+  }) => {
+    await page.goto("/admin/products/new");
+
+    // One image control on the whole screen. The old flow had one here and a
+    // second waiting on the editor immediately afterwards, which is what made
+    // creating a product feel like being asked for the same files twice.
+    await expect(page.getByText(/add product images/i)).toHaveCount(1);
+    await expect(page.getByRole("button", { name: /^create product$/i })).toBeVisible();
+
+    // Nothing on this screen promises a second step for images.
+    await expect(page.getByText(/save the product first/i)).toHaveCount(0);
+    await expect(page.getByText(/add its variants and images/i)).toHaveCount(0);
   });
 });

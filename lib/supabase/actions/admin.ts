@@ -1,7 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, updateTag } from "next/cache";
 import { z } from "zod";
+import { after } from "next/server";
 import { requirePermission } from "../auth";
 import { createClient } from "../server";
 import type { ActionResult } from "./auth";
@@ -14,6 +15,8 @@ import {
   adminRoleSchema,
   adminSettingsSchema,
   adminVariantSchema,
+  missingForActiveProduct,
+  productFormValues,
   orderTransitionSchema,
   paymentStatusSchema,
 } from "@/lib/validation";
@@ -26,8 +29,11 @@ import {
 } from "@/lib/product-images";
 import { inspectImageFile } from "@/lib/image-validation";
 import { logFailure, logger } from "@/lib/logger";
-import { dispatchOrderNotificationsAsStaff } from "@/lib/email/dispatch";
-import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
+import { isMissingExecuteGrant } from "../errors";
+import { dispatchNotificationAsAdmin, dispatchOrderNotificationsAsStaff } from "@/lib/email/dispatch";
+import { getStoreIdentity } from "@/lib/supabase/queries/settings";
+import { getEmailConfiguration, getEmailProvider } from "@/lib/email/provider";
+import { buildTestEmail } from "@/lib/email/templates";
 
 /**
  * Admin mutations.
@@ -63,6 +69,27 @@ function logAndFail(context: string, error: { message: string }, fallback: strin
   // Structured, scrubbed and reported to error monitoring. The raw message can
   // name SKUs, constraints and column values, so it never reaches the browser.
   logFailure(`admin.${context}`, error);
+
+  // Two different failures read almost the same and mean opposite things.
+  //
+  //   "permission denied for function X"  -- Postgres 42501. The function
+  //       exists but the role has no EXECUTE grant. A deployment fault: the
+  //       staff member has done nothing wrong and cannot fix it themselves.
+  //       This is what re-running 0000_baseline_schema.sql after a later
+  //       migration causes, and it silently disables every write in the back
+  //       office at once.
+  //
+  //   "permission_denied"                 -- raised by require_permission()
+  //       inside the function body. Working as designed: this role does not
+  //       hold the permission.
+  //
+  // Checked in this order because the first is more specific.
+  if (isMissingExecuteGrant(error)) {
+    return fail(
+      "This action is not available: the database is missing a permission grant. " +
+        "Apply the pending migrations in supabase/migrations and try again.",
+    );
+  }
   if (error.message.includes("permission_denied")) {
     return fail("Your role does not allow this action.");
   }
@@ -116,65 +143,26 @@ async function buildUniqueSlug(
   return `${root}-${Date.now().toString(36)}`;
 }
 
-export async function saveProductAction(
-  formData: FormData,
-): Promise<ActionResult<string | undefined>> {
-  await requirePermission("catalogue.manage");
+type ProductInput = z.infer<typeof adminProductSchema>;
 
-  const parsed = adminProductSchema.safeParse({
-    id: text(formData, "id") || undefined,
-    productCode: text(formData, "productCode"),
-    nameEn: text(formData, "nameEn"),
-    descriptionEn: text(formData, "descriptionEn"),
-    categoryId: text(formData, "categoryId"),
-    collectionId: text(formData, "collectionId"),
-    basePrice: text(formData, "basePrice"),
-    compareAtPrice: text(formData, "compareAtPrice"),
-    fabricEn: text(formData, "fabricEn"),
-    materialEn: text(formData, "materialEn"),
-    careInstructionsEn: text(formData, "careInstructionsEn"),
-    sizeGuideNoteEn: text(formData, "sizeGuideNoteEn"),
-    tags: text(formData, "tags"),
-    status: text(formData, "status"),
-    isNew: checkbox(formData, "isNew"),
-    isFeatured: checkbox(formData, "isFeatured"),
-    isBestSeller: checkbox(formData, "isBestSeller"),
-    seoTitle: text(formData, "seoTitle"),
-    seoDescription: text(formData, "seoDescription"),
-  });
+/**
+ * Reads the product form.
+ *
+ * Shared by `createProductAction` and `saveProductAction` so the two entry
+ * points cannot drift into validating different things — the browser runs the
+ * same schema before it starts uploading anything, but this is the copy that
+ * decides.
+ */
+function parseProductForm(formData: FormData) {
+  return adminProductSchema.safeParse(productFormValues(formData));
+}
 
-  if (!parsed.success) {
-    return fail(firstIssue(parsed.error), parsed.error.flatten().fieldErrors as FieldErrors);
-  }
-
-  const input = parsed.data;
-  const supabase = await createClient();
-
-  // The product code is staff-entered and must stay unique — catch a collision
-  // with a precise message rather than surfacing a raw unique-violation.
-  let duplicateQuery = supabase
-    .from("products")
-    .select("id")
-    .eq("product_code", input.productCode);
-  if (input.id) duplicateQuery = duplicateQuery.neq("id", input.id);
-  const { data: duplicate } = await duplicateQuery.maybeSingle();
-  if (duplicate) return fail("Another product already uses that product code.");
-
-  let slug: string;
-  if (input.id) {
-    // Keep the URL a product already has. Nothing in this form can change it.
-    const { data: existing } = await supabase
-      .from("products")
-      .select("slug")
-      .eq("id", input.id)
-      .maybeSingle();
-    if (!existing) return fail("That product no longer exists.");
-    slug = existing.slug;
-  } else {
-    slug = await buildUniqueSlug(supabase, input.nameEn);
-  }
-
-  const payload = {
+function productPayload(
+  input: ProductInput,
+  slug: string,
+  status: ProductInput["status"],
+) {
+  return {
     slug,
     product_code: input.productCode,
     name_en: input.nameEn,
@@ -192,53 +180,154 @@ export async function saveProductAction(
       .map((tag) => tag.trim())
       .filter(Boolean)
       .slice(0, 20),
-    status: input.status,
+    status,
     is_new: input.isNew,
     is_featured: input.isFeatured,
     is_best_seller: input.isBestSeller,
     seo_title: input.seoTitle,
     seo_description: input.seoDescription,
-    archived_at: input.status === "archived" ? new Date().toISOString() : null,
+    archived_at: status === "archived" ? new Date().toISOString() : null,
   };
+}
 
+/**
+ * The product code is staff-entered and must stay unique. Checked here so the
+ * staff member reads a sentence about the product code rather than a raw
+ * unique-violation, and enforced by the column's unique constraint regardless.
+ */
+async function productCodeTaken(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  productCode: string,
+  excludeId?: string,
+): Promise<boolean> {
+  let query = supabase.from("products").select("id").eq("product_code", productCode);
+  if (excludeId) query = query.neq("id", excludeId);
+  const { data } = await query.maybeSingle();
+  return Boolean(data);
+}
+
+function revalidateProduct(slug: string) {
+  updateTag("catalogue");
+  revalidatePath("/admin/products");
+  revalidatePath("/");
+  revalidatePath(`/product/${slug}`);
+}
+
+/**
+ * Creates the product row, and nothing else.
+ *
+ * Images are NOT accepted here. Twelve images at five megabytes each is sixty
+ * megabytes in one multipart request, and raising the server action body limit
+ * to swallow that would make every other action in the application accept a
+ * sixty-megabyte body too. So the row is created first and the browser then
+ * posts the files it is already holding, one request per image, through
+ * `uploadProductImageAction`. The administrator picks the files once and sees
+ * one operation; only the wire format is different.
+ *
+ * `pendingImageCount` is how many images are about to follow. When the staff
+ * member asked for an ACTIVE product and images are coming, the row is inserted
+ * as a draft and the requested status is applied only once the images are in —
+ * a network failure half way through must not leave a live storefront page with
+ * two of its six photographs.
+ */
+export async function createProductAction(formData: FormData): Promise<
+  ActionResult<{
+    id: string;
+    slug: string;
+    /** True when `active` was requested but the row was held back as a draft. */
+    heldAsDraft: boolean;
+    requestedStatus: ProductInput["status"];
+  }>
+> {
+  await requirePermission("catalogue.manage");
+
+  const parsed = parseProductForm(formData);
+  if (!parsed.success) {
+    return fail(firstIssue(parsed.error), parsed.error.flatten().fieldErrors as FieldErrors);
+  }
+
+  const input = parsed.data;
+  const supabase = await createClient();
+
+  if (await productCodeTaken(supabase, input.productCode)) {
+    return fail("Another product already uses that product code.", {
+      productCode: ["That product code is already in use."],
+    });
+  }
+
+  const pendingImageCount = Number(text(formData, "pendingImageCount")) || 0;
+  const heldAsDraft = input.status === "active" && pendingImageCount > 0;
+  const status = heldAsDraft ? "draft" : input.status;
+
+  const slug = await buildUniqueSlug(supabase, input.nameEn);
+  const { data, error } = await supabase
+    .from("products")
+    .insert(productPayload(input, slug, status))
+    .select("id")
+    .maybeSingle();
+
+  if (error) return logAndFail("product create", error, "Could not create this product.");
+  if (!data) return fail("Could not create this product.");
+
+  revalidateProduct(slug);
+
+  return {
+    ok: true,
+    data: {
+      id: data.id,
+      slug,
+      heldAsDraft,
+      requestedStatus: input.status,
+    },
+  };
+}
+
+/**
+ * Saves an existing product — and still creates one when called without an id,
+ * which is the path anything other than the create screen uses.
+ */
+export async function saveProductAction(
+  formData: FormData,
+): Promise<ActionResult<string | undefined>> {
+  await requirePermission("catalogue.manage");
+
+  const parsed = parseProductForm(formData);
+  if (!parsed.success) {
+    return fail(firstIssue(parsed.error), parsed.error.flatten().fieldErrors as FieldErrors);
+  }
+
+  const input = parsed.data;
+  const supabase = await createClient();
+
+  if (await productCodeTaken(supabase, input.productCode, input.id)) {
+    return fail("Another product already uses that product code.", {
+      productCode: ["That product code is already in use."],
+    });
+  }
+
+  let slug: string;
+  if (input.id) {
+    // Keep the URL a product already has. Nothing in this form can change it.
+    const { data: existing } = await supabase
+      .from("products")
+      .select("slug")
+      .eq("id", input.id)
+      .maybeSingle();
+    if (!existing) return fail("That product no longer exists.");
+    slug = existing.slug;
+  } else {
+    slug = await buildUniqueSlug(supabase, input.nameEn);
+  }
+
+  const payload = productPayload(input, slug, input.status);
   const { data, error } = input.id
     ? await supabase.from("products").update(payload).eq("id", input.id).select("id").maybeSingle()
     : await supabase.from("products").insert(payload).select("id").maybeSingle();
 
   if (error) return logAndFail("product save", error, "Could not save this product.");
 
-  revalidatePath("/admin/products");
-  revalidatePath("/");
-  revalidatePath(`/product/${slug}`);
-
-  // Images attached to the create form are uploaded once the product exists,
-  // because the storage path is keyed on the product id. A failed image never
-  // discards the product that was just saved — the count is reported instead.
-  const pendingImages = formData
-    .getAll("images")
-    .filter((entry): entry is File => entry instanceof File && entry.size > 0);
-
-  if (!input.id && data?.id && pendingImages.length > 0) {
-    const outcome = await uploadProductImages(supabase, data.id, pendingImages, 0);
-    revalidatePath(`/admin/products/${data.id}`);
-
-    if (outcome.failed > 0) {
-      return {
-        ok: true,
-        data: data.id,
-        message:
-          outcome.uploaded > 0
-            ? `Product created with ${outcome.uploaded} of ${pendingImages.length} images. ${outcome.failed} could not be uploaded — add them again below.`
-            : "Product created, but the images could not be uploaded. Add them again below.",
-      };
-    }
-
-    return {
-      ok: true,
-      data: data.id,
-      message: `Product created with ${outcome.uploaded} image${outcome.uploaded === 1 ? "" : "s"}.`,
-    };
-  }
+  revalidateProduct(slug);
+  if (input.id) revalidatePath(`/admin/products/${input.id}`);
 
   return {
     ok: true,
@@ -253,6 +342,27 @@ export async function setProductStatusAction(
 ): Promise<ActionResult> {
   await requirePermission("catalogue.manage");
   const supabase = await createClient();
+
+  // Activating is the one transition that puts a page in front of customers,
+  // and it can be reached from the product list without the form's validation
+  // ever running. A draft is allowed to be incomplete; a storefront page is
+  // not, so the same rule the form applies is applied again here.
+  if (status === "active") {
+    const { data: product } = await supabase
+      .from("products")
+      .select("description_en,fabric_en")
+      .eq("id", productId)
+      .maybeSingle();
+    if (!product) return fail("That product no longer exists.");
+
+    const missing = missingForActiveProduct(product);
+    if (missing.length > 0) {
+      return fail(
+        `This product still needs ${missing.join(" and ")} before it can go live. Open it and fill that in.`,
+      );
+    }
+  }
+
   const { error } = await supabase
     .from("products")
     .update({
@@ -263,8 +373,18 @@ export async function setProductStatusAction(
 
   if (error) return logAndFail("product status", error, "Could not update the product.");
   revalidatePath("/admin/products");
+  updateTag("catalogue");
+  revalidatePath(`/admin/products/${productId}`);
   revalidatePath("/");
-  return { ok: true, message: `Product ${status === "archived" ? "archived" : "updated"}.` };
+  return {
+    ok: true,
+    message:
+      status === "archived"
+        ? "Product archived."
+        : status === "active"
+          ? "Product is now live."
+          : "Product moved back to draft.",
+  };
 }
 
 /**
@@ -325,6 +445,7 @@ export async function duplicateProductAction(
   }
 
   revalidatePath("/admin/products");
+  updateTag("catalogue");
   return { ok: true, message: "Product duplicated as a draft.", data: created.id };
 }
 
@@ -376,6 +497,7 @@ export async function saveVariantAction(formData: FormData): Promise<ActionResul
     // trail. Use adjustInventoryAction instead.
     const { error } = await supabase.from("product_variants").update(payload).eq("id", input.id);
     if (error) return logAndFail("variant update", error, "Could not save this variant.");
+    updateTag("catalogue");
     revalidatePath(`/admin/products/${input.productId}`);
     return { ok: true, message: "Variant updated." };
   }
@@ -385,6 +507,7 @@ export async function saveVariantAction(formData: FormData): Promise<ActionResul
     .insert({ ...payload, stock_quantity: input.initialStock });
   if (error) return logAndFail("variant insert", error, "Could not add this variant.");
 
+  updateTag("catalogue");
   revalidatePath(`/admin/products/${input.productId}`);
   revalidatePath("/admin/inventory");
   return { ok: true, message: "Variant added." };
@@ -411,6 +534,7 @@ export async function adjustInventoryAction(formData: FormData): Promise<ActionR
 
   if (error) return logAndFail("inventory adjust", error, "Could not adjust this stock level.");
 
+  updateTag("catalogue");
   revalidatePath("/admin/inventory");
   revalidatePath("/admin");
   return { ok: true, message: `Stock set to ${parsed.data.newQuantity}.` };
@@ -433,67 +557,82 @@ export async function adjustInventoryAction(formData: FormData): Promise<ActionR
  * object is removed if the database row could not be written, so a partial
  * failure never leaves an orphan in the bucket.
  */
-async function uploadProductImages(
+async function storeProductImage(
   supabase: Awaited<ReturnType<typeof createClient>>,
   productId: string,
-  files: File[],
-  existingCount: number,
-): Promise<{ uploaded: number; failed: number }> {
-  let uploaded = 0;
-  let failed = 0;
-  let position = existingCount;
+  file: File,
+  position: number,
+  altEn = "",
+): Promise<{ ok: true; imageId: string } | { ok: false; reason: string }> {
+  if (position >= MAX_IMAGES_PER_PRODUCT) {
+    return {
+      ok: false,
+      reason: `A product can hold at most ${MAX_IMAGES_PER_PRODUCT} images.`,
+    };
+  }
 
-  for (const file of files) {
-    if (position >= MAX_IMAGES_PER_PRODUCT) {
-      failed += 1;
-      continue;
-    }
-    // The declared MIME type is whatever the client said. The file's own bytes
-    // are checked here, so an HTML document or a script renamed to .jpg cannot
-    // be stored in a public bucket and served back from the storage origin.
-    const inspection = await inspectImageFile(file);
-    if (!inspection.ok) {
-      failed += 1;
-      continue;
-    }
+  // The declared MIME type is whatever the client said. The file's own bytes
+  // are checked here, so an HTML document or a script renamed to .jpg cannot
+  // be stored in a public bucket and served back from the storage origin.
+  const inspection = await inspectImageFile(file);
+  if (!inspection.ok) {
+    return { ok: false, reason: inspection.reason ?? "That file is not a usable product image." };
+  }
 
-    const extension = EXTENSION_BY_MIME_TYPE[file.type] ?? "jpg";
-    const path = `${productId}/${crypto.randomUUID()}.${extension}`;
+  const extension = EXTENSION_BY_MIME_TYPE[file.type] ?? "jpg";
+  const path = `${productId}/${crypto.randomUUID()}.${extension}`;
 
-    const { error: uploadError } = await supabase.storage
-      .from("product-images")
-      .upload(path, file, { contentType: file.type, upsert: false });
-    if (uploadError) {
-      logFailure("admin.image_upload_failed", uploadError, { productId });
-      failed += 1;
-      continue;
-    }
+  const { error: uploadError } = await supabase.storage
+    .from("product-images")
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (uploadError) {
+    logFailure("admin.image_upload_failed", uploadError, { productId });
+    return { ok: false, reason: "The file could not be stored. Try again." };
+  }
 
-    const { data: publicUrl } = supabase.storage.from("product-images").getPublicUrl(path);
-    const { error } = await supabase.from("product_images").insert({
+  const { data: publicUrl } = supabase.storage.from("product-images").getPublicUrl(path);
+  const { data: inserted, error } = await supabase
+    .from("product_images")
+    .insert({
       product_id: productId,
       image_url: publicUrl.publicUrl,
       storage_path: path,
-      alt_en: "",
+      alt_en: altEn,
       sort_order: position,
+      // Exactly one primary per product is enforced by a partial unique index.
+      // The first image a product gets is it; anything else is a deliberate
+      // choice, applied afterwards through set_product_primary_image().
       is_primary: position === 0,
-    });
+    })
+    .select("id")
+    .maybeSingle();
 
-    if (error) {
-      logFailure("admin.image_record_failed", error, { productId });
-      await supabase.storage.from("product-images").remove([path]);
-      failed += 1;
-      continue;
-    }
-
-    uploaded += 1;
-    position += 1;
+  if (error || !inserted) {
+    logFailure("admin.image_record_failed", error ?? { message: "no row" }, { productId });
+    await supabase.storage.from("product-images").remove([path]);
+    return { ok: false, reason: "The image could not be recorded. Try again." };
   }
 
-  return { uploaded, failed };
+  return { ok: true, imageId: inserted.id };
 }
 
-export async function addProductImageAction(formData: FormData): Promise<ActionResult> {
+/**
+ * Uploads ONE image for a product that already exists.
+ *
+ * This is what the create screen calls, once per file, after the row has been
+ * inserted — and what the editor's uploader calls too, so both go through the
+ * same validation, the same generated storage path and the same cleanup when
+ * the database insert fails after the object is already in the bucket.
+ *
+ * The position is read from the database rather than taken from the request:
+ * the browser says which order it *wants* (applied afterwards by
+ * `applyProductImageOrderAction`), but it does not get to choose a sort order
+ * that collides with an image it does not know about, and it certainly does not
+ * get to decide that a thirteenth image is allowed.
+ */
+export async function uploadProductImageAction(
+  formData: FormData,
+): Promise<ActionResult<{ imageId: string }>> {
   await requirePermission("catalogue.manage");
 
   const productId = z.string().uuid().safeParse(text(formData, "productId"));
@@ -504,57 +643,118 @@ export async function addProductImageAction(formData: FormData): Promise<ActionR
     return fail("Choose an image file to upload.");
   }
 
-  // Single-file uploads report the precise reason, because a staff member who
-  // picked one file deserves to be told what is wrong with it.
-  const inspection = await inspectImageFile(file);
-  if (!inspection.ok) {
-    return fail(inspection.reason ?? "That file is not a usable product image.");
-  }
-
   const supabase = await createClient();
   const { count } = await supabase
     .from("product_images")
     .select("id", { count: "exact", head: true })
     .eq("product_id", productId.data);
 
-  if ((count ?? 0) >= MAX_IMAGES_PER_PRODUCT) {
+  const position = count ?? 0;
+  if (position >= MAX_IMAGES_PER_PRODUCT) {
     return fail(`A product can hold at most ${MAX_IMAGES_PER_PRODUCT} images.`);
   }
 
-  const { uploaded, failed } = await uploadProductImages(
+  const outcome = await storeProductImage(
     supabase,
     productId.data,
-    [file],
-    count ?? 0,
+    file,
+    position,
+    text(formData, "altEn").slice(0, 160),
   );
+  if (!outcome.ok) return fail(outcome.reason);
 
-  if (uploaded === 0) {
-    return fail("Could not upload the image. Please try again.");
+  updateTag("catalogue");
+  revalidatePath(`/admin/products/${productId.data}`);
+  return { ok: true, data: { imageId: outcome.imageId } };
+}
+
+/**
+ * Applies the order and the main image the administrator arranged before the
+ * product existed.
+ *
+ * Both are single-statement, single-transaction database functions, so this
+ * cannot leave two images claiming one position or a product with no primary.
+ * `reorder_product_images()` insists on the complete set of ids, so anything
+ * the caller did not mention — an image added from another tab — is appended
+ * rather than being silently dropped out of the ordering.
+ *
+ * Safe to call twice: setting the order that is already stored, and promoting
+ * the image that is already primary, both change nothing.
+ */
+export async function applyProductImageOrderAction(
+  productId: string,
+  orderedImageIds: string[],
+  primaryImageId: string | null,
+): Promise<ActionResult> {
+  await requirePermission("catalogue.manage");
+
+  const ids = z.array(z.string().uuid()).max(MAX_IMAGES_PER_PRODUCT).safeParse(orderedImageIds);
+  const product = z.string().uuid().safeParse(productId);
+  if (!product.success || !ids.success) return fail("Unknown product.");
+
+  const supabase = await createClient();
+  const { data: existing } = await supabase
+    .from("product_images")
+    .select("id")
+    .eq("product_id", product.data)
+    .order("sort_order")
+    .order("id");
+  if (!existing?.length) return { ok: true };
+
+  const known = new Set(existing.map((image) => image.id));
+  const ordered = ids.data.filter((id) => known.has(id));
+  for (const image of existing) {
+    if (!ordered.includes(image.id)) ordered.push(image.id);
   }
 
-  // Alt text is only offered by the editor's single-image form, so it is
-  // applied here rather than inside the shared batch helper.
-  const altEn = text(formData, "altEn").slice(0, 160);
-  if (altEn) {
-    const { data: newest } = await supabase
-      .from("product_images")
-      .select("id")
-      .eq("product_id", productId.data)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (newest) {
-      await supabase
-        .from("product_images")
-        .update({ alt_en: altEn })
-        .eq("id", newest.id);
+  const { error } = await supabase.rpc("reorder_product_images", {
+    p_product_id: product.data,
+    p_image_ids: ordered,
+  });
+  if (error) return logAndFail("image_reorder", error, "Could not set the image order.");
+
+  if (primaryImageId && known.has(primaryImageId)) {
+    const { error: primaryError } = await supabase.rpc("set_product_primary_image", {
+      p_image_id: primaryImageId,
+    });
+    if (primaryError) {
+      return logAndFail("primary_image", primaryError, "Could not set the main image.");
     }
   }
 
-  revalidatePath(`/admin/products/${productId.data}`);
-  return failed > 0
-    ? fail("Could not upload the image. Please try again.")
-    : { ok: true, message: "Image added." };
+  updateTag("catalogue");
+  revalidatePath(`/admin/products/${product.data}`);
+  revalidatePath("/");
+  return { ok: true };
+}
+
+/** Alt text for one stored image. Kept out of the upload path so adding images
+ *  stays a two-click job; a description can be written whenever there is time
+ *  for it. */
+export async function updateProductImageAltAction(
+  imageId: string,
+  productId: string,
+  altEn: string,
+): Promise<ActionResult> {
+  await requirePermission("catalogue.manage");
+
+  const parsed = z
+    .object({ imageId: z.string().uuid(), productId: z.string().uuid() })
+    .safeParse({ imageId, productId });
+  if (!parsed.success) return fail("That image no longer exists.");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("product_images")
+    .update({ alt_en: altEn.trim().slice(0, 160) })
+    .eq("id", parsed.data.imageId)
+    .eq("product_id", parsed.data.productId);
+
+  if (error) return logAndFail("image_alt", error, "Could not save the description.");
+
+  updateTag("catalogue");
+  revalidatePath(`/admin/products/${parsed.data.productId}`);
+  return { ok: true, message: "Image description saved." };
 }
 
 /**
@@ -593,6 +793,7 @@ export async function deleteProductImageAction(
     }
   }
 
+  updateTag("catalogue");
   revalidatePath(`/admin/products/${productId}`);
   return { ok: true, message: "Image deleted." };
 }
@@ -625,6 +826,7 @@ export async function setPrimaryImageAction(
     return logAndFail("primary_image", error, "Could not update the main image.");
   }
 
+  updateTag("catalogue");
   revalidatePath(`/admin/products/${productId}`);
   return { ok: true, message: "Main image updated." };
 }
@@ -668,6 +870,7 @@ export async function moveProductImageAction(
   });
   if (error) return logAndFail("image_reorder", error, "Could not change the image order.");
 
+  updateTag("catalogue");
   revalidatePath(`/admin/products/${productId}`);
   return { ok: true, message: "Image order updated." };
 }
@@ -714,11 +917,17 @@ export async function transitionOrderAction(formData: FormData): Promise<ActionR
     status: parsed.data.status,
   });
 
+  // Cancellation/return transitions may restock variants inside the database.
+  // Invalidating on every successful transition is cheap and guarantees the
+  // public stock badge never outlives that transaction.
+  updateTag("catalogue");
+
   // The status change is committed. Telling the customer is best-effort and
   // handles its own failures — a provider outage must not make a staff member
   // think the order did not move.
-  const { storeName } = await getPublicStoreSettings();
-  void dispatchOrderNotificationsAsStaff(parsed.data.orderId, storeName);
+  after(async () => {
+    await dispatchOrderNotificationsAsStaff(parsed.data.orderId);
+  });
 
   return { ok: true, message: `Order moved to ${parsed.data.status}.` };
 }
@@ -740,9 +949,22 @@ export async function updatePaymentStatusAction(formData: FormData): Promise<Act
     p_note: parsed.data.note,
   });
 
+  // Checked BEFORE revalidating. Revalidating first re-rendered the page from
+  // unchanged data and returned a failure alongside it, so the staff member saw
+  // an error message next to a value that had not moved -- which reads as "the
+  // form is broken" rather than "the update was refused".
+  if (error) {
+    return logAndFail("payment_status", error, "Could not update the payment status.");
+  }
+
+  logger.info("admin.payment_status_changed", {
+    orderId: parsed.data.orderId,
+    paymentStatus: parsed.data.paymentStatus,
+  });
+
   revalidatePath(`/admin/orders/${parsed.data.orderId}`);
   revalidatePath("/admin/orders");
-  if (error) return logAndFail("payment status", error, "Could not update the payment status.");
+  revalidatePath("/admin");
   return { ok: true, message: "Payment status updated." };
 }
 
@@ -804,6 +1026,7 @@ export async function saveCategoryAction(formData: FormData): Promise<ActionResu
     : await supabase.from("categories").insert(payload);
   if (error) return logAndFail("category save", error, "Could not save this category.");
 
+  updateTag("catalogue");
   revalidatePath("/admin/categories");
   revalidatePath("/");
   return { ok: true, message: "Category saved." };
@@ -829,6 +1052,7 @@ export async function deleteCategoryAction(id: string): Promise<ActionResult> {
   const { error } = await supabase.from("categories").delete().eq("id", id);
   if (error) return logAndFail("category delete", error, "Could not delete this category.");
 
+  updateTag("catalogue");
   revalidatePath("/admin/categories");
   return { ok: true, message: "Category deleted." };
 }
@@ -873,6 +1097,7 @@ export async function saveCollectionAction(formData: FormData): Promise<ActionRe
     : await supabase.from("collections").insert(payload);
   if (error) return logAndFail("collection save", error, "Could not save this collection.");
 
+  updateTag("catalogue");
   revalidatePath("/admin/collections");
   revalidatePath("/collection");
   return { ok: true, message: "Collection saved." };
@@ -895,6 +1120,7 @@ export async function deleteCollectionAction(id: string): Promise<ActionResult> 
   const { error } = await supabase.from("collections").delete().eq("id", id);
   if (error) return logAndFail("collection delete", error, "Could not delete this collection.");
 
+  updateTag("catalogue");
   revalidatePath("/admin/collections");
   return { ok: true, message: "Collection deleted." };
 }
@@ -980,7 +1206,9 @@ export async function moderateReviewAction(
   });
   revalidatePath("/admin/reviews");
   revalidatePath("/admin");
+  revalidatePath("/product/[slug]", "page");
   if (error) return logAndFail("review moderation", error, "Could not moderate this review.");
+  updateTag("catalogue");
   return { ok: true, message: `Review ${status}.` };
 }
 
@@ -1059,8 +1287,39 @@ export async function saveSettingsAction(formData: FormData): Promise<ActionResu
   // just this page. Without it a delivery-fee change would be charged
   // immediately but displayed only after the next deploy.
   revalidatePath("/", "layout");
+  updateTag("store-settings");
   if (error) return logAndFail("settings_save", error, "Could not save the store settings.");
   return { ok: true, message: "Store settings saved." };
+}
+
+export async function retryNotificationAction(notificationId: string): Promise<ActionResult> {
+  await requirePermission("settings.manage");
+  if (!z.string().uuid().safeParse(notificationId).success) return fail("Invalid notification.");
+  if (!getEmailConfiguration().configured) return fail("Configure RESEND_API_KEY and EMAIL_FROM before retrying.");
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("requeue_notification", { p_id: notificationId });
+  if (error) return logAndFail("notification_retry", error, "Could not queue this notification again.");
+  if (data !== true) return fail("Only failed, skipped, or interrupted notifications can be retried.");
+  await dispatchNotificationAsAdmin(notificationId);
+  revalidatePath("/admin/settings");
+  return { ok: true, message: "Notification retry completed. Check its updated status." };
+}
+
+export async function sendTestEmailAction(): Promise<ActionResult> {
+  await requirePermission("settings.manage");
+  if (!getEmailConfiguration().configured) return fail("Configure RESEND_API_KEY and EMAIL_FROM before sending a test.");
+  const supabase = await createClient();
+  const { data: setting } = await supabase.from("store_settings").select("value").eq("key", "order_notification_email").maybeSingle();
+  const recipient = typeof setting?.value === "string" ? setting.value.trim() : "";
+  if (!recipient) return fail("Save an order notification email first.");
+  const { data: allowed, error } = await supabase.rpc("can_send_test_email");
+  if (error) return logAndFail("test_email_limit", error, "Could not send the test email.");
+  if (allowed !== true) return fail("Test email limit reached. You can send up to three per hour.");
+  const message = buildTestEmail(recipient, await getStoreIdentity());
+  message.idempotencyKey = `tara-test-${crypto.randomUUID()}`;
+  const outcome = await getEmailProvider().send(message);
+  if (outcome.status !== "sent") return fail(`Test email failed: ${outcome.reason}`);
+  return { ok: true, message: "Test email sent successfully." };
 }
 
 export async function setStaffRoleAction(formData: FormData): Promise<ActionResult> {

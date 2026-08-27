@@ -1,14 +1,16 @@
 "use server";
 
 import { z } from "zod";
+import { updateTag } from "next/cache";
+import { after } from "next/server";
 import { createClient } from "../server";
 import { getUser } from "../auth";
 import { checkoutSchema } from "@/lib/validation";
 import { guardPublicAction, consumeDurableLimit } from "@/lib/rate-limit";
 import { normalizeBdPhone } from "@/lib/phone";
+import { normaliseSizeValue } from "@/lib/product-size";
 import { logger, logFailure } from "@/lib/logger";
 import { dispatchOrderNotifications } from "@/lib/email/dispatch";
-import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 import type { CartItem } from "@/types";
 import type { ActionResult } from "./auth";
 import { isSupabaseConfigured } from "../env";
@@ -71,10 +73,10 @@ function checkoutError(message: string): ActionResult {
   if (message.includes("invalid_variant")) {
     return { ok: false, message: "A selected product option is no longer available." };
   }
-  if (message.includes("invalid_shipping_location")) {
+  if (message.includes("invalid_shipping_location") || message.includes("invalid_delivery_zone")) {
     return {
       ok: false,
-      message: "We could not match that division and district. Please choose them again.",
+      message: "Check your delivery address and area, then try again.",
     };
   }
   return { ok: false, message: "Your order could not be placed. Nothing has been ordered — please try again." };
@@ -128,8 +130,11 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
 
   const resolved: { variantId: string; quantity: number }[] = [];
   for (const item of parsed.data.items) {
-    // Historic carts stored the legacy "Undready" wording for unstitched sizes.
-    const size = item.size.replaceAll("Undready", "Unstitched");
+    // A cart saved before either rename still has to match a live variant.
+    // "Undready" and "Unstitched" both resolve to "Unready"; the database does
+    // the same inside resolve_cart_lines(), because the browser is not the
+    // authority on which variant is being bought.
+    const size = normaliseSizeValue(item.size);
     const match = variants?.find(
       (variant) =>
         variant.product_id === item.productId &&
@@ -146,7 +151,9 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
       email: parsed.data.customerEmail ?? "",
       phone: normalizeBdPhone(parsed.data.customerPhone) ?? parsed.data.customerPhone,
     },
-    p_shipping_address: parsed.data.shippingAddress,
+    // The country is recorded, not asked: the store ships within Bangladesh
+    // only, so a selector would be a required field with one option.
+    p_shipping_address: { ...parsed.data.shippingAddress, country: "Bangladesh" },
     p_items: resolved,
     // Fixed, not client-supplied: the store runs one delivery option and one
     // payment method, and place_order() rejects anything else outright.
@@ -175,14 +182,19 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
     hasUser: Boolean(user),
   });
 
+  // place_order() deducts variant stock transactionally. Purge the shared
+  // public catalogue cache before another shopper can see the old quantity.
+  if (!order.replayed) updateTag("catalogue");
+
   // The order is committed. Everything from here is best-effort: an email that
   // does not go out must never turn a successful order into a failed one, so
-  // this is awaited only far enough to start it and its own errors are handled
-  // inside. A replayed order does not re-notify -- the outbox rows for it are
-  // already sent.
+  // the response is returned immediately while Next keeps the best-effort
+  // dispatch alive after the response. A replayed order does not re-notify --
+  // the outbox rows for it are already sent.
   if (!order.replayed) {
-    const { storeName } = await getPublicStoreSettings();
-    void dispatchOrderNotifications(order.orderNumber, order.trackingToken, storeName);
+    after(async () => {
+      await dispatchOrderNotifications(order.orderNumber, order.trackingToken);
+    });
   }
 
   return { ok: true, data: order };
@@ -192,10 +204,10 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
  * What the checkout form sends.
  *
  * Written out rather than derived from the schema with `z.infer`, because the
- * schema's *output* type is the validated one — division narrowed to the eight
- * real divisions, phone normalised — and the browser is by definition sending
- * the unvalidated input. Typing the boundary as the schema's output would be a
- * claim the client cannot make.
+ * schema's *output* type is the validated one — the delivery zone narrowed to
+ * the two real zones, phone normalised, postal code nulled when blank — and the
+ * browser is by definition sending the unvalidated input. Typing the boundary as
+ * the schema's output would be a claim the client cannot make.
  */
 export interface CheckoutDetails {
   customerName: string;
@@ -203,7 +215,13 @@ export interface CheckoutDetails {
   customerPhone: string;
   paymentMethod?: "cash_on_delivery";
   customerNote?: string;
-  shippingAddress: { division: string; district: string; fullAddress: string };
+  shippingAddress: {
+    address: string;
+    apartment?: string;
+    city: string;
+    postalCode?: string;
+    deliveryZone: string;
+  };
   couponCode?: string;
   idempotencyKey?: string;
 }

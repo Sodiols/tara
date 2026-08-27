@@ -1,8 +1,10 @@
 import "server-only";
 
+import { cache } from "react";
+import { unstable_cache } from "next/cache";
 import type { CategorySlug, ColourOption, Product, Review } from "@/types";
 import type { Json } from "@/types/database";
-import { createClient } from "../server";
+import { createPublicServerClient } from "../public-server";
 import { isSupabaseConfigured } from "../env";
 import { logger, logFailure } from "@/lib/logger";
 import { describeMissingMigration } from "../errors";
@@ -258,7 +260,7 @@ function toRpcFilters(filters: ProductFilters, limit: number, offset: number): J
  * refresh — the URL says how much has been revealed, and the server renders
  * exactly that much — while a first visit still downloads only 24 products.
  */
-export async function getProducts(filters: ProductFilters = {}): Promise<ProductPage> {
+const readProducts = unstable_cache(async (filters: ProductFilters): Promise<ProductPage> => {
   const page = Math.max(1, filters.page ?? 1);
   const pageSize = clampPageSize(filters.pageSize);
 
@@ -275,7 +277,7 @@ export async function getProducts(filters: ProductFilters = {}): Promise<Product
   // the one search_catalogue() enforces, so the two can never disagree about
   // how much was returned.
   const limit = Math.min(MAX_REVEALED_PRODUCTS, pageSize * page);
-  const supabase = await createClient();
+  const supabase = createPublicServerClient();
   const { data, error } = await supabase.rpc("search_catalogue", {
     p_filters: toRpcFilters(filters, limit, 0),
   });
@@ -302,6 +304,10 @@ export async function getProducts(filters: ProductFilters = {}): Promise<Product
     // button that does nothing is worse than none.
     hasMore: products.length < total && products.length < MAX_REVEALED_PRODUCTS,
   };
+}, ["catalogue-products-v1"], { revalidate: 60, tags: ["catalogue"] });
+
+export function getProducts(filters: ProductFilters = {}): Promise<ProductPage> {
+  return readProducts(filters);
 }
 
 /**
@@ -311,16 +317,16 @@ export async function getProducts(filters: ProductFilters = {}): Promise<Product
  * the browser already holds never repeats or skips a product — the ordering is
  * deterministic in the database.
  */
-export async function getProductSlice(
+const readProductSlice = unstable_cache(async (
   filters: ProductFilters,
   page: number,
-): Promise<ProductPage> {
+): Promise<ProductPage> => {
   const pageSize = clampPageSize(filters.pageSize);
   const safePage = Math.max(1, Math.min(MAX_REVEALED_PAGES, page));
 
   if (!isSupabaseConfigured()) return emptyPage({ ...filters, page: safePage });
 
-  const supabase = await createClient();
+  const supabase = createPublicServerClient();
   const { data, error } = await supabase.rpc("search_catalogue", {
     p_filters: toRpcFilters(filters, pageSize, (safePage - 1) * pageSize),
   });
@@ -347,6 +353,10 @@ export async function getProductSlice(
     pageSize,
     hasMore: safePage * pageSize < total && safePage < MAX_REVEALED_PAGES,
   };
+}, ["catalogue-product-slice-v1"], { revalidate: 60, tags: ["catalogue"] });
+
+export function getProductSlice(filters: ProductFilters, page: number): Promise<ProductPage> {
+  return readProductSlice(filters, page);
 }
 
 /**
@@ -354,12 +364,12 @@ export async function getProductSlice(
  * on screen — otherwise a filter disappears from the sidebar as soon as you
  * page past the products that offered it.
  */
-export async function getCatalogueFacets(
+const readCatalogueFacets = unstable_cache(async (
   scope: Pick<ProductFilters, "category" | "collection" | "query"> = {},
-): Promise<CatalogueFacets> {
+): Promise<CatalogueFacets> => {
   if (!isSupabaseConfigured()) return EMPTY_FACETS;
 
-  const supabase = await createClient();
+  const supabase = createPublicServerClient();
   const { data, error } = await supabase.rpc("catalogue_facets", {
     p_filters: {
       categorySlug: scope.category ?? null,
@@ -383,6 +393,12 @@ export async function getCatalogueFacets(
     maxPrice: asNumber(row.maxPrice),
     total: asNumber(row.total),
   };
+}, ["catalogue-facets-v1"], { revalidate: 300, tags: ["catalogue"] });
+
+export function getCatalogueFacets(
+  scope: Pick<ProductFilters, "category" | "collection" | "query"> = {},
+): Promise<CatalogueFacets> {
+  return readCatalogueFacets(scope);
 }
 
 export async function getNewArrivals(limit = 8) {
@@ -422,11 +438,11 @@ export interface PublicCollection {
  * navigation and the sidebar filter — so a collection can never be withheld
  * from one surface while remaining reachable through another.
  */
-export async function getPublicCollectionBySlug(
+const readPublicCollectionBySlug = unstable_cache(async (
   slug: string,
-): Promise<PublicCollection | null> {
+): Promise<PublicCollection | null> => {
   if (!isSupabaseConfigured()) return null;
-  const supabase = await createClient();
+  const supabase = createPublicServerClient();
   const { data, error } = await supabase
     .from("collections")
     .select("slug,name_en,description_en,is_active,starts_at,ends_at")
@@ -444,12 +460,14 @@ export async function getPublicCollectionBySlug(
     name: data.name_en,
     description: data.description_en,
   };
-}
+}, ["public-collection-by-slug-v1"], { revalidate: 300, tags: ["catalogue"] });
+
+export const getPublicCollectionBySlug = cache(readPublicCollectionBySlug);
 
 /** Every collection a shopper may currently browse, for the navigation. */
-export async function getVisibleCollections(): Promise<PublicCollection[]> {
+const readVisibleCollections = unstable_cache(async (): Promise<PublicCollection[]> => {
   if (!isSupabaseConfigured()) return [];
-  const supabase = await createClient();
+  const supabase = createPublicServerClient();
   const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from("collections")
@@ -465,7 +483,9 @@ export async function getVisibleCollections(): Promise<PublicCollection[]> {
     name: row.name_en,
     description: row.description_en,
   }));
-}
+}, ["visible-collections-v1"], { revalidate: 300, tags: ["catalogue"] });
+
+export const getVisibleCollections = cache(readVisibleCollections);
 
 export async function searchProducts(query: string, limit = 12): Promise<Product[]> {
   const term = query.trim();
@@ -481,10 +501,10 @@ export async function searchProducts(query: string, limit = 12): Promise<Product
  * no longer drags several hundred review rows across the wire to render none of
  * them.
  */
-export async function getProductBySlug(slug: string): Promise<Product | null> {
+const readProductBySlug = unstable_cache(async (slug: string): Promise<Product | null> => {
   if (!isSupabaseConfigured()) return null;
 
-  const supabase = await createClient();
+  const supabase = createPublicServerClient();
   const { data, error } = await supabase.rpc("search_catalogue", {
     p_filters: { slug, limit: 1, offset: 0 } as Json,
   });
@@ -502,7 +522,7 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
 
   const { data: reviewRows } = await supabase
     .from("reviews")
-    .select("id,author_name,rating,created_at,comment_en")
+    .select("id,author_name,rating,created_at,title,comment_en,order_item_id")
     .eq("product_id", product.id)
     .eq("status", "approved")
     .order("created_at", { ascending: false })
@@ -513,11 +533,18 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
     author: review.author_name,
     rating: review.rating,
     date: review.created_at.slice(0, 10),
+    title: review.title ?? undefined,
     comment: review.comment_en,
+    verifiedPurchase: Boolean(review.order_item_id),
   }));
 
   return product;
-}
+}, ["product-by-slug-v1"], { revalidate: 60, tags: ["catalogue"] });
+
+// generateMetadata() and the page body ask for the same product during one
+// render. React cache prevents those concurrent callers from issuing duplicate
+// product and review queries even on a cold shared-cache miss.
+export const getProductBySlug = cache(readProductBySlug);
 
 /**
  * Several products by slug, in one query.
@@ -528,11 +555,11 @@ export async function getProductBySlug(slug: string): Promise<Product | null> {
  * so a twelve-slug request became dozens of database round trips for a strip of
  * thumbnails.
  */
-export async function getProductsBySlugs(slugs: string[]): Promise<Product[]> {
+const readProductsBySlugs = unstable_cache(async (slugs: string[]): Promise<Product[]> => {
   const unique = [...new Set(slugs.map((slug) => slug.trim()).filter(Boolean))].slice(0, 24);
   if (unique.length === 0 || !isSupabaseConfigured()) return [];
 
-  const supabase = await createClient();
+  const supabase = createPublicServerClient();
   const { data, error } = await supabase.rpc("search_catalogue", {
     p_filters: { slugs: unique, limit: unique.length, offset: 0 } as Json,
   });
@@ -560,6 +587,10 @@ export async function getProductsBySlugs(slugs: string[]): Promise<Product[]> {
     const product = bySlug.get(slug);
     return product ? [product] : [];
   });
+}, ["products-by-slugs-v1"], { revalidate: 60, tags: ["catalogue"] });
+
+export function getProductsBySlugs(slugs: string[]): Promise<Product[]> {
+  return readProductsBySlugs(slugs);
 }
 
 export async function getRelatedProducts(product: Product, limit = 4) {

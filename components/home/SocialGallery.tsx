@@ -1,5 +1,3 @@
-"use client";
-
 import Image from "next/image";
 import { Instagram } from "lucide-react";
 import { img, stockImages } from "@/lib/images";

@@ -26,6 +26,13 @@ export interface EmailMessage {
   text: string;
   html?: string;
   replyTo?: string;
+  attachments?: Array<{
+    filename: string;
+    content: Uint8Array | string;
+    contentType?: string;
+  }>;
+  /** Stable per outbox row, so provider retries cannot create another send. */
+  idempotencyKey?: string;
 }
 
 export type SendOutcome =
@@ -61,7 +68,7 @@ const disabledProvider: EmailProvider = {
  * writing another object with this same shape — nothing outside this file knows
  * which provider is in use.
  */
-function resendProvider(apiKey: string): EmailProvider {
+export function createResendProvider(apiKey: string): EmailProvider {
   return {
     name: "resend",
     async send(message) {
@@ -76,6 +83,7 @@ function resendProvider(apiKey: string): EmailProvider {
           headers: {
             authorization: `Bearer ${apiKey}`,
             "content-type": "application/json",
+            ...(message.idempotencyKey ? { "idempotency-key": message.idempotencyKey } : {}),
           },
           body: JSON.stringify({
             from,
@@ -84,6 +92,15 @@ function resendProvider(apiKey: string): EmailProvider {
             text: message.text,
             ...(message.html ? { html: message.html } : {}),
             ...(message.replyTo ? { reply_to: message.replyTo } : {}),
+            ...(message.attachments?.length ? {
+              attachments: message.attachments.map((attachment) => ({
+                filename: attachment.filename,
+                content: typeof attachment.content === "string"
+                  ? attachment.content
+                  : Buffer.from(attachment.content).toString("base64"),
+                ...(attachment.contentType ? { content_type: attachment.contentType } : {}),
+              })),
+            } : {}),
           }),
           signal: AbortSignal.timeout(10_000),
         });
@@ -117,10 +134,18 @@ let cached: EmailProvider | null = null;
 export function getEmailProvider(): EmailProvider {
   if (cached) return cached;
   const apiKey = process.env.RESEND_API_KEY?.trim();
-  cached = apiKey ? resendProvider(apiKey) : disabledProvider;
+  cached = apiKey ? createResendProvider(apiKey) : disabledProvider;
   return cached;
 }
 
 export function isEmailConfigured(): boolean {
   return getEmailProvider().name !== "none" && Boolean(fromAddress());
+}
+
+export function getEmailConfiguration() {
+  return {
+    provider: process.env.RESEND_API_KEY?.trim() ? "Resend" : "Not configured",
+    fromAddress: fromAddress() || "Not configured",
+    configured: Boolean(process.env.RESEND_API_KEY?.trim() && fromAddress()),
+  };
 }

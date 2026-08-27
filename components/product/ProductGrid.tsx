@@ -1,11 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import type { Product } from "@/types";
 import { ProductCard } from "./ProductCard";
-import { QuickViewModal } from "./QuickViewModal";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { PackageSearch } from "lucide-react";
+
+const QuickViewModal = dynamic(
+  () => import("./QuickViewModal").then((module) => module.QuickViewModal),
+  { ssr: false },
+);
 
 interface ProductGridProps {
   products: Product[];
@@ -31,7 +36,9 @@ export function ProductGrid({ products }: ProductGridProps) {
           <ProductCard key={product.id} product={product} onQuickView={setQuickViewProduct} />
         ))}
       </div>
-      <QuickViewModal product={quickViewProduct} onClose={() => setQuickViewProduct(null)} />
+      {quickViewProduct ? (
+        <QuickViewModal product={quickViewProduct} onClose={() => setQuickViewProduct(null)} />
+      ) : null}
     </>
   );
 }

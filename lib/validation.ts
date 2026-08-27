@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { normalizeBdPhone } from "./phone";
 import { DIVISIONS, resolveLocation } from "@/data/bangladesh-geography";
+import { DELIVERY_ZONES } from "@/lib/delivery";
 
 const email = z.string().trim().toLowerCase().email().max(200);
 const password = z
@@ -92,9 +93,52 @@ export const addressSchema = z
     return { ...value, division: resolved.division, district: resolved.district };
   });
 
+/**
+ * A Bangladesh postal code: four digits, and optional.
+ *
+ * Validated rather than accepted blindly, but only for shape — there is no
+ * authoritative list to check membership against, and rejecting a real address
+ * because its code is unfamiliar is far worse than storing one that is merely
+ * unusual.
+ */
+const bangladeshPostalCode = z
+  .union([
+    z.literal(""),
+    z
+      .string()
+      .trim()
+      .regex(/^\d{4}$/, "A Bangladesh postal code is four digits, for example 3100."),
+  ])
+  .optional()
+  .transform((value) => (value ? value : null));
+
+/**
+ * The shipping details the checkout collects.
+ *
+ * Checkout used to ask for a division and a district and derive the delivery
+ * charge from them. It now asks the question the price actually depends on —
+ * inside Sylhet or outside it — and takes a plain street address alongside it.
+ * `place_order()` re-validates all of this and recomputes the fee from the zone
+ * before it locks a single row of stock.
+ *
+ * The country is always Bangladesh. It is recorded, not asked.
+ */
+export const shippingAddressSchema = z.object({
+  address: z.string().trim().min(8, "Enter the full street address.").max(500),
+  apartment: z
+    .union([z.literal(""), z.string().trim().max(160)])
+    .optional()
+    .transform((value) => (value ? value : null)),
+  city: z.string().trim().min(2, "Enter your city or town.").max(80),
+  postalCode: bangladeshPostalCode,
+  deliveryZone: z.enum(DELIVERY_ZONES),
+});
+
 export const checkoutSchema = z.object({
   customerName: z.string().trim().min(2).max(100),
-  customerEmail: z.union([email, z.literal("")]).optional(),
+  // Required for both account and guest checkout because the saved order is the
+  // source for the customer's confirmation and PDF receipt.
+  customerEmail: email,
   customerPhone: bangladeshPhone,
   // The store offers one delivery option and one payment method. Both are
   // fixed here rather than being sent by the browser: `place_order()` refuses
@@ -102,31 +146,7 @@ export const checkoutSchema = z.object({
   // longer presents would only create orders the store cannot fulfil.
   paymentMethod: z.literal("cash_on_delivery").default("cash_on_delivery"),
   customerNote: z.string().trim().max(500).optional(),
-  // Division and district are validated as a pair against the real Bangladesh
-  // geography, not merely length-checked. place_order() re-runs the same check
-  // in the database before it locks a single row of stock.
-  shippingAddress: z
-    .object({
-      division: z.string().trim().min(2).max(80),
-      district: z.string().trim().min(2).max(80),
-      fullAddress: z.string().trim().min(8).max(500),
-    })
-    .transform((value, ctx) => {
-      const resolved = resolveLocation(value.division, value.district);
-      if (!resolved) {
-        ctx.addIssue({
-          code: "custom",
-          path: ["district"],
-          message: "Choose a division and a district that belong together.",
-        });
-        return z.NEVER;
-      }
-      return {
-        division: resolved.division,
-        district: resolved.district,
-        fullAddress: value.fullAddress,
-      };
-    }),
+  shippingAddress: shippingAddressSchema,
   couponCode: z.string().trim().max(50).optional(),
   items: z
     .array(
@@ -148,7 +168,6 @@ export const contactSchema = z.object({
 
 export const reviewSchema = z.object({
   productId: z.string().uuid(),
-  orderItemId: z.string().uuid(),
   rating: z.number().int().min(1).max(5),
   title: z.string().trim().max(120).optional(),
   commentEn: z.string().trim().min(10).max(2000),
@@ -209,17 +228,30 @@ const optionalText = (max: number) =>
 // The slug is deliberately absent: it is derived from the English name when the
 // product is created, then held stable so a later rename cannot silently break
 // a live product URL, a shared link, or the sitemap entry.
+//
+// DRAFTS AND ACTIVE PRODUCTS ARE HELD TO DIFFERENT STANDARDS
+// ----------------------------------------------------------
+// A draft is work in progress: nobody can see it, it has no variants yet, and
+// it is not buyable. Blocking it because the fabric line has not been written
+// yet only teaches staff to type a full stop into the field to get past the
+// error, which is worse than an empty column.
+//
+// An active product is a storefront page. It renders the description and the
+// fabric in the product accordion, so both are required the moment the status
+// is `active` — enforced by the refinements below, and again by
+// `setProductStatusAction` for the paths that activate a product without going
+// through this form.
 export const adminProductSchema = z
   .object({
     id: z.string().uuid().optional(),
     productCode: z.string().trim().toUpperCase().min(2).max(40),
     nameEn: z.string().trim().min(2).max(160),
-    descriptionEn: z.string().trim().min(10).max(5000),
+    descriptionEn: z.string().trim().max(5000).default(""),
     categoryId: z.string().uuid("Choose a category."),
     collectionId: z.union([z.string().uuid(), z.literal("")]).optional(),
     basePrice: price,
     compareAtPrice: optionalPrice,
-    fabricEn: z.string().trim().min(2).max(160),
+    fabricEn: z.string().trim().max(160).default(""),
     materialEn: z.string().trim().max(200).default(""),
     careInstructionsEn: z.string().trim().max(1000).default(""),
     sizeGuideNoteEn: z.string().trim().max(1000).default(""),
@@ -238,7 +270,70 @@ export const adminProductSchema = z
       path: ["compareAtPrice"],
       message: "The compare-at price must be at least the selling price.",
     },
-  );
+  )
+  .refine((value) => value.status !== "active" || value.descriptionEn.length >= 10, {
+    path: ["descriptionEn"],
+    message: "An active product needs a description customers can read.",
+  })
+  .refine((value) => value.status !== "active" || value.fabricEn.length >= 2, {
+    path: ["fabricEn"],
+    message: "An active product needs its fabric filled in.",
+  });
+
+/**
+ * Reads the product form out of a FormData, before validation.
+ *
+ * Exported because the browser runs `adminProductSchema` over exactly these
+ * values before it creates anything — catching a missing category or a
+ * compare-at price below the selling price costs one render, rather than a
+ * product row and six image uploads that then have to be explained. The server
+ * parses the same fields the same way and remains the authority.
+ */
+export function productFormValues(formData: FormData) {
+  const text = (name: string) => {
+    const value = formData.get(name);
+    return typeof value === "string" ? value : "";
+  };
+  const checkbox = (name: string) => {
+    const value = formData.get(name);
+    return value === "on" || value === "true" || value === "1";
+  };
+
+  return {
+    id: text("id") || undefined,
+    productCode: text("productCode"),
+    nameEn: text("nameEn"),
+    descriptionEn: text("descriptionEn"),
+    categoryId: text("categoryId"),
+    collectionId: text("collectionId"),
+    basePrice: text("basePrice"),
+    compareAtPrice: text("compareAtPrice"),
+    fabricEn: text("fabricEn"),
+    materialEn: text("materialEn"),
+    careInstructionsEn: text("careInstructionsEn"),
+    sizeGuideNoteEn: text("sizeGuideNoteEn"),
+    tags: text("tags"),
+    status: text("status"),
+    isNew: checkbox("isNew"),
+    isFeatured: checkbox("isFeatured"),
+    isBestSeller: checkbox("isBestSeller"),
+    seoTitle: text("seoTitle"),
+    seoDescription: text("seoDescription"),
+  };
+}
+
+/** The fields an active product may not leave blank. Checked here and again in
+ * `setProductStatusAction`, which is how a draft is activated from the product
+ * list without passing through the form. */
+export function missingForActiveProduct(product: {
+  description_en: string | null;
+  fabric_en: string | null;
+}): string[] {
+  const missing: string[] = [];
+  if ((product.description_en ?? "").trim().length < 10) missing.push("a description");
+  if ((product.fabric_en ?? "").trim().length < 2) missing.push("the fabric");
+  return missing;
+}
 
 export const adminVariantSchema = z.object({
   id: z.string().uuid().optional(),

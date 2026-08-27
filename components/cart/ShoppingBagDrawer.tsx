@@ -10,6 +10,7 @@ import { formatPrice } from "@/lib/utils";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { lockBodyScroll } from "@/lib/scroll-lock";
+import { formatSizeLabel } from "@/lib/product-size";
 
 /**
  * The delivery line is generated from the live store settings rather than
@@ -63,7 +64,7 @@ export function ShoppingBagDrawer({ announcement }: { announcement: string | nul
                       {item.name}
                     </Link>
                     <p className="text-xs text-muted">
-                      {item.size} / {item.colour}
+                      {formatSizeLabel(item.size)} / {item.colour}
                     </p>
                     <div className="flex items-center justify-between mt-1">
                       <div className="flex items-center rounded-control border border-border">

@@ -23,6 +23,13 @@ Open `.env.local` and fill in three values:
 Everything else in `.env.local.example` is optional and the site works
 correctly without it.
 
+For transactional email, add `RESEND_API_KEY` and a verified-domain sender in
+`EMAIL_FROM` (for example `TARA <orders@tarabd.co>`) to `.env.local` or your
+deployment secret store. Then save the owner's private **Internal order
+notification inbox** in `/admin/settings` and use **Send test email**. The same
+inbox receives new-order and Contact Us alerts; customer confirmations go to
+the email entered at checkout and include the PDF receipt.
+
 > The **service role key is not used by this project** and must not be added.
 > It bypasses row level security entirely. Every feature here, including the
 > tests that prove the security policies hold, works with the publishable key.
@@ -65,8 +72,21 @@ whole file. Do not run a selection.
 *use* an enum value in the same transaction that added it, so it cannot be
 merged with the file after it.
 
-Every file is idempotent — re-running one repairs missing objects without
+`0001` onwards are idempotent — re-running one repairs missing objects without
 touching customers, orders or products.
+
+**`0000_baseline_schema.sql` is for a fresh database only.** It describes the
+schema as it was before any migration ran, including the Bengali columns `0011`
+dropped, and the pre-`0013` `place_order()`. Replaying it on a migrated database
+fails at
+
+```
+ERROR: 42703: column "name_bn" does not exist
+```
+
+which is the correct outcome: the whole file is one transaction, so the failure
+rolls everything back and the database is left untouched. Do not work around it
+by editing that line — see [DATABASE.md](DATABASE.md#replaying-the-baseline).
 
 ### What NOT to install
 

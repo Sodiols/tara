@@ -16,14 +16,26 @@ import { cn } from "@/lib/utils";
 export function Panel({
   children,
   className,
+  id,
   as: Tag = "section",
 }: {
   children: ReactNode;
   className?: string;
+  /** Set when the panel is a link or scroll target, e.g. #variants. */
+  id?: string;
   as?: "section" | "div" | "article";
 }) {
   return (
-    <Tag className={cn("rounded-panel border border-border bg-taraWhite", className)}>
+    <Tag
+      id={id}
+      className={cn(
+        "rounded-panel border border-border bg-taraWhite",
+        // Anchored panels are scrolled to; without this the sticky admin header
+        // covers the heading the staff member was sent to read.
+        id && "scroll-mt-24",
+        className,
+      )}
+    >
       {children}
     </Tag>
   );

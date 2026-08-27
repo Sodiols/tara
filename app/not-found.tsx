@@ -16,10 +16,10 @@ export default function NotFound() {
           <Button>{"Back to Home"}</Button>
         </Link>
         <LinkButton href="/unstitched-three-piece" variant="outline">
-          {"Unstitched Three Piece"}
+          {"Unready Three Piece"}
         </LinkButton>
         <LinkButton href="/ready-three-piece" variant="outline">
-          {"Ready Three Piece"}
+          {"Two Piece"}
         </LinkButton>
       </div>
 

@@ -9,61 +9,61 @@ import {
 /**
  * The purchase journey — the one flow that has to work.
  *
- * Storefront → product → variant → bag → checkout → division → district →
- * cash-on-delivery order → order number → tracking.
+ * Storefront → product → variant → bag → checkout → contact → delivery →
+ * delivery area → cash-on-delivery order → order number → tracking.
  *
  * It also asserts the two things that are easy to get wrong and expensive to
- * get wrong: the delivery charge follows the Sylhet rule, and the total the
- * confirmation shows is the total the DATABASE computed, not the one the
+ * get wrong: the delivery charge follows the zone the customer picked, and the
+ * total on the confirmation is the total the DATABASE computed, not the one the
  * browser added up.
  */
 
-test.describe("cash-on-delivery purchase", () => {
-  test("a guest can buy a product and then track the order", async ({ page }) => {
-    await openFirstProduct(page);
-    await chooseFirstVariant(page);
+async function addFirstProductToBag(page: import("@playwright/test").Page) {
+  await openFirstProduct(page);
+  await chooseFirstVariant(page);
+  await page.getByRole("button", { name: /add to (bag|cart)/i }).first().click();
+}
 
-    await page.getByRole("button", { name: /add to (bag|cart)/i }).first().click();
+async function fillCheckoutDetails(page: import("@playwright/test").Page) {
+  await page.getByRole("textbox", { name: /^email address/i }).fill("playwright-receipt@example.com");
+  await page.getByLabel(/phone number/i).fill(testPhone());
+  await page.getByLabel(/^name/i).fill("Playwright Test");
+  await page.getByLabel(/^address/i).fill("House 12, Road 3, Test Area");
+  await page.getByLabel(/^city/i).fill("Sylhet");
+}
+
+test.describe("cash-on-delivery purchase", () => {
+  test("a guest can buy from the bag and then track the order", async ({ page }) => {
+    await addFirstProductToBag(page);
 
     await page.goto("/bag");
-    await expect(page.getByRole("heading", { name: /shopping bag/i })).toBeVisible();
-
-    // The bag must not be empty — if it is, the add-to-bag above silently
-    // failed and everything after this would be testing nothing.
+    await expect(page.getByRole("heading", { level: 1, name: /shopping bag/i })).toBeVisible();
+    // If this is empty the add above silently failed and everything after it
+    // would be testing nothing.
     await expect(page.locator('a[href^="/product/"]').first()).toBeVisible();
 
     await page.getByRole("link", { name: /proceed to checkout/i }).click();
     await page.waitForURL("**/checkout");
 
-    const phone = testPhone();
-    await page.getByLabel(/full name/i).fill("Playwright Test");
-    await page.getByLabel(/phone/i).fill(phone);
-    await page.getByLabel(/full address/i).fill("House 12, Road 3, Test Area");
+    // The four sections the checkout is organised into.
+    for (const heading of [/^contact$/i, /^delivery$/i, /delivery method/i, /payment method/i]) {
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    }
 
-    // Division and district are separate selects, and the district list is
-    // derived from the division — picking a division must repopulate it.
-    await page.getByLabel(/division/i).selectOption("Sylhet");
-    await expect(page.getByLabel(/^district/i)).toContainText("Sylhet");
-    await page.getByLabel(/^district/i).selectOption("Sylhet");
-
+    await fillCheckoutDetails(page);
+    await page.getByRole("radio", { name: /inside/i }).check();
     await page.getByRole("checkbox", { name: /terms/i }).check();
-
-    const deliveryLine = page.getByText(/delivery/i).first();
-    await expect(deliveryLine).toBeVisible();
-
     await page.getByRole("button", { name: /place order/i }).click();
 
     await expect(page.getByText(/order has been placed/i)).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("button", { name: /download receipt/i })).toBeVisible();
 
-    const body = await page.textContent("body");
-    const orderNumber = body?.match(/TARA-\d+/)?.[0] ?? "";
+    const orderNumber = (await page.getByTestId("order-number").textContent())?.trim() ?? "";
     expect(orderNumber, "the confirmation must show an order number").toBeTruthy();
 
-    const trackingToken = body?.match(/\b[0-9a-f]{48}\b/)?.[0] ?? "";
+    const trackingToken = (await page.getByTestId("tracking-token").textContent())?.trim() ?? "";
     expect(trackingToken, "the confirmation must show a tracking token").toBeTruthy();
 
-    // Tracking with the order number and the token returns the order; the
-    // number alone must not.
     await page.goto("/track-order");
     await page.getByPlaceholder(/order number/i).fill(orderNumber);
     await page.getByPlaceholder(/tracking token/i).fill(trackingToken);
@@ -72,54 +72,73 @@ test.describe("cash-on-delivery purchase", () => {
   });
 
   test("an order cannot be tracked with the order number alone", async ({ page }) => {
-    // Guest tracking privacy: guessing an order number must not disclose a
-    // customer's order.
     await page.goto("/track-order");
     await page.getByPlaceholder(/order number/i).fill("TARA-1000");
     await page.getByPlaceholder(/tracking token/i).fill("0".repeat(48));
     await page.getByRole("button", { name: /^track$/i }).click();
     await expect(page.getByText(/no order matched/i)).toBeVisible({ timeout: 20_000 });
   });
+});
 
-  test("the checkout refuses a district that is not in the chosen division", async ({ page }) => {
+test.describe("the checkout asks only what it needs", () => {
+  test.beforeEach(async ({ page }) => {
+    await addFirstProductToBag(page);
     await page.goto("/checkout");
+  });
 
-    // With an empty bag the checkout shows its empty state; put something in it
-    // first so the form is rendered.
-    if (await page.getByText(/your bag is empty/i).isVisible().catch(() => false)) {
-      await openFirstProduct(page);
-      await chooseFirstVariant(page);
-      await page.getByRole("button", { name: /add to (bag|cart)/i }).first().click();
-      await page.goto("/checkout");
+  test("contact requires phone and email, and nothing else", async ({ page }) => {
+    await expect(page.getByLabel(/phone number/i)).toBeVisible();
+    const email = page.getByRole("textbox", { name: /^email address/i });
+    await expect(email).toBeVisible();
+    await expect(email).toHaveAttribute("required", "");
+  });
+
+  test("the removed location fields are gone", async ({ page }) => {
+    for (const label of [/division/i, /district/i, /upazila/i, /country|region/i, /^area$/i]) {
+      await expect(page.getByLabel(label)).toHaveCount(0);
     }
+    // And there is one Name field, not a first/last split.
+    await expect(page.getByLabel(/first name/i)).toHaveCount(0);
+    await expect(page.getByLabel(/last name/i)).toHaveCount(0);
+  });
 
-    await page.getByLabel(/division/i).selectOption("Sylhet");
-    const districts = await page.getByLabel(/^district/i).locator("option").allTextContents();
+  test("delivery collects name, address, apartment, city and postal code", async ({ page }) => {
+    await expect(page.getByLabel(/^name/i)).toBeVisible();
+    await expect(page.getByLabel(/^address/i)).toBeVisible();
+    await expect(page.getByLabel(/apartment/i)).toBeVisible();
+    await expect(page.getByLabel(/^city/i)).toBeVisible();
+    await expect(page.getByLabel(/postal code/i)).toBeVisible();
+  });
 
-    // The district list is the four real districts of Sylhet division. Upazilas
-    // of Sylhet district must not appear — the previous dropdown listed four of
-    // them as if they were districts.
-    expect(districts).toEqual(
-      expect.arrayContaining(["Habiganj", "Moulvibazar", "Sunamganj", "Sylhet"]),
-    );
-    expect(districts).not.toContain("Zakiganj");
-    expect(districts).not.toContain("Golapganj");
-    expect(districts).not.toContain("Dhaka");
+  test("cash on delivery is the only payment method, with its terms", async ({ page }) => {
+    await expect(page.getByText(/cash on delivery/i).first()).toBeVisible();
+    await expect(page.getByText(/confirmed by our team via phone within 24 hours/i)).toBeVisible();
+    await expect(page.getByText(/payment is due in full upon delivery/i)).toBeVisible();
   });
 });
 
-test.describe("delivery pricing follows the Sylhet rule", () => {
-  test("a large order outside Sylhet is still charged for delivery", async ({ page }) => {
-    await openFirstProduct(page);
-    await chooseFirstVariant(page);
-    await page.getByRole("button", { name: /add to (bag|cart)/i }).first().click();
-
+test.describe("delivery pricing follows the chosen area", () => {
+  test("switching area changes the delivery charge on the summary", async ({ page }) => {
+    await addFirstProductToBag(page);
     await page.goto("/checkout");
-    await page.getByLabel(/division/i).selectOption("Dhaka");
 
-    // Outside the eligible division the site must never promise free delivery,
-    // whatever the subtotal — that mismatch between the copy and the charge is
-    // exactly what this release fixed.
-    await expect(page.getByText(/free delivery applies in sylhet only/i)).toBeVisible();
+    const inside = page.getByRole("radio", { name: /inside/i });
+    const outside = page.getByRole("radio", { name: /outside/i });
+    await expect(inside).toBeVisible();
+    await expect(outside).toBeVisible();
+
+    await inside.check();
+    const insideDelivery = await page.getByTestId("delivery-charge").innerText();
+
+    await outside.check();
+    // Outside the eligible area always pays, whatever the subtotal — this is
+    // the rule the storefront used to contradict.
+    await expect(outside).toBeChecked();
+    const outsideDelivery = await page.getByTestId("delivery-charge").innerText();
+
+    expect(
+      insideDelivery !== outsideDelivery,
+      "the delivery line must react to the chosen area",
+    ).toBeTruthy();
   });
 });

@@ -16,6 +16,7 @@ import {
 } from "@/components/admin/ui";
 import { OrderStatusBadge, PaymentStatusBadge, StockBadge } from "@/components/admin/status";
 import type { OrderStatus } from "@/types/database";
+import { formatSizeLabel } from "@/lib/product-size";
 
 export default async function AdminDashboardPage({
   searchParams,
@@ -263,7 +264,7 @@ export default async function AdminDashboardPage({
                         {variant.product_name}
                       </Link>
                       <p className="truncate font-sans text-xs text-muted">
-                        {variant.size} · {variant.colour_en} · {variant.sku}
+                        {formatSizeLabel(variant.size)} · {variant.colour_en} · {variant.sku}
                       </p>
                     </div>
                     <StockBadge

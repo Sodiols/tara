@@ -62,7 +62,7 @@ export function AboutClient({ storeAddress }: { storeAddress: string }) {
           <div>
             <h2 className="font-serif text-3xl text-ink mb-4">{"Who We Are"}</h2>
             <p className="text-muted leading-relaxed">
-              {"TARA is a Sylhet-born fashion brand crafting unstitched and ready three piece clothing, along with fashion accessories, for the modern Bangladeshi woman. We believe fashion should feel comfortable, honest, and within reach."}
+              {"TARA is a Sylhet-born fashion brand crafting unready three piece and two piece clothing, along with fashion accessories, for the modern Bangladeshi woman. We believe fashion should feel comfortable, honest, and within reach."}
             </p>
           </div>
         </div>

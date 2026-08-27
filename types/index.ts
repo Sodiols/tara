@@ -10,6 +10,7 @@
 export type ProductCategory =
   | "unstitched-three-piece"
   | "ready-three-piece"
+  | "hijab"
   | "accessories"
   | "collection";
 
@@ -26,7 +27,9 @@ export interface Review {
   author: string;
   rating: number;
   date: string;
+  title?: string;
   comment: string;
+  verifiedPurchase: boolean;
 }
 
 export interface UnstitchedDetails {

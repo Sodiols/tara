@@ -1256,7 +1256,23 @@ grant select, update on table public.store_settings to authenticated;
 grant select, update on table public.contact_messages to authenticated;
 grant select, update on table public.newsletter_subscribers to authenticated;
 
-revoke execute on all functions in schema public from public, anon, authenticated;
+-- The blanket lockdown that used to sit here has been REMOVED:
+--
+--     revoke execute on all functions in schema public from public, anon, authenticated;
+--
+-- It was correct on a fresh install and destructive on a re-run. This file is
+-- documented as safe to re-run, and it is -- for objects. It was not for grants:
+-- running it again after 0002 re-executed that REVOKE and restored only the nine
+-- grants below, silently stripping EXECUTE from every function 0002 and later had
+-- granted. Nothing errored. The admin panel just stopped being able to save
+-- anything, and the storefront catalogue stopped working for signed-out visitors
+-- because the product policies call has_permission().
+--
+-- Migration 0002 owns the lockdown now, and 0012 is the authoritative grant list
+-- and can be re-run to repair a database this already happened to.
+--
+-- The grants below are kept so a fresh install has a working storefront between
+-- 0000 and 0002. They only ever add.
 grant execute on function public.is_staff() to anon, authenticated;
 grant execute on function public.is_full_admin() to anon, authenticated;
 grant execute on function public.ensure_my_profile() to authenticated;

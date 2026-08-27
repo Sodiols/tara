@@ -1,5 +1,3 @@
-"use client";
-
 /**
  * The one line of promotional copy above the header.
  *

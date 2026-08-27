@@ -1,5 +1,3 @@
-"use client";
-
 import Link from "next/link";
 import Image from "next/image";
 import { Facebook, Instagram } from "lucide-react";
@@ -30,8 +28,8 @@ export function Footer({ identity }: { identity: StoreIdentity }) {
 
 
   const shopLinks = [
-    { label: "Unstitched Three Piece", href: "/unstitched-three-piece" },
-    { label: "Ready Three Piece", href: "/ready-three-piece" },
+    { label: "Unready Three Piece", href: "/unstitched-three-piece" },
+    { label: "Two Piece", href: "/ready-three-piece" },
     { label: "New Arrivals", href: "/new-arrivals" },
     { label: "Accessories", href: "/accessories" },
     { label: "Collection", href: "/collection" },

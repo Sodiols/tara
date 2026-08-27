@@ -24,6 +24,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: siteConfig.url, changeFrequency: "daily", priority: 1 },
     { url: `${siteConfig.url}/unstitched-three-piece`, changeFrequency: "daily", priority: 0.9 },
     { url: `${siteConfig.url}/ready-three-piece`, changeFrequency: "daily", priority: 0.9 },
+    { url: `${siteConfig.url}/hijab`, changeFrequency: "daily", priority: 0.9 },
     { url: `${siteConfig.url}/accessories`, changeFrequency: "weekly", priority: 0.8 },
     { url: `${siteConfig.url}/collection`, changeFrequency: "weekly", priority: 0.8 },
     { url: `${siteConfig.url}/new-arrivals`, changeFrequency: "daily", priority: 0.8 },

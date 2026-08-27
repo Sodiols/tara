@@ -9,8 +9,8 @@ import { SizeSelector } from "./SizeSelector";
 import { ColourSelector } from "./ColourSelector";
 import { QuantitySelector } from "./QuantitySelector";
 import { Button } from "@/components/ui/Button";
-import { useCartStore } from "@/store/cartStore";
-import { useToastStore } from "@/store/toastStore";
+import { useAddToCart } from "@/hooks/useAddToCart";
+import { hasSelectableSizes } from "@/lib/product-size";
 import type { Product } from "@/types";
 
 interface QuickViewModalProps {
@@ -19,8 +19,7 @@ interface QuickViewModalProps {
 }
 
 export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
-  const addItem = useCartStore((s) => s.addItem);
-  const { addToast } = useToastStore();
+  const addToCart = useAddToCart();
   const [size, setSize] = useState(product?.sizes[0] ?? "");
   const [colour, setColour] = useState(product?.colours[0]?.name ?? "");
   const [quantity, setQuantity] = useState(1);
@@ -28,17 +27,21 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
   if (!product) return null;
 
   const handleAddToBag = () => {
-    addItem({
-      productId: product.id,
-      slug: product.slug,
-      name: product.name,
-      image: product.images[0],
-      price: product.price,
-      size: size || product.sizes[0],
-      colour: colour || product.colours[0]?.name || "",
-      quantity,
-    });
-    addToast("Add to Cart");
+    addToCart(
+      {
+        productId: product.id,
+        slug: product.slug,
+        name: product.name,
+        image: product.images[0],
+        price: product.price,
+        size: size || product.sizes[0],
+        colour: colour || product.colours[0]?.name || "",
+        quantity,
+      },
+      // The modal is already a full-screen overlay on a phone; closing it only
+      // to open the drawer behind it would be two panels for one tap.
+      { openDrawer: false },
+    );
     onClose();
   };
 
@@ -51,7 +54,7 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
         <div className="flex flex-col gap-4">
           <PriceDisplay price={product.price} previousPrice={product.previousPrice} size="lg" />
           <p className="text-sm text-muted">{product.description}</p>
-          {product.sizes.length > 0 && product.sizes[0] !== "One Size" && product.sizes[0] !== "Unstitched" && (
+          {hasSelectableSizes(product.sizes) && (
             <SizeSelector sizes={product.sizes} selected={size} onChange={setSize} />
           )}
           {product.colours.length > 0 && (

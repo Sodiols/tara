@@ -37,6 +37,28 @@ interface DatabaseErrorShape {
   message?: unknown;
 }
 
+/**
+ * True when the function exists but the caller has no EXECUTE grant.
+ *
+ * Postgres reports this as `42501 permission denied for function <name>` --
+ * which reads almost identically to the application's own
+ * `permission_denied` from require_permission(), but means something
+ * completely different. The first is a deployment fault: the grant is missing.
+ * The second is working as designed: the staff member's role does not include
+ * the permission.
+ *
+ * Telling them apart matters because the fixes are opposite. One is "run
+ * migration 0012"; the other is "ask an administrator for the permission".
+ */
+export function isMissingExecuteGrant(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { code, message } = error as DatabaseErrorShape;
+  return (
+    code === "42501" ||
+    (typeof message === "string" && /permission denied for function/i.test(message))
+  );
+}
+
 /** True when the failure is "this function does not exist in the database". */
 export function isMissingDatabaseFunction(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
@@ -59,6 +81,17 @@ export function describeMissingMigration(
   error: unknown,
   functionName: string,
 ): string | null {
+  if (isMissingExecuteGrant(error)) {
+    return (
+      `public.${functionName}() exists but is not executable by this role, so ` +
+      `the request was refused before the function ran. This is a missing GRANT, ` +
+      `not a role problem. It happens when 0000_baseline_schema.sql is re-run ` +
+      `after a later migration: its blanket REVOKE strips every grant the later ` +
+      `migrations issued. Apply supabase/migrations/0012_repair_function_grants.sql ` +
+      `to restore them. See docs/DATABASE.md.`
+    );
+  }
+
   if (!isMissingDatabaseFunction(error)) return null;
 
   const migration = FUNCTION_MIGRATIONS[functionName];

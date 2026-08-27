@@ -4,8 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Facebook, MessageCircle, Link as LinkIcon, Star } from "lucide-react";
 import type { Product } from "@/types";
-import { useCartStore } from "@/store/cartStore";
 import { useToastStore } from "@/store/toastStore";
+import { useBuyNowStore } from "@/store/buyNowStore";
+import { useAddToCart } from "@/hooks/useAddToCart";
 import { useRecentlyViewedStore } from "@/store/recentlyViewedStore";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { ProductGallery } from "./ProductGallery";
@@ -24,6 +25,7 @@ import { SizeGuideTable } from "./SizeGuideTable";
 import { siteConfig } from "@/data/site";
 import { Container } from "@/components/layout/Container";
 import { categoryHref, resolveCategoryLabel } from "@/lib/utils";
+import { hasSelectableSizes, ONE_SIZE } from "@/lib/product-size";
 
 interface ProductDetailClientProps {
   product: Product;
@@ -32,11 +34,12 @@ interface ProductDetailClientProps {
 
 export function ProductDetailClient({ product, relatedProducts }: ProductDetailClientProps) {
   const router = useRouter();
-  const addItem = useCartStore((s) => s.addItem);
+  const addToCart = useAddToCart();
+  const startBuyNow = useBuyNowStore((s) => s.setItem);
   const { addToast } = useToastStore();
   const addRecentlyViewed = useRecentlyViewedStore((s) => s.addSlug);
 
-  const hasRealSizes = product.sizes.length > 0 && product.sizes[0] !== "One Size" && product.sizes[0] !== "Unstitched";
+  const hasRealSizes = hasSelectableSizes(product.sizes);
   const [size, setSize] = useState(product.sizes[0] ?? "");
   const [colour, setColour] = useState(product.colours[0]?.name ?? "");
   const [quantity, setQuantity] = useState(1);
@@ -52,19 +55,32 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
     name: product.name,
     image: product.images[0],
     price: product.price,
-    size: size || product.sizes[0] || "One Size",
+    size: size || product.sizes[0] || ONE_SIZE,
     colour: colour || product.colours[0]?.name || "",
     quantity,
   });
 
   const handleAddToBag = () => {
-    addItem(buildCartItem());
-    addToast("Add to Cart");
+    if (product.stock === 0) return;
+    addToCart(buildCartItem());
   };
 
+  /**
+   * Buy Now is a separate purchase, not a cart operation.
+   *
+   * It used to call addItem() and then navigate to /checkout, so the customer's
+   * existing cart came along for the ride: someone with three saved items who
+   * clicked "Buy Now" on a fourth bought all four. It also left the item in the
+   * cart if they abandoned checkout.
+   *
+   * The selection now goes into its own session-scoped store and the Buy Now
+   * checkout reads only that. The cart is not read, not written, and its badge
+   * does not move.
+   */
   const handleBuyNow = () => {
-    addItem(buildCartItem());
-    router.push("/checkout");
+    if (product.stock === 0) return;
+    startBuyNow(buildCartItem());
+    router.push("/checkout/buy-now");
   };
 
   const shareUrl = `${siteConfig.url}/product/${product.slug}`;
@@ -165,7 +181,7 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
             <button
               onClick={() => {
                 navigator.clipboard?.writeText(shareUrl);
-                addToast("Save");
+                addToast("Link copied");
               }}
               aria-label="Copy link"
               className="text-ink hover:text-wine"
@@ -254,10 +270,13 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
       </div>
 
       <div id="reviews" className="mt-16 max-w-2xl">
-        <h2 className="font-serif font-normal text-2xl sm:text-3xl leading-[1.1] text-ink mb-6">
-          {"Customer Reviews"}
-        </h2>
-        <ReviewsSection reviews={product.reviews} rating={product.rating} reviewCount={product.reviewCount} />
+        <ReviewsSection
+          productId={product.id}
+          productSlug={product.slug}
+          reviews={product.reviews}
+          rating={product.rating}
+          reviewCount={product.reviewCount}
+        />
       </div>
 
       <RelatedProductsSection products={relatedProducts} />

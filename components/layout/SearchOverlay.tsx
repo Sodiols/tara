@@ -11,10 +11,10 @@ import { useRouter } from "next/navigation";
 import { lockBodyScroll } from "@/lib/scroll-lock";
 
 const RECENT_KEY = "tara-recent-searches";
-const suggestedKeywords = ["Unstitched", "Kurta", "Wine", "Festive", "Bag", "Earrings"];
+const suggestedKeywords = ["Unready", "Kurta", "Wine", "Festive", "Bag", "Earrings"];
 const popularCategories = [
-  { label: "Unstitched Three Piece", href: "/unstitched-three-piece" },
-  { label: "Ready Three Piece", href: "/ready-three-piece" },
+  { label: "Unready Three Piece", href: "/unstitched-three-piece" },
+  { label: "Two Piece", href: "/ready-three-piece" },
   { label: "Accessories", href: "/accessories" },
 ];
 

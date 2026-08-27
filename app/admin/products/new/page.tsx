@@ -2,7 +2,7 @@ import Link from "next/link";
 import { getTaxonomyOptions } from "@/lib/supabase/queries/admin";
 import { requirePermission } from "@/lib/supabase/auth";
 import { AdminEmptyState, PageHeader, Panel } from "@/components/admin/ui";
-import { ProductForm } from "@/components/admin/ProductForm";
+import { ProductCreateForm } from "@/components/admin/ProductCreateForm";
 
 export default async function NewProductPage() {
   await requirePermission("catalogue.manage");
@@ -17,7 +17,7 @@ export default async function NewProductPage() {
           </Link>
         }
         title="New product"
-        description="Save the product first, then add its variants and images."
+        description="Add the product details and images. Variants can be added once the product is created."
       />
 
       {categories.length === 0 ? (
@@ -36,7 +36,7 @@ export default async function NewProductPage() {
           />
         </Panel>
       ) : (
-        <ProductForm categories={categories} collections={collections} />
+        <ProductCreateForm categories={categories} collections={collections} />
       )}
     </>
   );

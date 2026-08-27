@@ -67,12 +67,10 @@ export async function openFirstProduct(page: Page, listingPath = "/new-arrivals"
 /** Chooses the first available colour and size, when the product offers them. */
 export async function chooseFirstVariant(page: Page) {
   for (const label of [/colour|color/i, /size/i]) {
-    const group = page.getByRole("group", { name: label });
-    const option = (await group.count())
-      ? group.getByRole("button").first()
-      : page.getByRole("button", { name: label }).first();
+    const group = page.getByRole("radiogroup", { name: label });
+    const option = group.getByRole("radio").first();
     if (await option.isVisible().catch(() => false)) {
-      await option.click();
+      await option.check();
     }
   }
 }

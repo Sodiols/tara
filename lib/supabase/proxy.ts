@@ -96,6 +96,12 @@ function createNonce(): string {
 function contentSecurityPolicy(nonce: string, isDev: boolean): string {
   const supabaseOrigin = supabaseEnv.url || "";
   const supabaseSocket = supabaseOrigin.replace("https://", "wss://");
+  let monitoringOrigin = "";
+  try {
+    monitoringOrigin = new URL(process.env.NEXT_PUBLIC_SENTRY_DSN ?? "").origin;
+  } catch {
+    // Monitoring is optional; an absent or malformed DSN adds no CSP source.
+  }
 
   return [
     "default-src 'self'",
@@ -106,7 +112,7 @@ function contentSecurityPolicy(nonce: string, isDev: boolean): string {
     // fonts.gstatic.com entry is needed at runtime.
     "font-src 'self' data:",
     `img-src 'self' data: blob: https://images.unsplash.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
-    `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin} ${supabaseSocket}` : ""}${isDev ? " ws: http://localhost:*" : ""}`,
+    `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin} ${supabaseSocket}` : ""}${monitoringOrigin ? ` ${monitoringOrigin}` : ""}${isDev ? " ws: http://localhost:*" : ""}`,
     "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",
@@ -132,6 +138,53 @@ function contentSecurityPolicy(nonce: string, isDev: boolean): string {
  */
 let maintenanceCache: { value: boolean; expiresAt: number } | null = null;
 const MAINTENANCE_TTL_MS = 30_000;
+const collectionVisibilityCache = new Map<string, { value: boolean; expiresAt: number }>();
+
+async function isPublicCollectionRoute(pathname: string): Promise<boolean> {
+  const match = /^\/collection\/([a-z0-9-]{1,100})$/.exec(pathname);
+  if (!match) return true;
+  if (!isSupabaseConfigured()) return false;
+
+  const slug = match[1];
+  const now = Date.now();
+  const cached = collectionVisibilityCache.get(slug);
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  try {
+    const query = new URLSearchParams({
+      slug: `eq.${slug}`,
+      select: "is_active,starts_at,ends_at",
+      limit: "1",
+    });
+    const response = await fetch(`${supabaseEnv.url}/rest/v1/collections?${query}`, {
+      headers: {
+        apikey: supabaseEnv.publishableKey,
+        authorization: `Bearer ${supabaseEnv.publishableKey}`,
+        accept: "application/json",
+      },
+      cache: "no-store",
+    });
+    if (!response.ok) return true;
+
+    const rows = (await response.json()) as {
+      is_active: boolean;
+      starts_at: string | null;
+      ends_at: string | null;
+    }[];
+    const row = rows[0];
+    const visible = Boolean(
+      row?.is_active &&
+        (!row.starts_at || new Date(row.starts_at).getTime() <= now) &&
+        (!row.ends_at || new Date(row.ends_at).getTime() > now),
+    );
+    collectionVisibilityCache.set(slug, { value: visible, expiresAt: now + 60_000 });
+    return visible;
+  } catch {
+    // Let the page-level query handle transient database failures. Failing
+    // closed here would turn a Supabase timeout into false 404s.
+    return true;
+  }
+}
 
 async function isMaintenanceMode(): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
@@ -167,11 +220,13 @@ export async function updateSession(request: NextRequest) {
   const isDev = process.env.NODE_ENV !== "production";
   const nonce = createNonce();
   const csp = contentSecurityPolicy(nonce, isDev);
+  const { pathname, search } = request.nextUrl;
 
   // The nonce travels on the request so Next.js can stamp it onto the scripts
   // it renders for this response.
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
+  requestHeaders.set("x-tara-pathname", pathname);
   requestHeaders.set("Content-Security-Policy", csp);
 
   const withSecurityHeaders = (response: NextResponse) => {
@@ -179,7 +234,21 @@ export async function updateSession(request: NextRequest) {
     return response;
   };
 
-  const { pathname, search } = request.nextUrl;
+  // App Router may already have streamed the root shell by the time a dynamic
+  // page calls notFound(), which leaves the browser with a visually correct
+  // not-found page but HTTP 200. Resolve collection visibility at the edge so
+  // invalid collection URLs carry a real 404 status for users and crawlers.
+  if (!(await isPublicCollectionRoute(pathname))) {
+    const notFoundUrl = request.nextUrl.clone();
+    notFoundUrl.pathname = "/_not-found";
+    notFoundUrl.search = "";
+    return withSecurityHeaders(
+      NextResponse.rewrite(notFoundUrl, {
+        status: 404,
+        request: { headers: requestHeaders },
+      }),
+    );
+  }
 
   if (!isSupabaseConfigured()) {
     return withSecurityHeaders(
@@ -188,30 +257,35 @@ export async function updateSession(request: NextRequest) {
   }
 
   let response = NextResponse.next({ request: { headers: requestHeaders } });
-  const supabase = createServerClient<Database>(
-    supabaseEnv.url,
-    supabaseEnv.publishableKey,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request: { headers: requestHeaders } });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
+  let authenticated = false;
+
+  // Public catalogue pages do not need an identity to render. Verifying every
+  // anonymous page view against Supabase put an avoidable network round trip in
+  // front of the HTML. Only routes whose routing decision actually depends on
+  // identity pay that cost. getClaims() verifies the JWT signature and refreshes
+  // an expiring session without fetching the full user record from Auth.
+  if (isProtected(pathname) || GUEST_ONLY_PATHS.includes(pathname)) {
+    const supabase = createServerClient<Database>(
+      supabaseEnv.url,
+      supabaseEnv.publishableKey,
+      {
+        cookies: {
+          getAll: () => request.cookies.getAll(),
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+            response = NextResponse.next({ request: { headers: requestHeaders } });
+            cookiesToSet.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options),
+            );
+          },
         },
       },
-    },
-  );
+    );
+    const { data } = await supabase.auth.getClaims();
+    authenticated = Boolean(data?.claims?.sub);
+  }
 
-  // Refreshes the session cookie and gives us an authenticated identity that
-  // was verified by Supabase, not merely decoded from the cookie.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
-  if (!user && isProtected(pathname)) {
+  if (!authenticated && isProtected(pathname)) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
     loginUrl.search = "";
@@ -222,7 +296,7 @@ export async function updateSession(request: NextRequest) {
   // The password-recovery flow signs the user in with a short-lived session
   // specifically so they can set a new password, so /reset-password must stay
   // reachable while authenticated.
-  if (user && GUEST_ONLY_PATHS.includes(pathname)) {
+  if (authenticated && GUEST_ONLY_PATHS.includes(pathname)) {
     const accountUrl = request.nextUrl.clone();
     accountUrl.pathname = "/account";
     accountUrl.search = "";
@@ -237,9 +311,12 @@ export async function updateSession(request: NextRequest) {
     const maintenanceUrl = request.nextUrl.clone();
     maintenanceUrl.pathname = "/maintenance";
     maintenanceUrl.search = "";
+    const maintenanceHeaders = new Headers(requestHeaders);
+    maintenanceHeaders.set("x-tara-pathname", "/maintenance");
     const maintenance = NextResponse.rewrite(maintenanceUrl, {
       status: 503,
       headers: { "Retry-After": "3600", "Cache-Control": "no-store" },
+      request: { headers: maintenanceHeaders },
     });
     return withSecurityHeaders(maintenance);
   }

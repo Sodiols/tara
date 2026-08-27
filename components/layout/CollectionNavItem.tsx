@@ -47,7 +47,7 @@ export function CollectionNavItem() {
   return (
     <div
       ref={wrapperRef}
-      className="relative"
+      className="relative shrink-0"
       onMouseEnter={() => setOpen(true)}
       onMouseLeave={close}
       onKeyDown={handleKeyDown}
@@ -62,7 +62,7 @@ export function CollectionNavItem() {
         onClick={() => setOpen(true)}
         onFocus={() => setOpen(true)}
         className={cn(
-          "group relative flex items-center gap-1 font-sans font-medium text-[13px] leading-4 tracking-[0.06em] uppercase text-ink py-2",
+          "group relative flex shrink-0 items-center gap-1 whitespace-nowrap font-sans font-medium text-[13px] leading-4 tracking-[0.06em] uppercase text-ink py-2",
           (active || open) && "text-wine"
         )}
       >

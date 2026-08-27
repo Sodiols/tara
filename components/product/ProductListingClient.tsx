@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SlidersHorizontal } from "lucide-react";
 import type { Product } from "@/types";
@@ -75,6 +75,7 @@ export function ProductListingClient({
   const pathname = usePathname();
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [optimisticFilters, setOptimisticFilters] = useOptimistic(filters);
 
   // Pages appended in the browser since the last server render.
   const [appended, setAppended] = useState<Product[]>([]);
@@ -106,12 +107,14 @@ export function ProductListingClient({
     // would ask for products 49-72 of a result set that may only have 12.
     const params = paramsFromProductFilters({ ...next, page: 1 });
     startTransition(() => {
+      setOptimisticFilters(next);
       router.push(`${pathname}${params.size ? `?${params}` : ""}`, { scroll: false });
     });
   };
 
   const clearAll = () => {
     startTransition(() => {
+      setOptimisticFilters({});
       router.push(pathname, { scroll: false });
     });
   };
@@ -167,7 +170,7 @@ export function ProductListingClient({
   };
 
   const filterProps = {
-    filters,
+    filters: optimisticFilters,
     onChange: applyFilters,
     availableSizes: facets.sizes,
     availableColours: facets.colours,
@@ -212,7 +215,7 @@ export function ProductListingClient({
             >
               <SlidersHorizontal size={15} aria-hidden="true" />
               {"Filters"}
-              {hasActiveFilters(filters) && (
+              {hasActiveFilters(optimisticFilters) && (
                 <span className="ml-1 inline-block h-1.5 w-1.5 rounded-full bg-wine" aria-hidden="true" />
               )}
             </button>
@@ -222,9 +225,9 @@ export function ProductListingClient({
               </label>
               <select
                 id="sort"
-                value={filters.sort ?? "newest"}
+                value={optimisticFilters.sort ?? "newest"}
                 onChange={(event) =>
-                  applyFilters({ ...filters, sort: parseSort(event.target.value) })
+                  applyFilters({ ...optimisticFilters, sort: parseSort(event.target.value) })
                 }
                 className="h-11 rounded-control border border-border bg-white px-3 font-sans font-medium text-xs sm:text-sm text-ink focus:outline-none focus:border-wine"
               >

@@ -54,6 +54,13 @@ export function OrderActions({
 
   const isReversal = selected === "cancelled" || selected === "returned";
 
+  // Keyed on the value the server holds, so a successful update remounts the
+  // select and it shows what was actually saved. With `defaultValue` alone the
+  // control kept whatever had been picked: React applies defaultValue on mount
+  // only, so after a FAILED update the dropdown still displayed the new status
+  // while the badge above it -- correctly -- still showed the old one. Two
+  // different answers to the same question, on the same screen.
+
   return (
     <div className="flex flex-col gap-5">
       <Panel>
@@ -154,13 +161,14 @@ export function OrderActions({
         <Panel>
           <PanelHeader
             title="Payment"
-            description="Tracked separately from fulfilment — a delivered COD order is only paid once the cash is collected."
+            description={`Currently ${PAYMENT_STATUS_LABELS[paymentStatus].toLowerCase()}. Tracked separately from fulfilment — a delivered COD order is only paid once the cash is collected.`}
           />
           <div className="px-5 py-5">
             <ActionForm action={updatePaymentStatusAction} className="flex flex-col gap-4">
               <input type="hidden" name="orderId" value={orderId} />
               <Field label="Payment status" htmlFor="payment-status" required>
                 <select
+                  key={paymentStatus}
                   id="payment-status"
                   name="paymentStatus"
                   defaultValue={paymentStatus}
