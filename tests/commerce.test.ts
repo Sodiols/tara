@@ -421,7 +421,7 @@ describe("input validation", () => {
       );
     }
     assert.equal(
-      adminCategorySchema.safeParse({ ...base, slug: "ready-three-piece" }).success,
+      adminCategorySchema.safeParse({ ...base, slug: "two-piece" }).success,
       true,
     );
   });

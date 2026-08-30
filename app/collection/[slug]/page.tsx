@@ -3,7 +3,13 @@ import { notFound } from "next/navigation";
 import { ProductListingSection } from "@/components/product/ProductListingSection";
 import { getPublicCollectionBySlug } from "@/lib/supabase/queries/products";
 import type { ListingSearchParams } from "@/lib/product-listing";
-import { siteConfig } from "@/data/site";
+import { jsonLdScriptProps } from "@/lib/json-ld";
+import {
+  NOINDEX_NOFOLLOW,
+  breadcrumbSchema,
+  listingMetadata,
+  metaDescription,
+} from "@/lib/seo";
 
 /**
  * Every collection that is not one of the four with a hand-written page.
@@ -19,20 +25,30 @@ interface CollectionPageProps {
   searchParams: ListingSearchParams;
 }
 
-export async function generateMetadata({ params }: CollectionPageProps): Promise<Metadata> {
-  const { slug } = await params;
+export async function generateMetadata({
+  params,
+  searchParams,
+}: CollectionPageProps): Promise<Metadata> {
+  const [{ slug }, resolvedSearchParams] = await Promise.all([params, searchParams]);
   const collection = await getPublicCollectionBySlug(slug);
-  if (!collection) return { title: "Collection Not Found", robots: { index: false } };
 
-  const description =
-    collection.description?.trim() || `Shop the ${collection.name} collection from TARA.`;
+  // A collection outside its schedule, deactivated, or simply absent renders
+  // notFound() below. Its metadata must refuse indexing rather than leave a
+  // 404 that returns HTML looking like a real page.
+  if (!collection) {
+    return { title: "Collection not found", robots: NOINDEX_NOFOLLOW };
+  }
 
-  return {
-    title: collection.name,
-    description,
-    openGraph: { title: collection.name, description },
-    alternates: { canonical: `${siteConfig.url}/collection/${collection.slug}` },
-  };
+  return listingMetadata({
+    title: collection.seoTitle ?? collection.name,
+    description: metaDescription(
+      collection.seoDescription ?? collection.description,
+      `Shop the ${collection.name} collection from TARA — women's clothing delivered across Bangladesh.`,
+    ),
+    path: `/collection/${collection.slug}`,
+    ...(collection.imageUrl ? { images: [collection.imageUrl] } : {}),
+    searchParams: resolvedSearchParams,
+  });
 }
 
 export default async function CollectionSlugPage({ params, searchParams }: CollectionPageProps) {
@@ -41,10 +57,22 @@ export default async function CollectionSlugPage({ params, searchParams }: Colle
   if (!collection) notFound();
 
   return (
-    <ProductListingSection
-      title={collection.name}
-      searchParams={searchParams}
-      scope={{ collection: collection.slug }}
-    />
+    <>
+      <script
+        {...jsonLdScriptProps(
+          breadcrumbSchema([
+            { name: "Home", path: "/" },
+            { name: "Collections", path: "/collection" },
+            { name: collection.name, path: `/collection/${collection.slug}` },
+          ]),
+        )}
+      />
+      <ProductListingSection
+        title={collection.name}
+        intro={collection.description ?? undefined}
+        searchParams={searchParams}
+        scope={{ collection: collection.slug }}
+      />
+    </>
   );
 }

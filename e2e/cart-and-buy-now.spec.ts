@@ -145,9 +145,9 @@ test.describe("shop by category", () => {
     await expect(section).toBeVisible();
 
     for (const href of [
-      "/unstitched-three-piece",
+      "/unready-three-piece",
       "/three-piece",
-      "/ready-three-piece",
+      "/two-piece",
       "/hijab",
       "/accessories",
     ]) {
@@ -168,9 +168,9 @@ test.describe("shop by category", () => {
 
   test("every category card opens a real listing", async ({ page }) => {
     for (const href of [
-      "/unstitched-three-piece",
+      "/unready-three-piece",
       "/three-piece",
-      "/ready-three-piece",
+      "/two-piece",
       "/hijab",
       "/accessories",
     ]) {

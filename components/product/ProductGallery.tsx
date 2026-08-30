@@ -7,10 +7,16 @@ import { createPortal } from "react-dom";
 
 interface ProductGalleryProps {
   images: string[];
-  alt: string;
+  /**
+   * Alt text per image, parallel to `images`. The main image gets a real
+   * description; a thumbnail with no stored alt of its own gets "" because it
+   * is decorative — the product has already been named on the page, and
+   * repeating it on every thumbnail is noise for a screen reader.
+   */
+  alts: string[];
 }
 
-export function ProductGallery({ images, alt }: ProductGalleryProps) {
+export function ProductGallery({ images, alts }: ProductGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [zoomOpen, setZoomOpen] = useState(false);
 
@@ -20,7 +26,7 @@ export function ProductGallery({ images, alt }: ProductGalleryProps) {
       <div className="order-1 relative w-full min-w-0 aspect-[4/5] overflow-hidden bg-beige group min-[900px]:order-2">
         <Image
           src={images[activeIndex]}
-          alt={alt}
+          alt={alts[activeIndex] ?? ""}
           fill
           priority
           sizes="(min-width: 900px) 50vw, 100vw"
@@ -64,7 +70,13 @@ export function ProductGallery({ images, alt }: ProductGalleryProps) {
               <X size={28} />
             </button>
             <div className="relative w-full max-w-3xl aspect-[4/5]">
-              <Image src={images[activeIndex]} alt={alt} fill sizes="800px" className="object-contain" />
+              <Image
+                src={images[activeIndex]}
+                alt={alts[activeIndex] ?? ""}
+                fill
+                sizes="800px"
+                className="object-contain"
+              />
             </div>
           </div>,
           document.body

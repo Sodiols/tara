@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo";
 import { ContactClient } from "@/components/forms/ContactClient";
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
-import { siteConfig } from "@/data/site";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildMetadata({
   title: "Contact Us",
   description:
-    "Get in touch with TARA — call, message us on WhatsApp, email, or send an enquiry through the form.",
-  alternates: { canonical: `${siteConfig.url}/contact` },
-};
+    "Contact TARA in Zakiganj, Sylhet — phone, WhatsApp, email, or the enquiry form. We reply during shop hours.",
+  path: "/contact",
+});
 
 export default async function ContactPage() {
   // Contact details come from the live store settings rather than a constant,

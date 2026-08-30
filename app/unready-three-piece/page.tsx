@@ -12,12 +12,12 @@ import type { ListingSearchParams } from "@/lib/product-listing";
  * editable without a deploy on a configured one.
  */
 const config: CategoryRouteConfig = {
-  slug: "three-piece",
-  name: "Three Piece",
+  slug: "unready-three-piece",
+  name: "Unready Three Piece",
   description:
-    "Three piece sets from TARA — kameez, bottom and dupatta together, in fabrics chosen for Bangladesh's weather and finished for everyday wear.",
+    "Unready three piece sets from TARA — unstitched kameez, salwar and dupatta fabric, ready to be tailored to your own measurements. Delivered across Bangladesh.",
   intro:
-    "Kameez, bottom and dupatta as one set, in fabrics chosen for the weather here and finished for wearing rather than saving for an occasion.",
+    "Unstitched kameez, salwar and dupatta sold together, so the set can be tailored to your own measurements. Choose the fabric here and have it made up however you like.",
 };
 
 export const generateMetadata = categoryMetadata(config);

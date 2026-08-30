@@ -2,7 +2,13 @@ import "server-only";
 
 import { cache } from "react";
 import { unstable_cache } from "next/cache";
-import type { CategorySlug, ColourOption, Product, Review } from "@/types";
+import type {
+  CategorySlug,
+  ColourOption,
+  Product,
+  ProductImageMedia,
+  Review,
+} from "@/types";
 import type { Json } from "@/types/database";
 import { createPublicServerClient } from "../public-server";
 import { isSupabaseConfigured } from "../env";
@@ -122,7 +128,7 @@ function englishField(value: unknown): string {
   return "";
 }
 
-function unstitchedDetails(value: unknown): Product["unstitchedDetails"] {
+function unreadyDetails(value: unknown): Product["unreadyDetails"] {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const row = value as Record<string, unknown>;
   return {
@@ -164,6 +170,39 @@ const asNumber = (value: unknown, fallback = 0) => {
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
 
+/**
+ * Parses the `media` array added to search_catalogue() by migration 0019.
+ *
+ * Falls back to deriving entries from the flat `images` array when `media` is
+ * absent, which is what happens on a database where 0019 has not been applied
+ * yet — the storefront keeps working with no alt text rather than rendering a
+ * product with no photographs at all.
+ */
+function asMedia(value: unknown, images: string[]): ProductImageMedia[] {
+  if (Array.isArray(value)) {
+    const parsed = value.flatMap((entry, index): ProductImageMedia[] => {
+      if (!entry || typeof entry !== "object") return [];
+      const item = entry as Record<string, unknown>;
+      const url = asString(item.url).trim();
+      if (!url) return [];
+      const alt = asString(item.alt).trim();
+      return [{
+        url,
+        alt: alt || null,
+        isPrimary: item.isPrimary === true,
+        sortOrder: asNumber(item.sortOrder, index),
+      }];
+    });
+    if (parsed.length > 0) return parsed;
+  }
+  return images.map((url, index) => ({
+    url,
+    alt: null,
+    isPrimary: index === 0,
+    sortOrder: index,
+  }));
+}
+
 function asColours(value: unknown): ColourOption[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
@@ -184,6 +223,7 @@ function toProduct(raw: unknown, reviews: Review[] = []): Product | null {
   if (!id || !slug) return null;
 
   const previousPrice = row.previousPrice == null ? undefined : asNumber(row.previousPrice);
+  const productImages = asStringArray(row.images);
 
   return {
     id,
@@ -192,9 +232,12 @@ function toProduct(raw: unknown, reviews: Review[] = []): Product | null {
     description: asString(row.description),
     category: asString(row.category, "collection"),
     categoryName: asString(row.categoryName) || undefined,
+    seoTitle: asString(row.seoTitle).trim() || undefined,
+    seoDescription: asString(row.seoDescription).trim() || undefined,
     price: asNumber(row.price),
     previousPrice,
-    images: asStringArray(row.images),
+    images: productImages,
+    media: asMedia(row.media, productImages),
     colours: asColours(row.colours),
     sizes: asStringArray(row.sizes),
     fabric: asString(row.fabric),
@@ -209,7 +252,7 @@ function toProduct(raw: unknown, reviews: Review[] = []): Product | null {
     reviewCount: asNumber(row.reviewCount),
     productCode: asString(row.productCode),
     careInstructions: asString(row.careInstructions),
-    unstitchedDetails: unstitchedDetails(row.unstitchedDetails),
+    unreadyDetails: unreadyDetails(row.unreadyDetails),
     readyMadeDetails: readyMadeDetails(row.readyMadeDetails),
     // Listing pages carry no review bodies: the card shows a star rating, which
     // comes from the denormalised average on the product row.
@@ -427,6 +470,10 @@ export interface PublicCollection {
   slug: string;
   name: string;
   description: string | null;
+  /** Staff-written overrides from /admin/collections. Null when blank. */
+  seoTitle: string | null;
+  seoDescription: string | null;
+  imageUrl: string | null;
 }
 
 /**
@@ -445,7 +492,7 @@ const readPublicCollectionBySlug = unstable_cache(async (
   const supabase = createPublicServerClient();
   const { data, error } = await supabase
     .from("collections")
-    .select("slug,name_en,description_en,is_active,starts_at,ends_at")
+    .select("slug,name_en,description_en,seo_title,seo_description,image_url,is_active,starts_at,ends_at")
     .eq("slug", slug)
     .maybeSingle();
 
@@ -455,10 +502,18 @@ const readPublicCollectionBySlug = unstable_cache(async (
   if (data.starts_at && new Date(data.starts_at).getTime() > now) return null;
   if (data.ends_at && new Date(data.ends_at).getTime() <= now) return null;
 
+  const trimmed = (value: string | null | undefined) => {
+    const text = (value ?? "").trim();
+    return text.length > 0 ? text : null;
+  };
+
   return {
     slug: data.slug,
     name: data.name_en,
     description: data.description_en,
+    seoTitle: trimmed(data.seo_title),
+    seoDescription: trimmed(data.seo_description),
+    imageUrl: trimmed(data.image_url),
   };
 }, ["public-collection-by-slug-v1"], { revalidate: 300, tags: ["catalogue"] });
 
@@ -482,6 +537,11 @@ const readVisibleCollections = unstable_cache(async (): Promise<PublicCollection
     slug: row.slug,
     name: row.name_en,
     description: row.description_en,
+    // The navigation only needs a name and a link; the SEO fields are read by
+    // the collection page itself, which fetches the full row.
+    seoTitle: null,
+    seoDescription: null,
+    imageUrl: null,
   }));
 }, ["visible-collections-v1"], { revalidate: 300, tags: ["catalogue"] });
 
@@ -600,3 +660,59 @@ export async function getRelatedProducts(product: Product, limit = 4) {
   });
   return result.products.filter((item) => item.id !== product.id).slice(0, limit);
 }
+
+// ---------------------------------------------------------------------------
+// Categories (public)
+// ---------------------------------------------------------------------------
+
+export interface PublicCategory {
+  slug: string;
+  name: string;
+  description: string | null;
+  seoTitle: string | null;
+  seoDescription: string | null;
+  imageUrl: string | null;
+}
+
+/**
+ * One category's public-facing copy, including its SEO overrides.
+ *
+ * `categories.seo_title`, `seo_description`, `description_en` and `image_url`
+ * have been editable in /admin/categories since the taxonomy admin was built,
+ * and nothing on the storefront ever read them: the five category routes each
+ * carried a hard-coded title and description in the page file, so an edit in
+ * the admin panel changed nothing a customer or a crawler could see.
+ *
+ * Returns null when the category does not exist or is inactive, and the caller
+ * falls back to its own static copy — so the page keeps working on an
+ * unconfigured environment or while Supabase is unreachable.
+ */
+const readPublicCategoryBySlug = unstable_cache(async (
+  slug: string,
+): Promise<PublicCategory | null> => {
+  if (!isSupabaseConfigured()) return null;
+  const supabase = createPublicServerClient();
+  const { data, error } = await supabase
+    .from("categories")
+    .select("slug,name_en,description_en,seo_title,seo_description,image_url,is_active")
+    .eq("slug", slug)
+    .maybeSingle();
+
+  if (error || !data || !data.is_active) return null;
+
+  const trimmed = (value: string | null | undefined) => {
+    const text = (value ?? "").trim();
+    return text.length > 0 ? text : null;
+  };
+
+  return {
+    slug: data.slug,
+    name: data.name_en,
+    description: trimmed(data.description_en),
+    seoTitle: trimmed(data.seo_title),
+    seoDescription: trimmed(data.seo_description),
+    imageUrl: trimmed(data.image_url),
+  };
+}, ["public-category-by-slug-v1"], { revalidate: 300, tags: ["catalogue"] });
+
+export const getPublicCategoryBySlug = cache(readPublicCategoryBySlug);

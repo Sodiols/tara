@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo";
 import { ProductListingSection } from "@/components/product/ProductListingSection";
 import type { ListingSearchParams } from "@/lib/product-listing";
-import { siteConfig } from "@/data/site";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildMetadata({
   title: "New Arrivals",
   description:
-    "Discover the newest arrivals from TARA — freshly added clothing and accessories.",
-  alternates: { canonical: `${siteConfig.url}/new-arrivals` },
-};
+    "The newest women's clothing at TARA — three piece, two piece, hijab and accessories, added as each batch arrives.",
+  path: "/new-arrivals",
+});
 
 /**
  * The canonical URL is the bare path, without the filter query.

@@ -13,14 +13,13 @@
  * -------------------------------
  * There are three of them and they are easy to confuse:
  *
- *   /unstitched-three-piece   "Unready Three Piece"   fabric, not made up
- *   /three-piece              "Three Piece"
- *   /ready-three-piece        "Two Piece"             renamed by migration 0014
+ *   /unready-three-piece   "Unready Three Piece"   fabric, not made up
+ *   /three-piece           "Three Piece"
+ *   /two-piece             "Two Piece"
  *
- * `/ready-three-piece` is the slug whose LABEL is now "Two Piece" — the words
- * "Ready Three Piece" are its former name and are no longer shown to anyone.
- * The slug is kept because it is a live URL, in the sitemap and bookmarked; see
- * migration 0007 for what a careless slug rename costs.
+ * Slug and label agree since migration 0020; the former paths
+ * `/unstitched-three-piece` and `/ready-three-piece` are permanently redirected
+ * in next.config.mjs, so older links still land in the right place.
  *
  * THE ORDER IS THE FAN, LEFT TO RIGHT
  * -----------------------------------
@@ -41,7 +40,7 @@ export interface HeroCategory {
 
 export const heroCategories: readonly HeroCategory[] = [
   {
-    href: "/ready-three-piece",
+    href: "/two-piece",
     name: "Two Piece",
     image: "/images/hero/two-piece.jpg",
     alt: "Model wearing a TARA two piece set, kameez and bottom in a matched fabric",
@@ -53,7 +52,7 @@ export const heroCategories: readonly HeroCategory[] = [
     alt: "Model wearing a TARA three piece with the dupatta draped over one shoulder",
   },
   {
-    href: "/unstitched-three-piece",
+    href: "/unready-three-piece",
     name: "Unready Three Piece",
     image: "/images/hero/unready-three-piece.jpg",
     alt: "Unstitched TARA three piece fabric with its matching dupatta and bottom piece",

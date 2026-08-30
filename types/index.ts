@@ -8,9 +8,9 @@
  * customer.
  */
 export type ProductCategory =
-  | "unstitched-three-piece"
+  | "unready-three-piece"
   | "three-piece"
-  | "ready-three-piece"
+  | "two-piece"
   | "hijab"
   | "accessories"
   | "collection";
@@ -33,7 +33,7 @@ export interface Review {
   verifiedPurchase: boolean;
 }
 
-export interface UnstitchedDetails {
+export interface UnreadyDetails {
   kameezFabric: string;
   salwarFabric: string;
   dupattaFabric: string;
@@ -49,6 +49,15 @@ export interface ReadyMadeDetails {
   fitInformation: string;
 }
 
+/** One product photograph, with the metadata the storefront needs for SEO. */
+export interface ProductImageMedia {
+  url: string;
+  /** Stored alt text, or null when nobody has written any yet. */
+  alt: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+}
+
 export interface Product {
   id: string;
   slug: string;
@@ -62,9 +71,22 @@ export interface Product {
    * label is derived from the slug.
    */
   categoryName?: string;
+  /**
+   * Staff-written <title> override from /admin/products. Undefined when blank,
+   * so metadata falls back to `name`.
+   */
+  seoTitle?: string;
+  /** Staff-written meta description override. Undefined when blank. */
+  seoDescription?: string;
   price: number;
   previousPrice?: number;
   images: string[];
+  /**
+   * The same photographs as `images`, carrying the alt text staff wrote in the
+   * admin image manager. Additive: `images` stays a flat URL array so every
+   * existing consumer keeps working.
+   */
+  media: ProductImageMedia[];
   colours: ColourOption[];
   sizes: string[];
   fabric: string;
@@ -79,7 +101,7 @@ export interface Product {
   reviewCount: number;
   productCode: string;
   careInstructions: string;
-  unstitchedDetails?: UnstitchedDetails;
+  unreadyDetails?: UnreadyDetails;
   readyMadeDetails?: ReadyMadeDetails;
   reviews: Review[];
 }

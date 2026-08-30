@@ -34,11 +34,11 @@ describe("built-in category labels", () => {
     // migrations use these slugs, and renaming one would 404 every shared link
     // to change words the label already changes. Migration 0007 exists because
     // a previous careless rename of exactly this slug made the category vanish.
-    assert.equal(getBuiltInCategoryLabel("unstitched-three-piece"), "Unready Three Piece");
+    assert.equal(getBuiltInCategoryLabel("unready-three-piece"), "Unready Three Piece");
     // "three-piece" is its own category, not an alias of either neighbour: the
     // three slugs are three different products on three different pages.
     assert.equal(getBuiltInCategoryLabel("three-piece"), "Three Piece");
-    assert.equal(getBuiltInCategoryLabel("ready-three-piece"), "Two Piece");
+    assert.equal(getBuiltInCategoryLabel("two-piece"), "Two Piece");
     assert.equal(getBuiltInCategoryLabel("hijab"), "Hijab");
     assert.equal(getBuiltInCategoryLabel("accessories"), "Accessories");
     assert.equal(getBuiltInCategoryLabel("collection"), "Collection");
@@ -49,9 +49,9 @@ describe("built-in category labels", () => {
     // exactly what a new category added to the label map but not to app/ would
     // produce.
     for (const slug of [
-      "unstitched-three-piece",
+      "unready-three-piece",
       "three-piece",
-      "ready-three-piece",
+      "two-piece",
       "hijab",
       "accessories",
       "collection",
@@ -80,7 +80,7 @@ describe("built-in category labels", () => {
 describe("humanizeSlug", () => {
   test("turns a slug into a readable label", () => {
     assert.equal(humanizeSlug("eid-special-2026"), "Eid Special 2026");
-    assert.equal(humanizeSlug("ready-three-piece"), "Ready Three Piece");
+    assert.equal(humanizeSlug("two-piece"), "Two Piece");
     assert.equal(humanizeSlug("accessories"), "Accessories");
     assert.equal(humanizeSlug("winter_edit"), "Winter Edit");
   });
@@ -102,7 +102,7 @@ describe("resolveCategoryLabel", () => {
   });
 
   test("falls back to the built-in name for a shipped category", () => {
-    const product = { category: "ready-three-piece", categoryName: undefined };
+    const product = { category: "two-piece", categoryName: undefined };
     assert.equal(resolveCategoryLabel(product), "Two Piece");
   });
 
@@ -110,7 +110,7 @@ describe("resolveCategoryLabel", () => {
     // Migration 0014 renames categories.name_en to match, so both sources agree
     // — but the database is the one an administrator can change, so it leads.
     assert.equal(
-      resolveCategoryLabel({ category: "ready-three-piece", categoryName: "Two Piece" }),
+      resolveCategoryLabel({ category: "two-piece", categoryName: "Two Piece" }),
       "Two Piece",
     );
   });

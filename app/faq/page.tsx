@@ -1,16 +1,16 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo";
 import { FaqClient } from "@/components/FaqClient";
 import { faqItems } from "@/data/faq";
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 import { jsonLdScriptProps } from "@/lib/json-ld";
-import { siteConfig } from "@/data/site";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildMetadata({
   title: "Frequently Asked Questions",
   description:
-    "Answers to common questions about TARA orders, delivery, exchange, and payments.",
-  alternates: { canonical: `${siteConfig.url}/faq` },
-};
+    "Answers to common questions about TARA orders, delivery across Bangladesh, exchanges and cash on delivery.",
+  path: "/faq",
+});
 
 export default async function FaqPage() {
   // The delivery answers quote real numbers, so they are generated from the

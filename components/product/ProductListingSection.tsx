@@ -9,6 +9,11 @@ interface ProductListingSectionProps {
   title: string;
   searchParams: ListingSearchParams;
   scope?: ListingScope;
+  /**
+   * A sentence or two under the heading saying what this listing is. Server
+   * rendered, so it is in the HTML a crawler reads without running JavaScript.
+   */
+  intro?: string;
 }
 
 /**
@@ -24,12 +29,14 @@ export async function ProductListingSection({
   title,
   searchParams,
   scope = {},
+  intro,
 }: ProductListingSectionProps) {
   const { filters, page, facets } = await resolveListing(searchParams, scope);
 
   return (
     <ProductListingClient
       title={title}
+      intro={intro}
       products={page.products}
       total={page.total}
       page={page.page}

@@ -71,6 +71,35 @@ const nextConfig = {
         : []),
     ],
   },
+  /**
+   * Permanent redirects for the two category slugs renamed by migration 0020.
+   *
+   * `/unstitched-three-piece` and `/ready-three-piece` were live for the whole
+   * life of the shop: they are in the sitemap that has already been submitted,
+   * in Search Console, in customers' bookmarks, and in any link ever shared.
+   * A rename without these is a 404 for every one of them and the loss of
+   * whatever ranking the old URL had earned.
+   *
+   * 308 (permanent: `permanent: true`) rather than 307, because that is what
+   * tells a crawler to transfer the old URL's signals to the new one and stop
+   * requesting the old path. The query string is carried across automatically,
+   * so a shared filtered link keeps its filters.
+   */
+  async redirects() {
+    return [
+      {
+        source: "/unstitched-three-piece",
+        destination: "/unready-three-piece",
+        permanent: true,
+      },
+      {
+        source: "/ready-three-piece",
+        destination: "/two-piece",
+        permanent: true,
+      },
+    ];
+  },
+
   async headers() {
     return [
       {

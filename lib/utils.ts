@@ -22,25 +22,29 @@ export function formatPrice(value: number | string | null | undefined): string {
 /**
  * What a shopper is shown for each built-in category.
  *
- * THE SLUGS ARE DELIBERATELY NOT RENAMED. `unstitched-three-piece` and
- * `ready-three-piece` are live routes, they are in the sitemap and in Search
- * Console, every product row and several migrations reference them, and
- * customers have them bookmarked and shared. Renaming a slug 404s all of that
- * to change words this map already changes.
+ * THE SLUGS NOW MATCH THE LABELS. They did not always: the routes were
+ * `unstitched-three-piece` and `ready-three-piece` while the labels had been
+ * changed to "Unready Three Piece" and "Two Piece" by migration 0014, so the
+ * URL and the wording disagreed for every shopper who looked at the address
+ * bar. Migration 0020 renamed the database slugs and next.config.mjs issues a
+ * permanent redirect from each old path, so existing links, bookmarks and
+ * Search Console entries still resolve.
  *
- * So the slug is the stable identifier and the label is the wording:
+ * A slug rename is expensive — see migration 0007 for what a careless one
+ * costs — so this is the last one. Renaming again would need the same three
+ * things together: the database, the routes, and the redirects.
  *
- *   unstitched-three-piece  ->  "Unready Three Piece"
- *   ready-three-piece       ->  "Two Piece"
+ *   unready-three-piece  ->  "Unready Three Piece"
+ *   two-piece            ->  "Two Piece"
  *
  * The database's `categories.name_en` is the first source consulted (see
  * `resolveCategoryLabel`); migration 0014 renames those to match, and this map
  * is the fallback when a product carries no category name.
  */
 const builtInCategoryLabels: Record<ProductCategory, string> = {
-  "unstitched-three-piece": "Unready Three Piece",
+  "unready-three-piece": "Unready Three Piece",
   "three-piece": "Three Piece",
-  "ready-three-piece": "Two Piece",
+  "two-piece": "Two Piece",
   hijab: "Hijab",
   accessories: "Accessories",
   collection: "Collection",

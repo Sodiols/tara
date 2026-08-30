@@ -31,6 +31,8 @@ export interface ListingScopeProps {
 
 interface ProductListingClientProps {
   title: string;
+  /** Short visible description of this listing, rendered under the heading. */
+  intro?: string;
   products: Product[];
   /** Products matching the filters across the whole catalogue, not this page. */
   total: number;
@@ -63,6 +65,7 @@ interface ProductListingClientProps {
  */
 export function ProductListingClient({
   title,
+  intro,
   products,
   total,
   page,
@@ -193,6 +196,17 @@ export function ProductListingClient({
         database — not the length of the array on this page. It used to be the
         latter, so a listing could claim 24 products and then render three.
       */}
+      {/*
+        What this category is, in a sentence. Comes from the category's own
+        description in /admin/categories, with the route's static copy as the
+        fallback. Rendered as ordinary server HTML above the fold — not hidden,
+        not injected after an interaction, and different for every category.
+      */}
+      {intro ? (
+        <p className="mb-4 max-w-2xl font-sans text-sm leading-6 text-muted sm:text-[15px]">
+          {intro}
+        </p>
+      ) : null}
       <p className="font-sans font-normal text-sm text-muted mb-8" aria-live="polite">
         {total === 0
           ? "No products found"

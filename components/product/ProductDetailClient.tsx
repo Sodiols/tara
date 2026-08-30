@@ -10,6 +10,7 @@ import { useAddToCart } from "@/hooks/useAddToCart";
 import { useRecentlyViewedStore } from "@/store/recentlyViewedStore";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { ProductGallery } from "./ProductGallery";
+import { imageAlt } from "@/lib/product-media";
 import { PriceDisplay } from "./PriceDisplay";
 import { SizeSelector } from "./SizeSelector";
 import { ColourSelector } from "./ColourSelector";
@@ -95,7 +96,12 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
       />
 
       <div className="grid grid-cols-1 gap-10 mt-6 min-w-0 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,0.85fr)] min-[900px]:items-start min-[900px]:gap-8 min-[1100px]:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)] min-[1100px]:gap-14">
-        <ProductGallery images={product.images} alt={product.name} />
+        <ProductGallery
+          images={product.images}
+          alts={product.images.map((_, index) =>
+            imageAlt(product.media[index], product.name, index),
+          )}
+        />
 
         <div className="min-w-0 min-[900px]:sticky min-[900px]:top-[120px] min-[900px]:self-start">
           <h1 className="font-serif font-normal text-3xl sm:text-4xl lg:text-[2.75rem] leading-[1.05] text-ink mb-3 text-balance">
@@ -192,26 +198,26 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
               <p>{product.description}</p>
             </AccordionItem>
 
-            {product.unstitchedDetails && (
+            {product.unreadyDetails && (
               <AccordionItem title={"Fabric Information"}>
                 <ul className="flex flex-col gap-1.5">
                   <li>
-                    <strong className="text-ink">{"Kameez Fabric"}:</strong> {product.unstitchedDetails.kameezFabric}
+                    <strong className="text-ink">{"Kameez Fabric"}:</strong> {product.unreadyDetails.kameezFabric}
                   </li>
                   <li>
-                    <strong className="text-ink">{"Salwar Fabric"}:</strong> {product.unstitchedDetails.salwarFabric}
+                    <strong className="text-ink">{"Salwar Fabric"}:</strong> {product.unreadyDetails.salwarFabric}
                   </li>
                   <li>
-                    <strong className="text-ink">{"Dupatta Fabric"}:</strong> {product.unstitchedDetails.dupattaFabric}
+                    <strong className="text-ink">{"Dupatta Fabric"}:</strong> {product.unreadyDetails.dupattaFabric}
                   </li>
                   <li>
-                    <strong className="text-ink">{"Work Details"}:</strong> {product.unstitchedDetails.workDetails}
+                    <strong className="text-ink">{"Work Details"}:</strong> {product.unreadyDetails.workDetails}
                   </li>
                   <li>
-                    <strong className="text-ink">{"Fabric Length"}:</strong> {product.unstitchedDetails.fabricLength}
+                    <strong className="text-ink">{"Fabric Length"}:</strong> {product.unreadyDetails.fabricLength}
                   </li>
                   <li>
-                    <strong className="text-ink">{"Colour Information"}:</strong> {product.unstitchedDetails.colourInfo}
+                    <strong className="text-ink">{"Colour Information"}:</strong> {product.unreadyDetails.colourInfo}
                   </li>
                 </ul>
               </AccordionItem>

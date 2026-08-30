@@ -23,7 +23,7 @@ const categories = [
   {
     name: "Unready Three Piece",
     image: img(stockImages.portraitE, 700, 875),
-    href: "/unstitched-three-piece",
+    href: "/unready-three-piece",
   },
   {
     name: "Three Piece",
@@ -33,7 +33,7 @@ const categories = [
   {
     name: "Two Piece",
     image: img(stockImages.portraitK, 700, 875),
-    href: "/ready-three-piece",
+    href: "/two-piece",
   },
   {
     name: "Hijab",

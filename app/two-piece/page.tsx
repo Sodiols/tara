@@ -12,12 +12,12 @@ import type { ListingSearchParams } from "@/lib/product-listing";
  * editable without a deploy on a configured one.
  */
 const config: CategoryRouteConfig = {
-  slug: "three-piece",
-  name: "Three Piece",
+  slug: "two-piece",
+  name: "Two Piece",
   description:
-    "Three piece sets from TARA — kameez, bottom and dupatta together, in fabrics chosen for Bangladesh's weather and finished for everyday wear.",
+    "Two piece sets from TARA — kameez and bottom in matched fabric, made up and ready to wear. Cash on delivery across Bangladesh.",
   intro:
-    "Kameez, bottom and dupatta as one set, in fabrics chosen for the weather here and finished for wearing rather than saving for an occasion.",
+    "Kameez and bottom in matched fabric, made up and ready to wear straight from the packet. Sized S to XL where the set allows.",
 };
 
 export const generateMetadata = categoryMetadata(config);

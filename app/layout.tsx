@@ -11,6 +11,7 @@ import { SupabaseConfigurationNotice } from "@/components/SupabaseConfigurationN
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 import { jsonLdScriptProps } from "@/lib/json-ld";
 import { freeDeliveryHeadline } from "@/lib/delivery";
+import { SCHEMA_IDS, postalAddress, websiteSchema } from "@/lib/seo";
 
 const bodoniModa = Bodoni_Moda({
   subsets: ["latin"],
@@ -56,9 +57,20 @@ export const metadata: Metadata = {
     description:
       "Refined unready three piece and two piece clothing, and fashion accessories from Sylhet, Bangladesh.",
   },
-  alternates: {
-    canonical: siteConfig.url,
-  },
+  // Google Search Console domain verification, from the environment so no
+  // personal token is committed. Absent or blank means no tag is emitted at
+  // all, which is the correct behaviour — an empty verification meta tag is
+  // invalid, and most deployments verify by DNS instead.
+  ...(process.env.GOOGLE_SITE_VERIFICATION?.trim()
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION.trim() } }
+    : {}),
+  // NO canonical here, deliberately.
+  //
+  // A canonical in the root layout is inherited by every route that does not
+  // set its own, so /about, /size-guide, /privacy-policy and the rest were all
+  // telling Google they were duplicates of the homepage. The homepage declares
+  // its own in app/page.tsx; every other route builds one through
+  // buildMetadata() in lib/seo.ts, which cannot forget it.
 };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
@@ -76,18 +88,21 @@ export default async function RootLayout({ children }: { children: React.ReactNo
 
   const organizationSchema = settings ? {
     "@context": "https://schema.org",
-    "@type": "Organization",
+    // OnlineStore rather than a bare Organization: TARA sells directly from
+    // this site, and the more specific type is what makes the entity legible
+    // as a merchant rather than as a company that happens to have a website.
+    "@type": "OnlineStore",
+    "@id": SCHEMA_IDS.organization,
     name: settings.storeName,
     url: siteConfig.url,
     logo: `${siteConfig.url}/logo/logo-black.png`,
-    ...(settings.storeAddress
-      ? {
-          address: {
-            "@type": "PostalAddress",
-            streetAddress: settings.storeAddress,
-            addressCountry: "BD",
-          },
-        }
+    image: `${siteConfig.url}/logo/logo-black.png`,
+    areaServed: { "@type": "Country", name: "Bangladesh" },
+    // Split into street / locality / region where the parts can be read with
+    // confidence. No postal code and no coordinates: neither is in the data,
+    // and an invented one is a fact a crawler would believe.
+    ...(postalAddress(settings.storeAddress)
+      ? { address: postalAddress(settings.storeAddress) }
       : {}),
     ...(settings.supportEmail ? { email: settings.supportEmail } : {}),
     ...(settings.supportPhone
@@ -119,6 +134,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
           otherwise close this block and let the rest be parsed as markup.
         */}
         {organizationSchema ? <script {...jsonLdScriptProps(organizationSchema)} /> : null}
+        {/*
+          The site as an entity, carrying the names people actually type:
+          "TARA Bangladesh" and "tarabd.co" alongside "TARA". Useful for a short
+          brand name that collides with an ordinary word.
+        */}
+        {settings ? <script {...jsonLdScriptProps(websiteSchema())} /> : null}
         {!chromeless ? (
           <a
             href="#main-content"

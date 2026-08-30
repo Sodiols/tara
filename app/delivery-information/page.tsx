@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
+import { buildMetadata } from "@/lib/seo";
 import { DeliveryInformationClient } from "@/components/policies/DeliveryInformationClient";
 import { getDeliverySettings } from "@/lib/supabase/queries/settings";
-import { siteConfig } from "@/data/site";
 
-export const metadata: Metadata = {
+export const metadata: Metadata = buildMetadata({
   title: "Delivery Information",
-  description: "TARA's delivery areas, timelines, and charges across Bangladesh.",
-  alternates: { canonical: `${siteConfig.url}/delivery-information` },
-};
+  description:
+    "TARA delivery areas, timelines and charges — inside Sylhet and across the rest of Bangladesh, with cash on delivery.",
+  path: "/delivery-information",
+});
 
 export default async function DeliveryInformationPage() {
   const delivery = await getDeliverySettings();

@@ -10,6 +10,7 @@ import { PriceDisplay } from "./PriceDisplay";
 import { WishlistButton } from "./WishlistButton";
 import { resolveCategoryLabel } from "@/lib/utils";
 import { ONE_SIZE, hasSelectableSizes, sortSizes } from "@/lib/product-size";
+import { primaryImageAlt } from "@/lib/product-media";
 
 interface ProductCardProps {
   product: Product;
@@ -52,6 +53,9 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
   const [hovered, setHovered] = useState(false);
 
   const secondaryImage = product.images[1] ?? product.images[0];
+  // Staff-written alt text when it exists, the product name otherwise. The
+  // card's image is the link, so this is never empty.
+  const primaryAlt = primaryImageAlt(product);
   const soldOut = product.stock === 0;
   // Placeholder sizes ("Unready", "One Size") are not sizes a customer chooses
   // between, so they are not advertised as if they were.
@@ -87,7 +91,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
       >
         <Image
           src={product.images[0]}
-          alt={product.name}
+          alt={primaryAlt}
           fill
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           className={`object-cover transition-opacity duration-300 ${

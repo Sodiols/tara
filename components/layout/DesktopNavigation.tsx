@@ -13,9 +13,9 @@ import { CollectionNavItem } from "./CollectionNavItem";
  * slugs, which are what the database, the sitemap and every shared link use.
  */
 const navItems = [
-  { label: "Unready Three Piece", href: "/unstitched-three-piece" },
+  { label: "Unready Three Piece", href: "/unready-three-piece" },
   { label: "Three Piece", href: "/three-piece" },
-  { label: "Two Piece", href: "/ready-three-piece" },
+  { label: "Two Piece", href: "/two-piece" },
   { label: "Hijab", href: "/hijab" },
   { label: "Collection", href: "/collection" },
   { label: "About Us", href: "/about" },
