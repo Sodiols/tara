@@ -64,7 +64,19 @@ export function NewsletterForm({ variant = "light" }: NewsletterFormProps) {
             aria-invalid={!!error}
             aria-describedby={error ? "newsletter-error" : undefined}
             className={cn(
-              "flex-1 h-[52px] border px-4 text-sm focus:outline-none sm:border-r-0 transition-colors",
+              // `sm:flex-1`, NOT `flex-1`.
+              //
+              // The form is a column on mobile and a row from sm. `flex-1` sets
+              // flex-basis to 0 on the MAIN axis — which in a column is the
+              // height — so it overrode h-[52px] and collapsed the field to
+              // 21px while the Subscribe button beside it stayed 52px.
+              // Constraining it to the row layout leaves the height alone on
+              // mobile and still lets the field take the spare width on desktop.
+              //
+              // The corners match the button when the two are stacked, and go
+              // square from sm where they butt together into one control.
+              "h-[52px] border px-4 text-sm transition-colors focus:outline-none",
+              "rounded-control sm:flex-1 sm:rounded-none sm:border-r-0",
               isDark
                 ? "border-taraIvory/30 bg-transparent text-taraIvory placeholder:text-taraIvory/50 focus:border-taraIvory"
                 : "border-border bg-white text-ink focus:border-wine"

@@ -64,7 +64,9 @@ export function Footer({ identity }: { identity: StoreIdentity }) {
                 width={250}
                 height={64}
                 quality={90}
-                className="h-7 lg:h-9 w-auto"
+                // 24px, 28px from lg. It was 28/36, which made the sign-off
+                // wordmark nearly twice the height of the one in the navbar.
+                className="h-6 lg:h-7 w-auto"
               />
             </Link>
             {socialLinks.length > 0 && (

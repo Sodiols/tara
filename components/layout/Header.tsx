@@ -108,7 +108,11 @@ export function Header({ identity }: { identity: StoreIdentity }) {
               height={64}
               priority
               quality={90}
-              className="h-5 lg:h-6 w-auto"
+              // 20px at every width. It was 24px from lg, which put the
+              // wordmark at 30% of an 80px bar and made it read heavier than
+              // the 13px links sitting beside it. One size is also one less
+              // thing to keep in step between breakpoints.
+              className="h-5 w-auto"
             />
           </Link>
 
