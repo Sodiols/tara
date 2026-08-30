@@ -37,24 +37,31 @@ import type { HeroCategory } from "@/data/hero-categories";
  * Three deliberate states: phone, tablet (md), desktop (lg). The fan opens
  * wider and tilts further as there is room for it; on a phone the outer pair
  * runs off the edge, which is what leaves the middle three legible.
+ *
+ * Opacity grades with depth, on the same two tiers the scale and z-index
+ * already use: the centre card is the only one at full strength, its
+ * neighbours sit at 75% and the outer pair at 50%. It is what stops five
+ * photographs competing for the eye at once — the active category reads as the
+ * subject and the rest as context. Opacity is animated alongside transform, so
+ * a card brightens as it arrives rather than snapping.
  */
 const SLOT_STYLES = [
   // far left
-  "z-10 translate-x-[-112%] translate-y-[7%] rotate-[-9deg] scale-[0.74] " +
+  "z-10 opacity-50 translate-x-[-112%] translate-y-[7%] rotate-[-9deg] scale-[0.74] " +
     "md:translate-x-[-108%] md:rotate-[-11deg] md:scale-[0.77] " +
     "lg:translate-x-[-104%] lg:translate-y-[8%] lg:rotate-[-13deg] lg:scale-[0.79]",
   // near left
-  "z-20 translate-x-[-58%] translate-y-[3.5%] rotate-[-4.5deg] scale-[0.88] " +
+  "z-20 opacity-75 translate-x-[-58%] translate-y-[3.5%] rotate-[-4.5deg] scale-[0.88] " +
     "md:translate-x-[-56%] md:rotate-[-5.5deg] md:scale-[0.89] " +
     "lg:translate-x-[-55%] lg:translate-y-[4%] lg:rotate-[-6deg] lg:scale-[0.9]",
   // centre
-  "z-30 translate-x-0 translate-y-[-1.5%] rotate-0 scale-100 lg:translate-y-[-2%]",
+  "z-30 opacity-100 translate-x-0 translate-y-[-1.5%] rotate-0 scale-100 lg:translate-y-[-2%]",
   // near right
-  "z-20 translate-x-[58%] translate-y-[3.5%] rotate-[4.5deg] scale-[0.88] " +
+  "z-20 opacity-75 translate-x-[58%] translate-y-[3.5%] rotate-[4.5deg] scale-[0.88] " +
     "md:translate-x-[56%] md:rotate-[5.5deg] md:scale-[0.89] " +
     "lg:translate-x-[55%] lg:translate-y-[4%] lg:rotate-[6deg] lg:scale-[0.9]",
   // far right
-  "z-10 translate-x-[112%] translate-y-[7%] rotate-[9deg] scale-[0.74] " +
+  "z-10 opacity-50 translate-x-[112%] translate-y-[7%] rotate-[9deg] scale-[0.74] " +
     "md:translate-x-[108%] md:rotate-[11deg] md:scale-[0.77] " +
     "lg:translate-x-[104%] lg:translate-y-[8%] lg:rotate-[13deg] lg:scale-[0.79]",
 ];
