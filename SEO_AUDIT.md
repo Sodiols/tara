@@ -186,12 +186,11 @@ Honest list of what this pass did **not** do.
 3. **Sitemap image entries** (§17) — not added.
 4. **A dedicated performance pass** (§30) — the existing image and font setup was
    audited and left alone; no new measurements were taken.
-5. **A listing-page hydration bug**, found earlier and unrelated to SEO: the
-   whole client subtree on category pages fails to hydrate, so filters, sorting,
-   add-to-cart and wishlist are inert there. Reproduced on a clean production
-   build and on the pre-existing commit. It does not affect crawlability — the
-   products and copy are all in the server HTML — but it is a serious commerce
-   bug and should be fixed before pushing for traffic.
+5. ~~A listing-page hydration bug~~ — **fixed**. Every `loading.tsx` was
+   removed: the Suspense boundary one creates was streamed and painted but never
+   hydrated on this Next 16 / React 19 combination, leaving filters, sorting,
+   add-to-cart and the wishlist inert on every catalogue route. See
+   `tests/route-hydration.test.ts` for the proof and the guard.
 
 ---
 
