@@ -63,6 +63,7 @@ export function HeroCategoryCard({
   category,
   offset,
   isActive,
+  priority,
   onActivate,
   shouldSuppressClick,
 }: {
@@ -70,16 +71,22 @@ export function HeroCategoryCard({
   /** -2 (far left) through +2 (far right), relative to the active card. */
   offset: number;
   isActive: boolean;
+  /**
+   * Whether this card is the one visible at first paint. Fixed for the life of
+   * the component — see the note on the <Image> below for why it must not
+   * follow `isActive`.
+   */
+  priority: boolean;
   /** Brings this card to the centre — used when it is focused or clicked. */
   onActivate: () => void;
   /** True when the pointer travelled far enough that this was a drag, not a click. */
   shouldSuppressClick: () => boolean;
 }) {
-  // The five hero photographs are the one thing this component cannot supply
-  // for itself. Until they are added to public/images/hero/, a card falls back
-  // to a plain tonal panel carrying the category name: the composition still
-  // reads, and it is obviously a placeholder rather than a broken image icon or
-  // — worse — an unrelated photograph standing in for the real one.
+  // The photographs live in public/images/hero/. If one is ever missing — a
+  // bad deploy, a file renamed, a half-finished swap for new campaign imagery —
+  // the card falls back to a plain tonal panel carrying the category name. The
+  // composition still reads and the link still works; what a shopper never sees
+  // is a broken-image icon in the first screen of the shop.
   const [imageFailed, setImageFailed] = useState(false);
 
   return (
@@ -125,11 +132,20 @@ export function HeroCategoryCard({
           src={category.image}
           alt={category.alt}
           fill
-          // The centre card is the largest thing above the fold, so it is the
-          // LCP candidate and is fetched eagerly. The other four are one
-          // rotation away and can wait.
-          priority={isActive}
-          loading={isActive ? undefined : "lazy"}
+          // Fixed for the life of the card, and deliberately NOT tied to
+          // `isActive`.
+          //
+          // next/image cannot have `priority` changed after mount: flipping it
+          // makes React re-create the <img> without its loading attribute, and
+          // the browser starts the download again. Tying it to the active card
+          // therefore re-fetched every photograph each time it rotated into the
+          // centre — five redundant requests per revolution, forever, on the
+          // one component that never stops animating.
+          //
+          // The card visible at first paint is the LCP candidate and is the
+          // only one worth fetching eagerly; the other four are a rotation away.
+          priority={priority}
+          loading={priority ? undefined : "lazy"}
           quality={75}
           sizes="(max-width: 767px) 240px, (max-width: 1023px) 276px, (max-width: 1279px) 300px, 330px"
           onError={() => setImageFailed(true)}

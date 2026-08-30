@@ -243,6 +243,7 @@ export function HeroCarousel() {
                 category={category}
                 offset={offset}
                 isActive={offset === 0}
+                priority={index === HERO_INITIAL_INDEX}
                 onActivate={() => goTo(index, true)}
                 shouldSuppressClick={() => suppressClickRef.current}
               />
