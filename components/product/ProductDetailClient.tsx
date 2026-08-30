@@ -148,10 +148,7 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
               </Button>
             </div>
             <div className="flex items-center gap-3">
-              <WishlistButton
-                product={product}
-                className="!rounded-control !bg-transparent border border-border p-3 hover:border-wine"
-              />
+              <WishlistButton product={product} variant="detail" />
               <span className="text-xs text-muted">{"Wishlist"}</span>
             </div>
           </div>

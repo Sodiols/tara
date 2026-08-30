@@ -12,6 +12,7 @@ import {
   hasSelectableSizes,
   isPlaceholderSize,
   normaliseSizeValue,
+  sortSizes,
 } from "../lib/product-size";
 import { HERO_INITIAL_INDEX, heroCategories } from "../data/hero-categories";
 
@@ -260,5 +261,48 @@ describe("hero category cards", () => {
   test("the carousel opens on Unready Three Piece", () => {
     assert.ok(HERO_INITIAL_INDEX >= 0 && HERO_INITIAL_INDEX < heroCategories.length);
     assert.equal(heroCategories[HERO_INITIAL_INDEX].name, "Unready Three Piece");
+  });
+});
+
+/**
+ * Size ordering on a product card.
+ *
+ * The database returns sizes alphabetically, so a card advertised "L M S XL" —
+ * four letters rather than a size run. These lock the garment order in.
+ */
+describe("sorting sizes for display", () => {
+  test("named sizes come out in garment order, not alphabetical", () => {
+    assert.deepEqual(sortSizes(["L", "M", "S", "XL"]), ["S", "M", "L", "XL"]);
+    assert.deepEqual(sortSizes(["XL", "XS", "M"]), ["XS", "M", "XL"]);
+    assert.deepEqual(sortSizes(["XXL", "S", "XXS"]), ["XXS", "S", "XXL"]);
+  });
+
+  test("the 2XL and XXL spellings rank together", () => {
+    assert.deepEqual(sortSizes(["3XL", "2XL", "L"]), ["L", "2XL", "3XL"]);
+  });
+
+  test("numeric sizes sort numerically and follow the lettered run", () => {
+    // Alphabetically "40" sorts before "8", which would list a size run backwards.
+    assert.deepEqual(sortSizes(["40", "8", "38"]), ["8", "38", "40"]);
+    assert.deepEqual(sortSizes(["40", "M", "38"]), ["M", "38", "40"]);
+  });
+
+  test("an unfamiliar size is kept, not dropped", () => {
+    // Staff can type any size in the admin. Losing one from the card would
+    // advertise a product as unavailable in a size that is actually stocked.
+    const sorted = sortSizes(["Free Size", "M", "S"]);
+    assert.equal(sorted.length, 3);
+    assert.deepEqual(sorted, ["S", "M", "Free Size"]);
+  });
+
+  test("is case insensitive and does not mutate the input", () => {
+    const input = ["l", "s", "m"];
+    assert.deepEqual(sortSizes(input), ["s", "m", "l"]);
+    assert.deepEqual(input, ["l", "s", "m"], "the caller's array must be untouched");
+  });
+
+  test("handles empty and single-item lists", () => {
+    assert.deepEqual(sortSizes([]), []);
+    assert.deepEqual(sortSizes(["M"]), ["M"]);
   });
 });

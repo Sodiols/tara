@@ -4,11 +4,13 @@ import { cn } from "@/lib/utils";
 interface PriceDisplayProps {
   price: number;
   previousPrice?: number;
-  size?: "sm" | "md" | "lg";
+  size?: "sm" | "card" | "md" | "lg";
 }
 
 const sizeClasses = {
   sm: "text-sm",
+  /** The product card: large enough to read at a glance in a four-across grid. */
+  card: "text-[17px] sm:text-[18px]",
   md: "text-base",
   lg: "text-2xl",
 };
@@ -21,7 +23,7 @@ export function PriceDisplay({ price, previousPrice, size = "sm" }: PriceDisplay
         <span
           className={cn(
             "font-sans font-normal text-muted line-through",
-            size === "lg" ? "text-base" : "text-xs"
+            size === "lg" ? "text-base" : size === "card" ? "text-[13px]" : "text-xs"
           )}
         >
           {formatPrice(previousPrice)}

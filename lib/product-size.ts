@@ -95,3 +95,54 @@ export function formatSizeLabel(size: string | null | undefined): string {
   if (!size) return "";
   return normaliseSizeValue(size);
 }
+
+/**
+ * Garment order for a set of sizes.
+ *
+ * The database returns sizes in whatever order the query produced, which is
+ * alphabetical — so a product with S, M, L and XL was being advertised on its
+ * card as "L M S XL". That is not a size run, it is four letters, and a
+ * customer has to stop and re-read it to work out what is stocked.
+ *
+ * Named sizes sort by the order clothes are actually made in. Numeric sizes
+ * (38, 40, 42) sort numerically and follow the named ones, because a catalogue
+ * that mixes both is listing two different systems and the lettered run is the
+ * one shoppers scan first. Anything unrecognised keeps a stable alphabetical
+ * order at the end rather than being dropped — an unfamiliar size is still a
+ * size someone can buy.
+ *
+ * Pure and total: it never throws, never drops an entry, and returns a new
+ * array rather than sorting the caller's in place.
+ */
+const NAMED_SIZE_ORDER: Record<string, number> = {
+  XXS: 0,
+  XS: 1,
+  S: 2,
+  M: 3,
+  L: 4,
+  XL: 5,
+  XXL: 6,
+  "2XL": 6,
+  XXXL: 7,
+  "3XL": 7,
+  "4XL": 8,
+};
+
+export function sortSizes(sizes: readonly string[]): string[] {
+  const rank = (size: string): [number, number, string] => {
+    const key = size.trim().toUpperCase();
+    const named = NAMED_SIZE_ORDER[key];
+    if (named !== undefined) return [0, named, key];
+    const numeric = Number(key);
+    if (Number.isFinite(numeric) && key !== "") return [1, numeric, key];
+    return [2, 0, key];
+  };
+
+  return [...sizes].sort((a, b) => {
+    const [groupA, orderA, keyA] = rank(a);
+    const [groupB, orderB, keyB] = rank(b);
+    if (groupA !== groupB) return groupA - groupB;
+    if (orderA !== orderB) return orderA - orderB;
+    return keyA.localeCompare(keyB);
+  });
+}
