@@ -14,6 +14,7 @@ import { CollectionNavItem } from "./CollectionNavItem";
  */
 const navItems = [
   { label: "Unready Three Piece", href: "/unstitched-three-piece" },
+  { label: "Three Piece", href: "/three-piece" },
   { label: "Two Piece", href: "/ready-three-piece" },
   { label: "Hijab", href: "/hijab" },
   { label: "Collection", href: "/collection" },

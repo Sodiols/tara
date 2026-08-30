@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useState, useTransition } from "react";
+import { useFormStatus } from "react-dom";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -30,6 +31,37 @@ function GoogleIcon() {
       <path fill="#FBBC05" d="M6.39 13.86A6 6 0 0 1 6.08 12c0-.65.11-1.28.31-1.86V7.52H3.04A10 10 0 0 0 2 12c0 1.61.39 3.14 1.04 4.48l3.35-2.62Z" />
       <path fill="#EA4335" d="M12 6.01c1.47 0 2.79.51 3.83 1.5l2.87-2.88A9.63 9.63 0 0 0 12 2a10 10 0 0 0-8.96 5.52l3.35 2.62C7.18 7.77 9.39 6.01 12 6.01Z" />
     </svg>
+  );
+}
+
+/**
+ * The Google button.
+ *
+ * Split out so it can read `useFormStatus`, which only reports the state of the
+ * form it is rendered inside. Without this the button gave no feedback at all
+ * between the click and the redirect to Google — a second or more on a slow
+ * connection, during which the obvious thing to do is click it again. Each
+ * extra click started another OAuth handshake.
+ *
+ * `disabled` is also driven by the email form's pending state, so the two
+ * cannot be submitted at once.
+ */
+function GoogleSubmitButton({ disabled }: { disabled?: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button
+      type="submit"
+      variant="outline"
+      fullWidth
+      loading={pending}
+      disabled={disabled}
+      className="normal-case tracking-normal"
+    >
+      <span className="flex items-center justify-center gap-3">
+        {!pending && <GoogleIcon />}
+        {pending ? "Redirecting to Google…" : "Continue with Google"}
+      </span>
+    </Button>
   );
 }
 
@@ -73,6 +105,15 @@ function AuthInput({
   );
 }
 
+const AUTH_ERROR_MESSAGES: Record<string, string> = {
+  "not-configured": "Supabase has not been configured yet.",
+  "recovery-expired": "This recovery link is invalid or expired.",
+  "missing-callback-code": "That sign-in link is incomplete. Please start again.",
+  "invalid-callback": "That sign-in link is invalid or has already been used.",
+  oauth: "Google sign-in is unavailable right now. Please sign in with your email and password, or try again shortly.",
+  default: "The sign-in link is invalid or expired.",
+};
+
 export function LoginClient({
   returnTo = "/account",
   errorCode,
@@ -90,15 +131,11 @@ export function LoginClient({
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState(
-    errorCode === "not-configured"
-      ? "Supabase has not been configured yet."
-      : errorCode === "recovery-expired"
-        ? "This recovery link is invalid or expired."
-        : errorCode
-          ? "The sign-in link is invalid or expired."
-          : "",
-  );
+  // Every code the auth callback and googleLoginAction can redirect back with.
+  // "oauth" used to fall through to "the sign-in link is invalid or expired",
+  // which is actively misleading: the usual cause is that the Google provider
+  // has not been enabled in the Supabase dashboard, and there is no link.
+  const [error, setError] = useState(AUTH_ERROR_MESSAGES[errorCode ?? ""] ?? (errorCode ? AUTH_ERROR_MESSAGES.default : ""));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
   const [success, setSuccess] = useState("");
   const [registerForm, setRegisterForm] = useState({
@@ -343,11 +380,9 @@ export function LoginClient({
                       <span className="text-xs text-muted">{"or"}</span>
                       <span className="h-px flex-1 bg-border" />
                     </div>
-                  <form action={() => googleLoginAction(returnTo)}>
-                    <Button type="submit" variant="outline" fullWidth className="normal-case tracking-normal">
-                      <span className="flex items-center justify-center gap-3"><GoogleIcon />{"Continue with Google"}</span>
-                    </Button>
-                  </form>
+                    <form action={() => googleLoginAction(returnTo)}>
+                      <GoogleSubmitButton disabled={pending} />
+                    </form>
                   </>
                 )}
               </>

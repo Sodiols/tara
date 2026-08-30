@@ -12,3 +12,17 @@ next-env.d.ts
 # Local dev logs and stray archives
 .codex-dev.log
 app.zip
+
+# Test output. Playwright writes a screenshot, a video and an error context for
+# every failed test; 43 of those files (11 MB of .png and .webm) were committed
+# once and are pure noise in every diff and clone afterwards.
+test-results
+playwright-report
+blob-report
+.playwright
+
+# Supabase CLI scratch state, not project configuration.
+supabase/.temp
+
+# Locally generated PDF receipts written during development.
+tmp

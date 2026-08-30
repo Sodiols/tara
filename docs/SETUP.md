@@ -162,8 +162,57 @@ https://tarabd.co/reset-password
 https://tarabd.co/**
 ```
 
-Google sign-in stays hidden while `NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=false`.
-Configure the Google provider in Supabase before changing it.
+### Google sign-in
+
+The application code is complete. Nothing appears on the login page until
+`NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=true`, and that flag should be turned on **last**
+— after the two dashboard steps below — because a button that starts a handshake
+with a provider Supabase has not been given credentials for can only fail.
+
+**Step 1 — Google Cloud.** console.cloud.google.com → *APIs & Services* →
+*Credentials* → *Create credentials* → *OAuth client ID* → **Web application**.
+
+*Authorised JavaScript origins* — where the button is clicked from:
+
+```
+http://localhost:3000
+https://www.tarabd.co
+```
+
+*Authorised redirect URI* — **one entry, and it is Supabase's, not the shop's.**
+This is the step most often got wrong: Google returns to Supabase, and Supabase
+then returns to `/auth/callback`. Take `PROJECT_REF` from your Supabase project
+URL (the subdomain of `NEXT_PUBLIC_SUPABASE_URL`):
+
+```
+https://PROJECT_REF.supabase.co/auth/v1/callback
+```
+
+Google issues a **client ID** and a **client secret**. The secret belongs in the
+Supabase dashboard only — never in this repository, in `.env.local`, or in any
+`NEXT_PUBLIC_*` variable.
+
+**Step 2 — Supabase.** Dashboard → *Authentication* → *Providers* → **Google** →
+enable, paste the client ID and client secret, save.
+
+The redirect URLs in the block above already cover the return leg; no extra
+entry is needed for Google.
+
+**Step 3 — the application.** Set `NEXT_PUBLIC_ENABLE_GOOGLE_AUTH=true` and
+restart (it is inlined at build time, so a production host needs a rebuild, not
+just a restart).
+
+**What a Google user gets.** The same account as an email user: one row in
+`auth.users`, one profile created by `handle_new_user()` with the name and
+avatar Google supplied, an empty phone (Google never sends one — checkout
+collects it), and `role` left at its column default of `customer`. Signing in
+with Google cannot produce a staff account; roles are granted only through
+`/admin/staff`. Someone who signed up by email and later uses Google on the same
+address lands on their existing profile rather than a second one.
+
+**If the button returns "Google sign-in is unavailable right now"**, the
+provider is not enabled in Supabase or its credentials are wrong. The precise
+reason Supabase gave is logged server-side as `auth.google_oauth_unavailable`.
 
 ---
 

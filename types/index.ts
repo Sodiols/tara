@@ -3,12 +3,13 @@
  *
  * A product's `category` field holds the real category slug from the database,
  * which staff can create freely in /admin/categories — so it is NOT limited to
- * these four. Use `ProductCategory` only where one of the built-in routes is
+ * these. Use `ProductCategory` only where one of the built-in routes is
  * genuinely meant; use `product.categoryName` to display a category to a
  * customer.
  */
 export type ProductCategory =
   | "unstitched-three-piece"
+  | "three-piece"
   | "ready-three-piece"
   | "hijab"
   | "accessories"

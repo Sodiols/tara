@@ -18,6 +18,9 @@ export default function NotFound() {
         <LinkButton href="/unstitched-three-piece" variant="outline">
           {"Unready Three Piece"}
         </LinkButton>
+        <LinkButton href="/three-piece" variant="outline">
+          {"Three Piece"}
+        </LinkButton>
         <LinkButton href="/ready-three-piece" variant="outline">
           {"Two Piece"}
         </LinkButton>

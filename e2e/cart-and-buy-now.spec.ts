@@ -139,17 +139,26 @@ test.describe("Buy Now is isolated from the cart", () => {
 });
 
 test.describe("shop by category", () => {
-  test("the homepage offers the four categories, in order", async ({ page }) => {
+  test("the homepage offers every category, in order", async ({ page }) => {
     await page.goto("/");
     const section = page.getByRole("heading", { name: /shop by category/i }).locator("xpath=ancestor::section");
     await expect(section).toBeVisible();
 
-    for (const href of ["/unstitched-three-piece", "/ready-three-piece", "/hijab", "/accessories"]) {
+    for (const href of [
+      "/unstitched-three-piece",
+      "/three-piece",
+      "/ready-three-piece",
+      "/hijab",
+      "/accessories",
+    ]) {
       await expect(section.locator(`a[href="${href}"]`)).toBeVisible();
     }
     // The slugs stay as they are; only the wording changed.
     await expect(section.getByRole("heading", { name: /^unready three piece$/i })).toBeVisible();
     await expect(section.getByRole("heading", { name: /^two piece$/i })).toBeVisible();
+    // Anchored, because "Three Piece" is a substring of "Unready Three Piece"
+    // and an unanchored match would pass even if the new card were missing.
+    await expect(section.getByRole("heading", { name: /^three piece$/i })).toBeVisible();
     // The old wording must be gone. The word boundary matters: "Unready Three
     // Piece" contains "ready three piece", so an unanchored match would fail
     // against the correct new label.
@@ -158,7 +167,13 @@ test.describe("shop by category", () => {
   });
 
   test("every category card opens a real listing", async ({ page }) => {
-    for (const href of ["/unstitched-three-piece", "/ready-three-piece", "/hijab", "/accessories"]) {
+    for (const href of [
+      "/unstitched-three-piece",
+      "/three-piece",
+      "/ready-three-piece",
+      "/hijab",
+      "/accessories",
+    ]) {
       const response = await page.goto(href);
       expect(response?.status(), `${href} should not 404`).toBeLessThan(400);
       await expect(page.getByRole("heading", { level: 1 })).toBeVisible();

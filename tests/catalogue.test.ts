@@ -13,6 +13,7 @@ import {
   isPlaceholderSize,
   normaliseSizeValue,
 } from "../lib/product-size";
+import { HERO_INITIAL_INDEX, heroCategories } from "../data/hero-categories";
 
 /**
  * Category labelling.
@@ -33,6 +34,9 @@ describe("built-in category labels", () => {
     // to change words the label already changes. Migration 0007 exists because
     // a previous careless rename of exactly this slug made the category vanish.
     assert.equal(getBuiltInCategoryLabel("unstitched-three-piece"), "Unready Three Piece");
+    // "three-piece" is its own category, not an alias of either neighbour: the
+    // three slugs are three different products on three different pages.
+    assert.equal(getBuiltInCategoryLabel("three-piece"), "Three Piece");
     assert.equal(getBuiltInCategoryLabel("ready-three-piece"), "Two Piece");
     assert.equal(getBuiltInCategoryLabel("hijab"), "Hijab");
     assert.equal(getBuiltInCategoryLabel("accessories"), "Accessories");
@@ -45,6 +49,7 @@ describe("built-in category labels", () => {
     // produce.
     for (const slug of [
       "unstitched-three-piece",
+      "three-piece",
       "ready-three-piece",
       "hijab",
       "accessories",
@@ -202,5 +207,58 @@ describe("size labels on historic records", () => {
     assert.equal(formatSizeLabel(null), "");
     assert.equal(formatSizeLabel(undefined), "");
     assert.equal(formatSizeLabel(""), "");
+  });
+});
+
+/**
+ * The homepage hero cards.
+ *
+ * The hero hard-codes five hrefs and five names. Nothing at runtime checks that
+ * they are the real ones, so a category renamed in lib/utils.ts or a slug
+ * changed in a migration would leave the hero quietly pointing at a 404, or
+ * showing a customer a name the rest of the site stopped using — on the first
+ * screen of the shop. These assertions are that check.
+ */
+describe("hero category cards", () => {
+  test("every card points at a category that actually has a route", () => {
+    for (const category of heroCategories) {
+      const slug = category.href.replace(/^\//, "");
+      assert.equal(
+        categoryHref(slug),
+        category.href,
+        `${category.href} is not a built-in category route`,
+      );
+    }
+  });
+
+  test("every card shows the same wording as the rest of the site", () => {
+    // Not cosmetic: "Two Piece" and "Ready Three Piece" are the same slug under
+    // its new and old names, and the hero must never revive the old one.
+    for (const category of heroCategories) {
+      const slug = category.href.replace(/^\//, "");
+      assert.equal(getBuiltInCategoryLabel(slug), category.name, slug);
+    }
+  });
+
+  test("the five categories are distinct", () => {
+    // The fan has five slots and the position maths assumes five different
+    // cards; the same category twice would render two identical cards and leave
+    // one category unreachable from the homepage.
+    assert.equal(new Set(heroCategories.map((c) => c.href)).size, heroCategories.length);
+    assert.equal(heroCategories.length, 5);
+  });
+
+  test("every card carries a local image path and real alt text", () => {
+    for (const category of heroCategories) {
+      // A remote URL here would need a next.config remotePatterns entry and
+      // would put the hero — the LCP element — behind someone else's server.
+      assert.ok(category.image.startsWith("/images/"), category.image);
+      assert.ok(category.alt.length > 10, `${category.name} needs real alt text`);
+    }
+  });
+
+  test("the carousel opens on Unready Three Piece", () => {
+    assert.ok(HERO_INITIAL_INDEX >= 0 && HERO_INITIAL_INDEX < heroCategories.length);
+    assert.equal(heroCategories[HERO_INITIAL_INDEX].name, "Unready Three Piece");
   });
 });

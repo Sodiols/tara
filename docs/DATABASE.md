@@ -48,6 +48,7 @@ migration has been applied.
 | `0013_checkout_delivery_zone_and_hijab.sql` | Checkout asks for a delivery zone (inside/outside Sylhet) instead of a division and district. Adds `calculate_delivery_fee_for_zone()` and `normalize_shipping_address()`, and a `place_order()` that accepts the new shipping shape **and** the legacy one. Adds the Hijab category. |
 | `0014_rename_category_wording.sql` | Renames two categories for customers — Ready Three Piece → **Two Piece**, Unstitched Three Piece → **Unready Three Piece** — and the placeholder size `Unstitched` → `Unready`. **The slugs are not renamed** (see 0007 for why). `order_items.size` is left alone: order snapshots are not rewritten. |
 | `0015_email_receipts_reviews_and_contact_notifications.sql` | Adds verified-purchase review eligibility/submission RPCs, contact-message outbox records, token-scoped order/contact snapshots for email and receipts, exact provider delivery results, secure staff retry, and a durable test-email rate limit. It is additive and does not recreate existing tables or policies. |
+| `0017_add_three_piece_category.sql` | Adds the **Three Piece** category (`three-piece`) and renumbers `sort_order` so the database matches the storefront order: Unready Three Piece, Three Piece, Two Piece, Hijab, Accessories. Creates no products and moves none — which products belong in it is a merchandising decision made per product in /admin/products. Required for `/three-piece` to be a real page rather than an empty listing. |
 
 ---
 

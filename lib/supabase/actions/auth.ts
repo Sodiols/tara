@@ -234,16 +234,39 @@ export async function logoutAction() {
   redirect("/");
 }
 
+/**
+ * Starts the Google OAuth handshake.
+ *
+ * Supabase returns the URL to send the browser to rather than redirecting
+ * itself, so this hands that URL to `redirect()`. The customer comes back to
+ * /auth/callback with a code, which is exchanged for a session there — the same
+ * session an email sign-in produces, on the same account system. There is no
+ * separate Google user.
+ *
+ * `returnTo` is passed through `safeReturnPath`, so a crafted link cannot use
+ * the OAuth round trip to bounce someone to another origin afterwards.
+ */
 export async function googleLoginAction(returnTo?: string) {
   if (!supabaseEnv.googleAuthEnabled) redirect("/login");
   if (!isSupabaseConfigured()) redirect("/login?error=not-configured");
+
   const supabase = await createClient();
-  const { data } = await supabase.auth.signInWithOAuth({
+  const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",
     options: {
       redirectTo: `${supabaseEnv.siteUrl}/auth/callback?next=${encodeURIComponent(safeReturnPath(returnTo))}`,
     },
   });
-  if (data.url) redirect(data.url);
+
+  if (data?.url) redirect(data.url);
+
+  // The error was previously discarded, which made the single most likely
+  // cause invisible: NEXT_PUBLIC_ENABLE_GOOGLE_AUTH is "true" but the Google
+  // provider has not been enabled in the Supabase dashboard. Supabase says so
+  // explicitly, and with nothing logged the only symptom was a generic message
+  // on the login page and no way to tell why.
+  logger.error("auth.google_oauth_unavailable", {
+    reason: error?.message ?? "Supabase returned no authorization URL",
+  });
   redirect("/login?error=oauth");
 }

@@ -14,6 +14,7 @@ const RECENT_KEY = "tara-recent-searches";
 const suggestedKeywords = ["Unready", "Kurta", "Wine", "Festive", "Bag", "Earrings"];
 const popularCategories = [
   { label: "Unready Three Piece", href: "/unstitched-three-piece" },
+  { label: "Three Piece", href: "/three-piece" },
   { label: "Two Piece", href: "/ready-three-piece" },
   { label: "Accessories", href: "/accessories" },
 ];

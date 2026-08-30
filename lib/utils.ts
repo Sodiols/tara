@@ -12,7 +12,7 @@ export function formatPrice(value: number | string | null | undefined): string {
 }
 
 /**
- * Display names for the four categories that ship with the storefront.
+ * Display names for the categories that ship with the storefront.
  *
  * Staff can create any number of further categories from /admin/categories, and
  * those are not listed here — which is why this returns null rather than
@@ -39,6 +39,7 @@ export function formatPrice(value: number | string | null | undefined): string {
  */
 const builtInCategoryLabels: Record<ProductCategory, string> = {
   "unstitched-three-piece": "Unready Three Piece",
+  "three-piece": "Three Piece",
   "ready-three-piece": "Two Piece",
   hijab: "Hijab",
   accessories: "Accessories",
@@ -88,7 +89,7 @@ export function resolveCategoryLabel(
 /**
  * The URL for a category, or null when it has none.
  *
- * Only the four built-in categories have a top-level route. Staff can create
+ * Only the built-in categories have a top-level route. Staff can create
  * any number of further categories from /admin/categories, and those have no
  * page — so linking to `/<slug>` for one produced a 404 in the product
  * breadcrumb, in the product's BreadcrumbList structured data, and in the
