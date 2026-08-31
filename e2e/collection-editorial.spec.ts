@@ -5,11 +5,17 @@ const routes = ["/collection/eid", "/collection/summer", "/collection/winter", "
 const section = (page: Page) => page.locator("[data-collection-editorial]");
 const stack = (page: Page) => section(page).getByRole("group", { name: "Collection photographs" });
 
+async function pauseAutoplay(page: Page) {
+  const pause = section(page).getByRole("button", { name: "Pause automatic collection changes" });
+  if (await pause.isVisible()) await pause.click();
+}
+
 async function openEditorial(page: Page) {
   await page.goto("/");
   await expect(section(page)).toHaveCount(1);
   await section(page).scrollIntoViewIfNeeded();
   await expect(section(page)).toHaveAttribute("data-enhanced", "true");
+  await pauseAutoplay(page);
   await page.evaluate(() => document.fonts.ready);
   await section(page).locator("img").evaluateAll(async (images) => {
     await Promise.all(images.map((image) => (image as HTMLImageElement).decode()));
@@ -205,6 +211,7 @@ test("a delayed upcoming image keeps the current print visible until decode", as
   await page.goto("/");
   await section(page).scrollIntoViewIfNeeded();
   await expect(section(page)).toHaveAttribute("data-enhanced", "true");
+  await pauseAutoplay(page);
   await section(page).locator('[data-current="true"] img').evaluate((image) => (image as HTMLImageElement).decode());
   await section(page).getByRole("button", { name: "Next collection", exact: true }).click();
   await expect(stack(page)).toHaveAttribute("aria-busy", "true");
@@ -222,6 +229,7 @@ test("a failed image retains the current print and other navigation remains avai
   await page.goto("/");
   await section(page).scrollIntoViewIfNeeded();
   await expect(section(page)).toHaveAttribute("data-enhanced", "true");
+  await pauseAutoplay(page);
   await section(page).locator('[data-current="true"] img').evaluate((image) => (image as HTMLImageElement).decode());
   await section(page).getByRole("button", { name: "Next collection", exact: true }).click();
   await expect(section(page).getByRole("status").last()).toContainText("photograph couldn’t load");
@@ -231,11 +239,97 @@ test("a failed image retains the current print and other navigation remains avai
   await expect(section(page)).toHaveAttribute("data-active-collection", "new-arrivals");
 });
 
-test("scrolling and elapsed time do not advance the collection", async ({ page }) => {
+test("explicitly paused playback stays paused while scrolling and time passes", async ({ page }) => {
   await openEditorial(page);
   await page.clock.install();
   await page.clock.fastForward(15_000);
   await page.mouse.wheel(0, 400);
   await page.clock.fastForward(5_000);
   await expect(section(page)).toHaveAttribute("data-active-collection", "eid");
+});
+
+test("autoplay advances once per second through all five collections and can be paused", async ({ page }) => {
+  await openEditorial(page);
+  // Observe through a DOM event rather than exposing application state.
+  const observed: { id: string | null; time: number }[] = [];
+  await page.exposeFunction("recordCollectionChange", (id: string, time: number) => observed.push({ id, time }));
+  await section(page).evaluate((root) => {
+    new MutationObserver(() => {
+      const record = (window as unknown as { recordCollectionChange: (id: string | null, time: number) => void }).recordCollectionChange;
+      record(root.getAttribute("data-active-collection"), performance.now());
+    }).observe(root, { attributes: true, attributeFilter: ["data-active-collection"] });
+  });
+  await section(page).getByRole("button", { name: "Play automatic collection changes" }).click();
+  await page.mouse.move(0, 0);
+  await expect.poll(() => observed.length, { timeout: 12_000 }).toBeGreaterThanOrEqual(6);
+  expect(observed.slice(0, 6).map(({ id }) => id)).toEqual(["summer", "winter", "festive", "new-arrivals", "eid", "summer"]);
+  for (let index = 1; index < 6; index++) {
+    const interval = observed[index].time - observed[index - 1].time;
+    expect(interval).toBeGreaterThan(750);
+    expect(interval).toBeLessThan(1400);
+  }
+  await expect(section(page).getByRole("status").first()).toHaveAttribute("aria-live", "off");
+  await pauseAutoplay(page);
+  await expect(stack(page)).toHaveAttribute("aria-busy", "false");
+  const pausedId = await section(page).getAttribute("data-active-collection");
+  await page.clock.install();
+  await page.clock.fastForward(10_000);
+  await expect(section(page)).toHaveAttribute("data-active-collection", pausedId!);
+});
+
+test("manual selection waits five idle seconds before automatic browsing resumes", async ({ page }) => {
+  await openEditorial(page);
+  await section(page).getByRole("button", { name: "Play automatic collection changes" }).click();
+  await section(page).getByRole("button", { name: "Next collection", exact: true }).click();
+  await page.mouse.move(0, 0);
+  await expect(section(page)).toHaveAttribute("data-active-collection", "summer");
+  await expect(section(page).getByRole("status").first()).toHaveAttribute("aria-live", "polite");
+  // This deliberately tests real time, including the native card animation.
+  await page.waitForTimeout(3000);
+  await expect(section(page)).toHaveAttribute("data-active-collection", "summer");
+  await expect(section(page)).toHaveAttribute("data-active-collection", "winter", { timeout: 4000 });
+});
+
+test("a manual request during an automatic transition is respected after the print settles", async ({ page }) => {
+  await openEditorial(page);
+  await section(page).getByRole("button", { name: "Play automatic collection changes" }).click();
+  await page.mouse.move(0, 0);
+  await expect(stack(page)).toHaveAttribute("aria-busy", "true");
+  const previous = await section(page).getByRole("button", { name: "Previous collection", exact: true }).boundingBox();
+  // Mouse input can arrive while aria-disabled is true; it must not be lost
+  // just because an automatic turn had started before the customer clicked.
+  await page.mouse.click(previous!.x + previous!.width / 2, previous!.y + previous!.height / 2);
+  await expect(stack(page)).toHaveAttribute("aria-busy", "false");
+  await expect(section(page)).toHaveAttribute("data-active-collection", "eid");
+  await expect(section(page).getByRole("status").first()).toHaveAttribute("aria-live", "polite");
+});
+
+test("autoplay is initially enabled but stops outside the viewport and for keyboard focus", async ({ page }) => {
+  await page.goto("/");
+  await expect(section(page)).toHaveAttribute("data-enhanced", "true");
+  await page.clock.install();
+  await page.clock.fastForward(10_000);
+  await expect(section(page)).toHaveAttribute("data-active-collection", "eid");
+  await expect(section(page).getByRole("button", { name: "Pause automatic collection changes" })).toHaveCount(1);
+  await section(page).scrollIntoViewIfNeeded();
+  await section(page).getByRole("button", { name: "Pause automatic collection changes" }).focus();
+  await page.keyboard.press("Tab");
+  await expect(section(page).getByRole("button", { name: "Previous collection", exact: true })).toBeFocused();
+  const focusedId = await section(page).getAttribute("data-active-collection");
+  await page.clock.fastForward(10_000);
+  await expect(section(page)).toHaveAttribute("data-active-collection", focusedId!);
+});
+
+test("reduced motion starts with autoplay paused and permits explicit motion-free playback", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await openEditorial(page);
+  await expect(section(page).getByRole("button", { name: "Play automatic collection changes" })).toBeVisible();
+  // Keep native timers throughout this check: the reduced-motion preference,
+  // IntersectionObserver and explicit playback must work together in real time.
+  await page.waitForTimeout(2200);
+  await expect(section(page)).toHaveAttribute("data-active-collection", "eid");
+  await section(page).getByRole("button", { name: "Play automatic collection changes" }).click();
+  await page.mouse.move(0, 0);
+  await expect(section(page)).toHaveAttribute("data-active-collection", "summer");
+  expect(await section(page).evaluate((root) => root.getAnimations({ subtree: true }).length)).toBe(0);
 });

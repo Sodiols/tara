@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type PointerEvent } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { ArrowLeft, ArrowRight, Pause, Play } from "lucide-react";
 import type { CollectionEditorialItem } from "@/data/collection-editorials";
 import { Container } from "@/components/layout/Container";
 import styles from "./CollectionEditorial.module.css";
@@ -13,6 +13,8 @@ type Direction = -1 | 1;
 type Gesture = { id: number; x: number; y: number; axis: "pending" | "horizontal" | "vertical" };
 
 const EASING = "cubic-bezier(0.22, 0.68, 0, 1)";
+const AUTOPLAY_INTERVAL_MS = 1000;
+const MANUAL_IDLE_MS = 5000;
 const wrap = (index: number, count: number) => (index + count) % count;
 const slotTransform = (slot: number) =>
   `translate(calc(var(--stack-step) * ${slot}), calc(var(--stack-lift) * ${slot})) rotate(calc(var(--stack-turn) * ${slot}))`;
@@ -25,15 +27,22 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
   const [activeIndex, setActiveIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [autoplayPaused, setAutoplayPaused] = useState(false);
+  const [announceChange, setAnnounceChange] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
+  const stackRef = useRef<HTMLDivElement>(null);
   const cardsRef = useRef<(HTMLDivElement | null)[]>([]);
   const imagesRef = useRef<(HTMLImageElement | null)[]>([]);
   const activeRef = useRef(0);
   const busyRef = useRef(false);
+  const automaticTurnRef = useRef(false);
+  const pendingManualRef = useRef<Direction | null>(null);
   const mountedRef = useRef(false);
   const motionRef = useRef(false);
   const animationsRef = useRef<Animation[]>([]);
   const gestureRef = useRef<Gesture | null>(null);
+  const inViewRef = useRef(false);
+  const resumeAtRef = useRef(0);
   const count = collections.length;
   const active = collections[activeIndex];
 
@@ -43,7 +52,12 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
     const preference = window.matchMedia("(prefers-reduced-motion: reduce)");
     const syncMotion = () => {
       motionRef.current = preference.matches;
-      if (preference.matches) animationsRef.current.forEach((animation) => animation.finish());
+      if (preference.matches) {
+        animationsRef.current.forEach((animation) => animation.finish());
+        // Start in manual mode for reduced motion. Explicit Play can still
+        // advance photographs without the card movement.
+        setAutoplayPaused(true);
+      }
     };
     syncMotion();
     preference.addEventListener("change", syncMotion);
@@ -58,21 +72,44 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
     }, { rootMargin: "500px" });
     if (sectionRef.current) observer.observe(sectionRef.current);
 
+    const visibilityObserver = new IntersectionObserver(([entry]) => {
+      inViewRef.current = entry.isIntersecting && entry.intersectionRatio >= 0.5;
+      resumeAtRef.current = Math.max(resumeAtRef.current, Date.now() + AUTOPLAY_INTERVAL_MS);
+    }, { threshold: 0.5, rootMargin: "-80px 0px 0px" });
+    if (stackRef.current) visibilityObserver.observe(stackRef.current);
+
+    const onVisibilityChange = () => {
+      if (!document.hidden) {
+        resumeAtRef.current = Math.max(resumeAtRef.current, Date.now() + AUTOPLAY_INTERVAL_MS);
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
     return () => {
       mountedRef.current = false;
       observer.disconnect();
+      visibilityObserver.disconnect();
+      document.removeEventListener("visibilitychange", onVisibilityChange);
       preference.removeEventListener("change", syncMotion);
       animationsRef.current.forEach((animation) => animation.cancel());
     };
   }, []);
 
-  async function navigate(direction: Direction) {
+  const navigate = useCallback(async function navigate(direction: Direction, automatic = false): Promise<void> {
+    if (!automatic) resumeAtRef.current = Date.now() + MANUAL_IDLE_MS;
     // Synchronous lock covers multiple events in one React batch. Keep focus
     // on the button; aria-disabled describes this brief lock.
-    if (busyRef.current) return;
+    if (busyRef.current) {
+      // A user's click during an automatic turn takes priority as soon as the
+      // print settles. Manual click bursts still keep the original single-turn lock.
+      if (!automatic && automaticTurnRef.current) pendingManualRef.current = direction;
+      return;
+    }
     busyRef.current = true;
+    automaticTurnRef.current = automatic;
     setBusy(true);
     setMessage("");
+    setAnnounceChange(!automatic);
     const from = activeRef.current;
     const to = wrap(from + direction, count);
     const image = imagesRef.current[to];
@@ -125,15 +162,48 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
       activeRef.current = to;
       setActiveIndex(to);
     } catch {
-      if (mountedRef.current) setMessage("This photograph couldn’t load. Try another collection or reload to retry.");
+      if (mountedRef.current) {
+        setAutoplayPaused(true);
+        setMessage("This photograph couldn’t load. Try another collection or reload to retry.");
+      }
     } finally {
       clearTimeout(deadline);
       animationsRef.current.forEach((animation) => animation.cancel());
       animationsRef.current = [];
       busyRef.current = false;
-      if (mountedRef.current) setBusy(false);
+      automaticTurnRef.current = false;
+      if (mountedRef.current) {
+        setBusy(false);
+        const pending = pendingManualRef.current;
+        pendingManualRef.current = null;
+        if (pending !== null) void navigate(pending);
+      }
     }
-  }
+  }, [count]);
+
+  useEffect(() => {
+    if (autoplayPaused) return;
+    // Start-to-start cadence stays one second; the 580ms card animation does
+    // not add another delay. The existing busy lock also covers slow decoding.
+    const timer = window.setInterval(() => {
+      const focused = document.activeElement;
+      const isReadingOrNavigating = focused instanceof HTMLElement
+        && sectionRef.current?.contains(focused) && focused.matches(":focus-visible")
+        && focused.dataset.autoplayControl !== "true";
+      // Read current browser hover state instead of retaining pointer events:
+      // changing the Play/Pause icon can otherwise leave a stale hover flag.
+      // Touch browsers can retain :hover after a tap, so exclude them here.
+      const isHoveringAction = window.matchMedia("(hover: hover)").matches
+        && sectionRef.current?.querySelector("[data-autoplay-pause-zone]:hover");
+      if (
+        !inViewRef.current || document.hidden || busyRef.current ||
+        gestureRef.current || isHoveringAction || isReadingOrNavigating ||
+        Date.now() < resumeAtRef.current
+      ) return;
+      void navigate(1, true);
+    }, AUTOPLAY_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [autoplayPaused, navigate]);
 
   function resetGesture(event: PointerEvent<HTMLDivElement>) {
     gestureRef.current = null;
@@ -145,7 +215,9 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
   }
 
   function pointerDown(event: PointerEvent<HTMLDivElement>) {
-    if (busyRef.current || !event.isPrimary || event.button !== 0) return;
+    if (!event.isPrimary || event.button !== 0) return;
+    resumeAtRef.current = Date.now() + MANUAL_IDLE_MS;
+    if (busyRef.current) return;
     gestureRef.current = { id: event.pointerId, x: event.clientX, y: event.clientY, axis: "pending" };
   }
 
@@ -190,6 +262,7 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
 
           <div className={styles.stage}>
             <div
+              ref={stackRef}
               className={styles.stack}
               role="group"
               aria-label="Collection photographs"
@@ -265,10 +338,32 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
 
           <div className={styles.footer}>
             <p className={styles.description}>Thoughtfully selected pieces for work, family, celebrations, and everyday moments.</p>
-            <Link href={active.href} prefetch={false} className={styles.cta}>
+            <Link
+              href={active.href}
+              prefetch={false}
+              className={styles.cta}
+              data-autoplay-pause-zone=""
+            >
               <span>{active.cta}</span><ArrowRight size={18} strokeWidth={1.25} aria-hidden="true" />
             </Link>
-            <div className={styles.controls} aria-label="Browse collections">
+            <div
+              className={styles.controls}
+              aria-label="Browse collections"
+              data-autoplay-pause-zone=""
+            >
+              <button
+                type="button"
+                data-autoplay-control="true"
+                aria-label={autoplayPaused ? "Play automatic collection changes" : "Pause automatic collection changes"}
+                onClick={() => {
+                  resumeAtRef.current = Date.now() + AUTOPLAY_INTERVAL_MS;
+                  setAutoplayPaused((paused) => !paused);
+                }}
+              >
+                {autoplayPaused
+                  ? <Play size={15} strokeWidth={1.15} aria-hidden="true" />
+                  : <Pause size={15} strokeWidth={1.15} aria-hidden="true" />}
+              </button>
               <button type="button" aria-label="Previous collection" aria-disabled={busy} onClick={() => void navigate(-1)}>
                 <ArrowLeft size={22} strokeWidth={1.15} aria-hidden="true" />
               </button>
@@ -278,7 +373,7 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
               </button>
             </div>
           </div>
-          <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">{active.name}, collection {activeIndex + 1} of {count}.</p>
+          <p className="sr-only" role="status" aria-live={announceChange ? "polite" : "off"} aria-atomic="true">{active.name}, collection {activeIndex + 1} of {count}.</p>
           <p className={styles.error} role="status">{message}</p>
         </div>
       </Container>
