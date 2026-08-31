@@ -375,11 +375,7 @@ export function LoginClient({
 
                 {googleEnabled && (
                   <>
-                    <div className="my-5 flex items-center gap-4">
-                      <span className="h-px flex-1 bg-border" />
-                      <span className="text-xs text-muted">{"or"}</span>
-                      <span className="h-px flex-1 bg-border" />
-                    </div>
+                    <p className="my-5 text-center text-xs text-muted">{"or"}</p>
                     <form action={() => googleLoginAction(returnTo)}>
                       <GoogleSubmitButton disabled={pending} />
                     </form>

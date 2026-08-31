@@ -41,12 +41,9 @@ import type { StyleStory } from "@/data/shopByStyle";
  *
  * WHAT COSTS A RENDER
  * -------------------
- * Almost nothing. The scroll listener is passive and coalesced into one
- * requestAnimationFrame, and the only value it writes every frame is the
- * `--fyl-progress` custom property, which drives the indicator's fill through a
- * compositor-friendly scaleX and never touches React. `setActiveIndex` runs
- * five times across the whole section, guarded so an unchanged index does not
- * reach React at all. Every transition is opacity and transform.
+ * The scroll listener is passive and coalesced into one requestAnimationFrame.
+ * React state updates only when the active story or hint visibility changes;
+ * scrolling within the same story does not cause additional renders.
  *
  * BEFORE THE JAVASCRIPT RUNS
  * --------------------------
@@ -96,7 +93,6 @@ export function StyleStoryStage({ stories }: { stories: readonly StyleStory[] })
       if (travel <= 0) return;
 
       const progress = Math.min(1, Math.max(0, (stageBox.top - trackBox.top) / travel));
-      stage.style.setProperty("--fyl-progress", progress.toFixed(4));
 
       // Five equal bands. A progress of exactly 1 would land on a sixth, so the
       // last state owns the closing edge rather than falling off it.
@@ -329,12 +325,6 @@ export function StyleStoryStage({ stories }: { stories: readonly StyleStory[] })
                       </span>
                     ))}
                   </div>
-                  <span className="relative h-px flex-1 bg-taraIvory/25 sm:w-24 sm:flex-none lg:w-28">
-                    <span
-                      className="absolute inset-0 origin-left bg-taraIvory"
-                      style={{ transform: "scaleX(var(--fyl-progress, 0))" }}
-                    />
-                  </span>
                   <span
                     className={cn(
                       "hidden items-center gap-2 font-sans text-[10px] font-medium uppercase tracking-[0.18em] text-taraIvory/70 transition-opacity duration-500 lg:inline-flex",

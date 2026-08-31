@@ -15,6 +15,11 @@ export function BrandStorySection() {
 
           <p className={styles.eyebrow}>About TARA</p>
 
+          <h2 id="brand-story-heading" className={styles.headline}>
+            <span>Designed for your</span>{" "}
+            <span>everyday <span className={styles.accent}>story</span></span>
+          </h2>
+
           <figure className={styles.figure}>
             <div className={styles.portrait}>
               <Image
@@ -27,11 +32,6 @@ export function BrandStorySection() {
             </div>
             <figcaption className={styles.location}>Our story · Sylhet, Bangladesh</figcaption>
           </figure>
-
-          <h2 id="brand-story-heading" className={styles.headline}>
-            <span>Designed for your</span>{" "}
-            <span>everyday <span className={styles.accent}>story</span></span>
-          </h2>
 
           <div className={styles.story}>
             <p className={styles.copy}>

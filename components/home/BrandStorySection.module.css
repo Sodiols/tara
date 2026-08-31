@@ -62,16 +62,13 @@
 }
 
 .headline {
-  grid-column: 2 / -1;
+  grid-column: 3;
   grid-row: 2;
   z-index: 1;
-  width: max-content;
+  min-width: 0;
   margin-top: 22px;
-  /* A fixed, non-animated offset measured against the heading's own width.
-     Exactly 12% crosses the photograph edge, regardless of viewport size. */
-  transform: translateX(-12%);
   color: var(--tara-black);
-  font: 400 clamp(44px, 6.4cqw, 78px) / 1.08 var(--font-heading), serif;
+  font: 400 clamp(32px, 5.2cqw, 64px) / 1.08 var(--font-heading), serif;
   font-optical-sizing: auto;
   letter-spacing: -0.04em;
 }
@@ -112,7 +109,7 @@
   .section { padding-block: 56px; }
   .composition { grid-template-columns: 44% 6% minmax(0, 1fr); }
   .eyebrow { margin-top: 32px; }
-  .headline { margin-top: 18px; transform: translateX(-10%); }
+  .headline { margin-top: 18px; }
   .story { margin-top: 24px; }
   .copy { font-size: 13px; line-height: 1.85; }
   .link { margin-top: 18px; }
@@ -123,8 +120,8 @@
   .section { padding-block: 44px 48px; }
   .composition { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto; max-width: 520px; }
   .backdrop { top: 8px; left: 8%; font-size: 34cqw; color: rgb(var(--tara-wine-rgb) / 0.045); }
-  .eyebrow { grid-column: 1; grid-row: 1; margin-top: 0; margin-bottom: 22px; }
-  .figure { position: relative; grid-column: 1; grid-row: 2; width: 82%; }
+  .eyebrow { grid-column: 1; grid-row: 1; margin-top: 0; margin-bottom: 16px; }
+  .figure { position: relative; grid-column: 1; grid-row: 3; width: 82%; margin-top: 28px; }
   .location {
     position: absolute;
     bottom: 48px;
@@ -137,11 +134,8 @@
   }
   .headline {
     grid-column: 1;
-    grid-row: 3;
-    margin-top: -0.32em;
-    margin-left: 8%;
-    transform: none;
-    background: var(--tara-ivory);
+    grid-row: 2;
+    margin-top: 0;
     font-size: clamp(30px, 9cqw, 44px);
     line-height: 1.12;
     letter-spacing: -0.045em;

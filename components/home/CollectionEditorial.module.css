@@ -95,7 +95,6 @@
   gap: 10px;
   color: var(--tara-wine);
 }
-.counterLine { width: 30px; height: 1px; background: var(--tara-taupe); align-self: center; margin-right: 4px; }
 .currentNumber { font: 400 30px/1 var(--font-heading), serif; font-variant-numeric: lining-nums tabular-nums; }
 .totalNumber { font-size: 10px; letter-spacing: 0.06em; }
 .gestureHint {
@@ -164,7 +163,6 @@
   .elegance { bottom: 30%; }
   .cardLabel { bottom: 9px; left: 8px; padding: 5px 6px; font-size: 7px; letter-spacing: 0.09em; }
   .counter { top: 10px; gap: 6px; }
-  .counterLine { width: 18px; margin-right: 1px; }
   .currentNumber { font-size: 24px; }
   .totalNumber { font-size: 9px; }
   .gestureHint { bottom: 10px; font-size: 8px; }

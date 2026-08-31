@@ -114,7 +114,6 @@ body {
 }
 
 .fyl-stage {
-  --fyl-progress: 0;
   top: var(--fyl-header);
   height: calc(100vh - var(--fyl-header));
   /* A floor for short windows — a landscape phone, a half-height browser — so

@@ -56,7 +56,7 @@ test("one editorial story preserves the copy, semantic text and working About ro
   }
 });
 
-test("all sixteen widths keep the portrait, controlled overlap and typography within the viewport", async ({ page }, testInfo) => {
+test("all sixteen widths align the headline below About TARA without clipping the portrait or typography", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "chromium", "The viewport matrix runs once; mobile behavior has its own profile.");
   await page.setViewportSize({ width: 1440, height: 1100 });
   await openStory(page);
@@ -67,6 +67,7 @@ test("all sixteen widths keep the portrait, controlled overlap and typography wi
     const layout = await story(page).evaluate((root) => {
       const image = root.querySelector("img")!.getBoundingClientRect();
       const heading = root.querySelector("h2")!.getBoundingClientRect();
+      const label = root.querySelector("p")!.getBoundingClientRect();
       const canvas = root.firstElementChild!.firstElementChild!.getBoundingClientRect();
       const text = Array.from(root.querySelectorAll("h2 > span, p, a, figcaption, span[aria-hidden]"), (element) => {
         const rect = element.getBoundingClientRect();
@@ -76,8 +77,10 @@ test("all sixteen widths keep the portrait, controlled overlap and typography wi
       return {
         imageRatio: image.width / image.height,
         imageFraction: image.width / canvas.width,
-        sideOverlap: (image.right - heading.left) / heading.width,
-        lowerOverlap: (image.bottom - heading.top) / heading.height,
+        headingOffset: heading.left - label.left,
+        labelGap: heading.top - label.bottom,
+        sideGap: heading.left - image.right,
+        portraitGap: image.top - heading.bottom,
         sectionHeight: root.getBoundingClientRect().height,
         overflow: document.documentElement.scrollWidth - innerWidth,
         text,
@@ -89,17 +92,19 @@ test("all sixteen widths keep the portrait, controlled overlap and typography wi
     expect(layout.imageRatio).toBeCloseTo(0.8, 2);
     expect(layout.font).toContain("bodoni");
     expect(layout.fontLoaded).toBe(true);
+    expect(Math.abs(layout.headingOffset), `${width}px heading alignment`).toBeLessThan(1);
+    expect(layout.labelGap, `${width}px label-to-heading gap`).toBeGreaterThan(0);
+    expect(layout.labelGap).toBeLessThanOrEqual(24);
     for (const box of layout.text) {
       expect(box.left, `${width}px: ${box.text}`).toBeGreaterThanOrEqual(0);
       expect(box.right, `${width}px: ${box.text}`).toBeLessThanOrEqual(width);
     }
     if (width >= 768) {
-      expect(layout.sideOverlap).toBeCloseTo(width >= 1024 ? 0.12 : 0.1, 2);
+      expect(layout.sideGap).toBeGreaterThan(0);
       expect(layout.imageFraction).toBeCloseTo(width >= 1024 ? 0.42 : 0.44, 2);
     } else {
       expect(layout.imageFraction).toBeCloseTo(0.82, 2);
-      expect(layout.lowerOverlap).toBeGreaterThan(0.1);
-      expect(layout.lowerOverlap).toBeLessThan(0.16);
+      expect(layout.portraitGap).toBeGreaterThanOrEqual(24);
     }
     if (width >= 1280) {
       expect(layout.sectionHeight).toBeGreaterThanOrEqual(650);

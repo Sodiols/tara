@@ -326,7 +326,6 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
             </h2>
 
             <div className={styles.counter} aria-hidden="true">
-              <span className={styles.counterLine} />
               <span className={styles.currentNumber}>{String(activeIndex + 1).padStart(2, "0")}</span>
               <span className={styles.totalNumber}>/ 05</span>
             </div>
