@@ -21,10 +21,27 @@
   --tara-taupe-rgb: 185 170 156;
 }
 
+/*
+ * `clip`, not `hidden`, and the pair is deliberate.
+ *
+ * `overflow-x: hidden` is a *scrolling* overflow value, so it forces the other
+ * axis from `visible` to `auto` — which turns <body> into a scroll container.
+ * Every `position: sticky` descendant then sticks to that container's
+ * scrollport instead of to the viewport, and since <body> never actually
+ * scrolls, nothing ever sticks. The site header is `sticky top-0` and had been
+ * scrolling straight off the top of the page for exactly this reason.
+ *
+ * `overflow-x: clip` clips the same runaway element without establishing a
+ * scroll container, so sticky works and horizontal overflow is still contained.
+ * The `hidden` line above it is the fallback for browsers without `clip`
+ * (pre-16 Safari): they keep today's behaviour rather than gaining a
+ * horizontal scrollbar.
+ */
 html {
   scroll-behavior: smooth;
   max-width: 100%;
   overflow-x: hidden;
+  overflow-x: clip;
 }
 
 body {
@@ -32,6 +49,7 @@ body {
   color: var(--tara-black);
   max-width: 100%;
   overflow-x: hidden;
+  overflow-x: clip;
 }
 
 ::selection {
@@ -56,6 +74,90 @@ body {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+   Homepage: the "Find Your Look" scroll story.
+
+   Only geometry and the per-breakpoint focal points live here — everything a
+   Tailwind utility can say (type, colour, spacing, the crossfades) is said in
+   the component. These are the rules a utility class cannot express.
+
+   WHY THE TRACK AND THE STAGE HAVE TO BE DEFINED TOGETHER
+   The stage is `position: sticky` inside the track, so how far it stays pinned
+   is exactly `track height - stage height`. Splitting those two numbers across
+   two files is how a pinned section ends up releasing a viewport early.
+
+   WHY --fyl-header EXISTS
+   The site header is `sticky top-0` and h-16 / lg:h-20 (components/layout/
+   Header.tsx). The stage pins to the same two numbers so the photograph starts
+   directly under the header rather than behind it. If the header height ever
+   changes, it changes here as well — there is nothing else to keep in step.
+
+   WHY svh FOR THE STAGE AND vh FOR THE STEP
+   `svh` is the small viewport height: it does not change when a mobile address
+   bar collapses, so a full-bleed background does not resize mid-scroll. The
+   per-state scroll step is a distance rather than a layout box, so plain `vh`
+   is right for it and keeps it valid in browsers without `svh`. The component
+   measures the real pixel heights anyway, so the two can never disagree.
+   --------------------------------------------------------------------------- */
+.fyl-track {
+  --fyl-header: 4rem;
+  /* Scroll distance granted to each of the five states. Enough that a state is
+     read rather than flicked past; short enough that five of them are not an
+     ordeal on a phone. */
+  --fyl-step: 42vh;
+  height: max(
+    calc(100vh - var(--fyl-header) + 5 * var(--fyl-step)),
+    calc(26rem + 5 * var(--fyl-step))
+  );
+}
+
+.fyl-stage {
+  --fyl-progress: 0;
+  top: var(--fyl-header);
+  height: calc(100vh - var(--fyl-header));
+  /* A floor for short windows — a landscape phone, a half-height browser — so
+     the composition never collapses to nothing. */
+  min-height: 26rem;
+}
+
+@supports (height: 100svh) {
+  .fyl-stage {
+    height: calc(100svh - var(--fyl-header));
+  }
+}
+
+/*
+ * Three focal points per photograph, because the crop changes shape completely
+ * across the breakpoints and a single value cannot serve all three.
+ *
+ * The photographs are 4:5. In a wide desktop stage the whole width is visible
+ * and the crop is entirely vertical, so only the second value does anything —
+ * it decides where in a full-length shot the band falls, and getting it wrong
+ * means a photograph of somebody's waist. In a tall phone stage the opposite is
+ * true: the crop is horizontal, and the first value is what keeps the model in
+ * frame beside the copy. Each story sets its own three in data/shopByStyle.ts.
+ */
+.fyl-photo {
+  object-position: var(--fyl-focus-mobile);
+}
+
+@media (min-width: 768px) {
+  .fyl-photo {
+    object-position: var(--fyl-focus-tablet);
+  }
+}
+
+@media (min-width: 1024px) {
+  .fyl-track {
+    --fyl-header: 5rem;
+    --fyl-step: 55vh;
+  }
+
+  .fyl-photo {
+    object-position: var(--fyl-focus-desktop);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {

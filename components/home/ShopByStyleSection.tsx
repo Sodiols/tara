@@ -1,37 +1,20 @@
-import Image from "next/image";
-import Link from "next/link";
-import { shopByStyleCategories } from "@/data/shopByStyle";
-import { Container } from "@/components/layout/Container";
-import { SectionHeader } from "@/components/layout/SectionHeader";
+import { styleStories } from "@/data/shopByStyle";
+import { StyleStoryStage } from "./StyleStoryStage";
 
+/**
+ * "Shop by Style / Find Your Look".
+ *
+ * A server component holding nothing but the data, the same split the hero
+ * uses: the five style stories are content and belong on the server, and only
+ * the pinned stage that reveals them needs to be a client component.
+ *
+ * This replaced a row of five equal cards. Five categories shown at one fifth
+ * of the width each is a menu, not a look — nothing in it was big enough to
+ * sell a garment, and every link went to the same unfiltered listing. The
+ * replacement gives one style the whole screen at a time, full bleed, and
+ * sends each one somewhere different; see data/shopByStyle.ts for where, and
+ * why.
+ */
 export function ShopByStyleSection() {
-
-  return (
-    <Container as="section" className="py-12 sm:py-16 lg:py-24">
-      <SectionHeader eyebrow={"Shop by Style"} heading={"Find Your Look"} />
-      <div className="flex gap-3 md:gap-6 lg:gap-8 overflow-x-auto pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-5">
-        {shopByStyleCategories.map((style) => (
-          <Link
-            key={style.key}
-            href={style.href}
-            className="group relative w-[42%] sm:w-auto shrink-0 aspect-[4/5] overflow-hidden bg-beige focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink"
-          >
-            <Image
-              src={style.image}
-              alt={style.label}
-              fill
-              sizes="(max-width: 768px) 45vw, 20vw"
-              className="object-cover transition-transform duration-500 ease-out group-hover:scale-105"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-ink/60 via-ink/10 to-transparent group-hover:from-ink/70 transition-colors duration-200" />
-            <div className="absolute inset-x-0 bottom-0 p-4">
-              <span className="text-white text-sm font-serif leading-snug">
-                {style.label}
-              </span>
-            </div>
-          </Link>
-        ))}
-      </div>
-    </Container>
-  );
+  return <StyleStoryStage stories={styleStories} />;
 }
