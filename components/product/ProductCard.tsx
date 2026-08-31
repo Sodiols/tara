@@ -149,6 +149,20 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
         </button>
       </Link>
 
+      {/*
+        Two groups, and only one gap between them.
+        
+        The description block — name, category, sizes — is set tight, in one
+        rhythm: 4px under the title, 6px under the category. The price and the
+        bag are anchored to the bottom by `mt-auto`, so they line up across a
+        row of cards whatever length the names are.
+        
+        The title deliberately no longer reserves two lines. It used to carry
+        min-h-[2.7rem], which put 20px of dead space under every one-line name —
+        the card read as three ragged gaps rather than a block of text with the
+        action beneath it. `mt-auto` was already doing the cross-card alignment
+        that reservation was meant to provide, so all it added was the hole.
+      */}
       <div className="flex flex-1 flex-col px-1.5 pb-0.5 pt-2.5 sm:px-2">
         <div className="flex items-start justify-between gap-2">
           <div className="min-w-0 flex-1">
@@ -157,47 +171,50 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
               className="focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine"
             >
               {/*
-                Two lines, always reserved. A one-line and a two-line name must
-                not push the price to different heights in adjacent cards.
+                `break-words` is the guarantee, not the width above it: line-clamp
+                sets overflow:hidden, so a single word wider than the column is
+                sliced through the middle of a letter rather than wrapped.
+                "Embroidered" is 92px against an 88px column on a two-up phone
+                grid, and it rendered as "Embroiderec".
               */}
-              <h3 className="line-clamp-2 min-h-[2.5rem] font-sans text-[15px] font-semibold leading-snug text-ink transition-colors hover:text-wine sm:min-h-[2.7rem] sm:text-[17px]">
+              <h3 className="line-clamp-2 break-words font-sans text-[15px] font-semibold leading-snug text-ink transition-colors hover:text-wine sm:text-[17px]">
                 {product.name}
               </h3>
             </Link>
-            <p className="mt-0.5 font-sans text-[12px] font-normal text-taraTaupe sm:text-[13px]">
+            <p className="mt-1 font-sans text-[12px] font-normal leading-tight text-taraTaupe sm:text-[13px]">
               {resolveCategoryLabel(product)}
             </p>
           </div>
 
-          <WishlistButton product={product} variant="card" className="mt-0.5" />
+          <WishlistButton product={product} variant="card" className="-mt-0.5" />
         </div>
 
-        {/* Pushed to the bottom so price and bag align across a row of cards. */}
-        <div className="mt-auto pt-2.5">
-          {(showSizes || product.colours.length > 1) && (
-            <div className="mb-2 flex items-center justify-between gap-2">
-              {showSizes ? (
-                <p className="truncate font-sans text-[11px] uppercase tracking-[0.12em] text-taraTaupe sm:text-[12px]">
-                  {sortSizes(product.sizes).join("  ")}
-                </p>
-              ) : (
-                <span />
-              )}
-              {product.colours.length > 1 && (
-                <span className="flex shrink-0 items-center gap-1">
-                  {product.colours.slice(0, 4).map((colour) => (
-                    <span
-                      key={colour.name}
-                      title={colour.name}
-                      className="h-2.5 w-2.5 rounded-full border border-taraTaupe/40"
-                      style={{ backgroundColor: colour.hex }}
-                    />
-                  ))}
-                </span>
-              )}
-            </div>
-          )}
+        {(showSizes || product.colours.length > 1) && (
+          <div className="mt-1.5 flex items-center justify-between gap-2">
+            {showSizes ? (
+              <p className="truncate font-sans text-[11px] uppercase leading-tight tracking-[0.12em] text-taraTaupe sm:text-[12px]">
+                {sortSizes(product.sizes).join("  ")}
+              </p>
+            ) : (
+              <span />
+            )}
+            {product.colours.length > 1 && (
+              <span className="flex shrink-0 items-center gap-1">
+                {product.colours.slice(0, 4).map((colour) => (
+                  <span
+                    key={colour.name}
+                    title={colour.name}
+                    className="h-2.5 w-2.5 rounded-full border border-taraTaupe/40"
+                    style={{ backgroundColor: colour.hex }}
+                  />
+                ))}
+              </span>
+            )}
+          </div>
+        )}
 
+        {/* The single gap: everything above is content, this is the action. */}
+        <div className="mt-auto pt-3">
           <div className="flex items-end justify-between gap-2">
             <PriceDisplay
               price={product.price}

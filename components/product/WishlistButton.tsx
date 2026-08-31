@@ -24,8 +24,10 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 type WishlistVariant = "card" | "detail";
 
 const variantClasses: Record<WishlistVariant, string> = {
+  // 32px on a two-up phone grid, 36px from sm. It was 36/40, which took 27% of
+  // a 162px card's width away from the product name sitting beside it.
   card:
-    "h-9 w-9 rounded-full border border-taraTaupe/25 bg-taraIvory shadow-[0_2px_8px_-5px_rgb(23_23_23/0.3)] hover:bg-taraWhite sm:h-10 sm:w-10",
+    "h-8 w-8 rounded-full border border-taraTaupe/25 bg-taraIvory shadow-[0_2px_8px_-5px_rgb(23_23_23/0.3)] hover:bg-taraWhite sm:h-9 sm:w-9",
   detail:
     "rounded-control border border-border bg-transparent p-3 hover:border-wine",
 };
@@ -95,7 +97,7 @@ export function WishlistButton({
       )}
     >
       <Heart
-        size={variant === "card" ? 17 : 18}
+        size={variant === "card" ? 15 : 18}
         aria-hidden="true"
         className={active ? "fill-wine text-wine" : "text-wine"}
       />
