@@ -13,7 +13,7 @@ type Direction = -1 | 1;
 type Gesture = { id: number; x: number; y: number; axis: "pending" | "horizontal" | "vertical" };
 
 const EASING = "cubic-bezier(0.22, 0.68, 0, 1)";
-const AUTOPLAY_INTERVAL_MS = 1000;
+const AUTOPLAY_INTERVAL_MS = 2000;
 const MANUAL_IDLE_MS = 5000;
 const wrap = (index: number, count: number) => (index + count) % count;
 const slotTransform = (slot: number) =>
@@ -183,7 +183,7 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
 
   useEffect(() => {
     if (autoplayPaused) return;
-    // Start-to-start cadence stays one second; the 580ms card animation does
+    // Start-to-start cadence stays two seconds; the 580ms card animation does
     // not add another delay. The existing busy lock also covers slow decoding.
     const timer = window.setInterval(() => {
       const focused = document.activeElement;

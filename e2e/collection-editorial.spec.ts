@@ -248,7 +248,7 @@ test("explicitly paused playback stays paused while scrolling and time passes", 
   await expect(section(page)).toHaveAttribute("data-active-collection", "eid");
 });
 
-test("autoplay advances once per second through all five collections and can be paused", async ({ page }) => {
+test("autoplay advances every two seconds through all five collections and can be paused", async ({ page }) => {
   await openEditorial(page);
   // Observe through a DOM event rather than exposing application state.
   const observed: { id: string | null; time: number }[] = [];
@@ -261,12 +261,12 @@ test("autoplay advances once per second through all five collections and can be 
   });
   await section(page).getByRole("button", { name: "Play automatic collection changes" }).click();
   await page.mouse.move(0, 0);
-  await expect.poll(() => observed.length, { timeout: 12_000 }).toBeGreaterThanOrEqual(6);
+  await expect.poll(() => observed.length, { timeout: 20_000 }).toBeGreaterThanOrEqual(6);
   expect(observed.slice(0, 6).map(({ id }) => id)).toEqual(["summer", "winter", "festive", "new-arrivals", "eid", "summer"]);
   for (let index = 1; index < 6; index++) {
     const interval = observed[index].time - observed[index - 1].time;
-    expect(interval).toBeGreaterThan(750);
-    expect(interval).toBeLessThan(1400);
+    expect(interval).toBeGreaterThan(1750);
+    expect(interval).toBeLessThan(2400);
   }
   await expect(section(page).getByRole("status").first()).toHaveAttribute("aria-live", "off");
   await pauseAutoplay(page);
