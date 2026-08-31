@@ -1,34 +1,46 @@
 import Image from "next/image";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { img, stockImages } from "@/lib/images";
 import { Container } from "@/components/layout/Container";
-import { LinkButton } from "@/components/ui/Button";
+import styles from "./BrandStorySection.module.css";
 
+/** A deliberately static editorial pause between the storefront sections. */
 export function BrandStorySection() {
-
   return (
-    <section className="bg-cream">
-      <Container className="py-12 sm:py-16 lg:py-24">
-        <div className="grid lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-        <div className="relative aspect-[4/5] sm:aspect-[16/10] lg:aspect-[4/5] order-2 lg:order-1">
-          <Image
-            src={img(stockImages.lifestyleA, 900, 1050)}
-            alt={"Designed for your everyday story"}
-            fill
-            sizes="(max-width: 1024px) 100vw, 50vw"
-            className="object-cover"
-          />
-        </div>
-        <div className="order-1 lg:order-2 max-w-lg">
-          <h2 className="font-serif font-normal text-[32px] sm:text-4xl lg:text-[44px] leading-[1.1] text-ink mb-5">
-            {"Designed for your everyday story"}
+    <section className={styles.section} aria-labelledby="brand-story-heading" data-brand-story="">
+      <Container>
+        <div className={styles.composition}>
+          <span className={styles.backdrop} aria-hidden="true">TARA</span>
+
+          <p className={styles.eyebrow}>About TARA</p>
+
+          <figure className={styles.figure}>
+            <div className={styles.portrait}>
+              <Image
+                src={img(stockImages.lifestyleA, 900, 1125)}
+                alt="Fashion portrait of a woman in a mauve draped outfit against a soft rose backdrop."
+                fill
+                sizes="(min-width: 1308px) 496px, (min-width: 1280px) calc((100vw - 128px) * .42), (min-width: 1024px) calc((100vw - 96px) * .42), (min-width: 768px) calc((100vw - 64px) * .44), (min-width: 560px) 427px, calc((100vw - 40px) * .82)"
+                className={styles.image}
+              />
+            </div>
+            <figcaption className={styles.location}>Our story · Sylhet, Bangladesh</figcaption>
+          </figure>
+
+          <h2 id="brand-story-heading" className={styles.headline}>
+            <span>Designed for your</span>{" "}
+            <span>everyday <span className={styles.accent}>story</span></span>
           </h2>
-          <p className="font-sans font-normal text-muted text-base leading-relaxed mb-8">
-            {"TARA brings together comfort, modern style, and thoughtful details for women across Bangladesh. Every collection is selected to help you feel confident, comfortable, and beautifully yourself."}
-          </p>
-          <LinkButton href="/about" variant="secondary" size="lg">
-            {"Learn About TARA"}
-          </LinkButton>
-        </div>
+
+          <div className={styles.story}>
+            <p className={styles.copy}>
+              TARA brings together comfort, modern style, and thoughtful details for women across Bangladesh. Every collection is selected to help you feel confident, comfortable, and beautifully yourself.
+            </p>
+            <Link href="/about" className={styles.link}>
+              Discover TARA <ArrowRight size={18} strokeWidth={1.25} aria-hidden="true" />
+            </Link>
+          </div>
         </div>
       </Container>
     </section>
