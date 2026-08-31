@@ -31,7 +31,15 @@ export function ProductGrid({ products }: ProductGridProps) {
 
   return (
     <>
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-3 gap-y-10 md:gap-x-6 lg:gap-x-8">
+      {/*
+        The columns are fixed, so the gap is the only thing deciding how wide a
+        card is: every pixel taken out of it goes straight into the photograph.
+        It was 32px at lg, which left the four cards reading as four separate
+        objects with the page showing between them. At 20px they read as one
+        grid, and each card is about 10px wider for it. The row gap stays the
+        larger of the two so rows still separate without a rule between them.
+      */}
+      <div className="grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-3 md:gap-x-4 lg:grid-cols-4 lg:gap-x-5">
         {products.map((product) => (
           <ProductCard key={product.id} product={product} onQuickView={setQuickViewProduct} />
         ))}

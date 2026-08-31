@@ -28,6 +28,12 @@ interface ProductCardProps {
  *
  * THE SHAPE
  * ---------
+ * Square corners, on the card and on the photograph inside it. It was a
+ * rounded card for a while; squared, the photograph reaches its own edges and
+ * the grid reads as a contact sheet rather than a row of tiles, which is the
+ * register the rest of the site is in. The only radius left is the standard
+ * control radius on the bag button and the pill on a merchandising badge.
+ *
  * The photograph is the product. It takes the top of the card at a fixed 3:4
  * crop — fixed so that a hundred different uploads still line up in a grid —
  * and everything else is quiet supporting text underneath: what it is, what
@@ -81,13 +87,13 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
     // scale. The only hover behaviour is the second product photograph and the
     // quick view control, both of which are content rather than decoration.
     <article
-      className="group flex h-full flex-col rounded-[24px] border border-taraTaupe/25 bg-taraWhite p-2 shadow-[0_2px_10px_-8px_rgb(23_23_23/0.18)] sm:rounded-[28px] sm:p-2.5"
+      className="group flex h-full flex-col border border-taraTaupe/25 bg-taraWhite p-2 shadow-[0_2px_10px_-8px_rgb(23_23_23/0.18)] sm:p-2.5"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
       <Link
         href={`/product/${product.slug}`}
-        className="relative block aspect-[3/4] shrink-0 overflow-hidden rounded-[18px] bg-taraIvory focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine sm:rounded-[22px]"
+        className="relative block aspect-[3/4] shrink-0 overflow-hidden bg-taraIvory focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine"
       >
         <Image
           src={product.images[0]}
@@ -227,7 +233,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
               disabled={soldOut}
               aria-label={soldOut ? `${product.name} is sold out` : `Add ${product.name} to bag`}
               title={soldOut ? "Sold out" : "Add to bag"}
-              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] bg-wine text-taraIvory transition-colors duration-200 hover:bg-taraBlack focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine disabled:cursor-not-allowed disabled:bg-taraTaupe/40 disabled:text-taraBlack/50 sm:h-11 sm:w-11 sm:rounded-[16px]"
+              className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-wine text-taraIvory transition-colors duration-200 hover:bg-taraBlack focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine disabled:cursor-not-allowed disabled:bg-taraTaupe/40 disabled:text-taraBlack/50 sm:h-11 sm:w-11"
             >
               <ShoppingBag size={17} aria-hidden="true" />
             </button>

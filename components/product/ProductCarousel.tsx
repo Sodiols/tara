@@ -56,10 +56,25 @@ export function ProductCarousel({ products }: ProductCarouselProps) {
       <div
         ref={scrollRef}
         onScroll={updateBoundaries}
-        className="flex gap-4 md:gap-6 lg:gap-8 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex gap-3 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2 [-ms-overflow-style:none] [scrollbar-width:none] md:gap-4 lg:gap-5"
       >
+        {/*
+          A row fills the rail exactly, which a flat percentage cannot do: with
+          n cards across there are n-1 gaps to pay for, so the width is
+          `100%/n` minus that share of them. Written as calc rather than a
+          rounded percentage because the two have to stay in step — the old 23%
+          against a 32px gap left the fourth card 16px over the edge at 1024,
+          clipped rather than peeking.
+
+          The 46% on a phone is deliberately not that: two cards and a sliver of
+          a third is the only thing telling a thumb there is more to the right,
+          and below md there are no arrows to say it instead.
+        */}
         {products.map((product) => (
-          <div key={product.id} className="w-[46%] sm:w-[31%] lg:w-[23%] shrink-0 snap-start">
+          <div
+            key={product.id}
+            className="w-[46%] shrink-0 snap-start sm:w-[calc(33.333%-10.667px)] lg:w-[calc(25%-15px)]"
+          >
             <ProductCard product={product} onQuickView={setQuickViewProduct} />
           </div>
         ))}
