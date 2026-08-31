@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { HeroSection } from "@/components/home/HeroSection";
-import { StoreIntroSection } from "@/components/home/StoreIntroSection";
 import { MainCategorySection } from "@/components/home/MainCategorySection";
 import { NewArrivalsSection } from "@/components/home/NewArrivalsSection";
 import { FeaturedBanner } from "@/components/home/FeaturedBanner";
@@ -36,7 +35,6 @@ export default async function HomePage() {
   return (
     <>
       <HeroSection />
-      <StoreIntroSection />
       <MainCategorySection />
       <NewArrivalsSection products={newArrivals} />
       <FeaturedBanner />
