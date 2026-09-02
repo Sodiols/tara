@@ -6,13 +6,13 @@ import { navItems } from "./DesktopNavigation";
 import { MobileCollectionAccordion } from "./MobileCollectionAccordion";
 import type { StoreIdentity } from "@/lib/supabase/queries/settings";
 import { createPortal } from "react-dom";
-import { useEffect, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { logoutAction } from "@/lib/supabase/actions/auth";
 import { useCartStore } from "@/store/cartStore";
 import { useWishlistStore } from "@/store/wishlistStore";
-import { lockBodyScroll } from "@/lib/scroll-lock";
+import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
 
 interface MobileNavigationProps {
   isOpen: boolean;
@@ -22,6 +22,9 @@ interface MobileNavigationProps {
 
 export function MobileNavigation({ isOpen, onClose, identity }: MobileNavigationProps) {
   const [authenticated, setAuthenticated] = useState(false);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
   const clearBag = useCartStore((s) => s.clearBag);
   const clearWishlist = useWishlistStore((s) => s.replaceItems);
 
@@ -33,20 +36,35 @@ export function MobileNavigation({ isOpen, onClose, identity }: MobileNavigation
     return () => data.subscription.unsubscribe();
   }, []);
 
-  useEffect(() => {
-    if (!isOpen) return;
-    return lockBodyScroll();
-  }, [isOpen]);
+  // The drawer covers the page but the page stays rendered and focusable
+  // behind it, so without a trap Tab walked straight out of the navigation and
+  // into links nobody could see. Escape now closes it and focus returns to the
+  // menu button.
+  useDialogBehaviour({ isOpen, onClose, panelRef, initialFocusRef: closeButtonRef });
 
   if (!isOpen || typeof document === "undefined") return null;
 
   return createPortal(
     <div className="fixed inset-0 z-50 lg:hidden">
       <div className="absolute inset-0 bg-ink/40 animate-fadeIn" onClick={onClose} />
-      <div className="absolute left-0 top-0 h-full w-[85%] max-w-sm bg-white animate-slideInLeft overflow-y-auto flex flex-col">
+      <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="absolute left-0 top-0 h-full w-[85%] max-w-sm bg-white animate-slideInLeft overflow-y-auto flex flex-col"
+      >
         <div className="flex items-center justify-between px-5 py-4 border-b border-border">
-          <span className="font-serif text-xl tracking-widest uppercase">{"TARA"}</span>
-          <button onClick={onClose} aria-label={"Close"} className="p-1 text-ink">
+          <span id={titleId} className="font-serif text-xl tracking-widest uppercase">
+            {"TARA"}
+          </span>
+          <button
+            ref={closeButtonRef}
+            type="button"
+            onClick={onClose}
+            aria-label={"Close menu"}
+            className="p-1 text-ink"
+          >
             <X size={22} />
           </button>
         </div>

@@ -9,7 +9,33 @@ import { safeBrowserStorage } from "./safe-storage";
 // Matches the per-line-item cap enforced server-side in place_order() and
 // resolve_cart_lines() so the UI never lets a customer build a cart line the
 // server will reject.
-const MAX_LINE_QUANTITY = 20;
+export const MAX_LINE_QUANTITY = 20;
+
+/**
+ * Two cart lines are the same line when they are the same variant.
+ *
+ * `variantId` is `product_variants.id` — the identity of the exact row being
+ * bought — and it is what makes "size 38 in Black" and "size 40 in Black"
+ * distinct lines without comparing display strings. It is matched first, and
+ * only on both sides: a line saved before variant ids existed has none, and
+ * comparing `undefined === undefined` would collapse every legacy line of a
+ * product into one regardless of size.
+ *
+ * The product/size/colour comparison is the fallback for exactly those older
+ * bags. It is a display-string comparison and it is imprecise, which is the
+ * reason it is no longer the primary key of a line.
+ */
+function isSameLine(
+  line: { productId: string; size: string; colour: string; variantId?: string },
+  other: { productId: string; size: string; colour: string; variantId?: string },
+): boolean {
+  if (line.variantId && other.variantId) return line.variantId === other.variantId;
+  return (
+    line.productId === other.productId &&
+    line.size === other.size &&
+    line.colour === other.colour
+  );
+}
 
 interface CartState {
   items: CartItem[];
@@ -47,9 +73,7 @@ export const useCartStore = create<CartState>()(
        */
       addItem: (item) =>
         set((state) => {
-          const existing = state.items.find(
-            (i) => i.productId === item.productId && i.size === item.size && i.colour === item.colour
-          );
+          const existing = state.items.find((i) => isSameLine(i, item));
           if (existing) {
             return {
               items: state.items.map((i) =>
@@ -66,13 +90,13 @@ export const useCartStore = create<CartState>()(
       removeItem: (productId, size, colour) =>
         set((state) => ({
           items: state.items.filter(
-            (i) => !(i.productId === productId && i.size === size && i.colour === colour)
+            (i) => !isSameLine(i, { productId, size, colour }),
           ),
         })),
       updateQuantity: (productId, size, colour, quantity) =>
         set((state) => ({
           items: state.items.map((i) =>
-            i.productId === productId && i.size === size && i.colour === colour
+            isSameLine(i, { productId, size, colour })
               ? { ...i, quantity: Math.min(MAX_LINE_QUANTITY, Math.max(1, quantity)) }
               : i
           ),

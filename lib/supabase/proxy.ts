@@ -138,7 +138,60 @@ function contentSecurityPolicy(nonce: string, isDev: boolean): string {
  */
 let maintenanceCache: { value: boolean; expiresAt: number } | null = null;
 const MAINTENANCE_TTL_MS = 30_000;
+
+/**
+ * Collection visibility, cached per slug — with a ceiling.
+ *
+ * THE LEAK
+ * --------
+ * This was an unbounded Map. The key is whatever matched
+ * `/^\/collection\/([a-z0-9-]{1,100})$/` in the request path, which is
+ * attacker-chosen: `/collection/a1`, `/collection/a2`, and so on for as long as
+ * anybody cares to keep requesting. Every distinct slug added an entry, expired
+ * entries were read past but never deleted, and nothing ever removed anything.
+ * A crawler with a bad link pattern would do it by accident. In a long-lived
+ * server process that is a slow memory leak in the request path of every page
+ * load.
+ *
+ * THE BOUND
+ * ---------
+ * A TTL that is actually enforced by deletion, and a hard cap on entries.
+ * Insertion-ordered Maps make the eviction policy free: the oldest key is the
+ * first one `keys()` yields. Real collections number in the tens, so the cap is
+ * far above legitimate use and the eviction path is only ever reached by
+ * something abusive.
+ *
+ * No user data goes in here — a slug and a boolean — so evicting early costs
+ * one database read, never correctness.
+ */
+const COLLECTION_TTL_MS = 60_000;
+const COLLECTION_CACHE_MAX = 256;
 const collectionVisibilityCache = new Map<string, { value: boolean; expiresAt: number }>();
+
+function readCollectionCache(slug: string, now: number): boolean | null {
+  const cached = collectionVisibilityCache.get(slug);
+  if (!cached) return null;
+  if (cached.expiresAt <= now) {
+    // Deleted on read rather than left behind. Reading past a stale entry is
+    // what let the Map grow without limit even under honest traffic.
+    collectionVisibilityCache.delete(slug);
+    return null;
+  }
+  return cached.value;
+}
+
+function writeCollectionCache(slug: string, value: boolean, now: number): void {
+  // Re-inserting moves an existing key to the end, so a slug that is being
+  // requested constantly is not evicted while a stale one ahead of it survives.
+  collectionVisibilityCache.delete(slug);
+  collectionVisibilityCache.set(slug, { value, expiresAt: now + COLLECTION_TTL_MS });
+
+  while (collectionVisibilityCache.size > COLLECTION_CACHE_MAX) {
+    const oldest = collectionVisibilityCache.keys().next();
+    if (oldest.done) break;
+    collectionVisibilityCache.delete(oldest.value);
+  }
+}
 
 async function isPublicCollectionRoute(pathname: string): Promise<boolean> {
   const match = /^\/collection\/([a-z0-9-]{1,100})$/.exec(pathname);
@@ -147,8 +200,8 @@ async function isPublicCollectionRoute(pathname: string): Promise<boolean> {
 
   const slug = match[1];
   const now = Date.now();
-  const cached = collectionVisibilityCache.get(slug);
-  if (cached && cached.expiresAt > now) return cached.value;
+  const cached = readCollectionCache(slug, now);
+  if (cached !== null) return cached;
 
   try {
     const query = new URLSearchParams({
@@ -177,7 +230,7 @@ async function isPublicCollectionRoute(pathname: string): Promise<boolean> {
         (!row.starts_at || new Date(row.starts_at).getTime() <= now) &&
         (!row.ends_at || new Date(row.ends_at).getTime() > now),
     );
-    collectionVisibilityCache.set(slug, { value: visible, expiresAt: now + 60_000 });
+    writeCollectionCache(slug, visible, now);
     return visible;
   } catch {
     // Let the page-level query handle transient database failures. Failing

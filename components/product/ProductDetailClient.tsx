@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Facebook, MessageCircle, Link as LinkIcon, Star } from "lucide-react";
-import type { Product } from "@/types";
+import type { Product, ProductVariant } from "@/types";
 import { useToastStore } from "@/store/toastStore";
 import { useBuyNowStore } from "@/store/buyNowStore";
 import { useAddToCart } from "@/hooks/useAddToCart";
@@ -27,13 +27,33 @@ import { siteConfig } from "@/data/site";
 import { Container } from "@/components/layout/Container";
 import { categoryHref, resolveCategoryLabel } from "@/lib/utils";
 import { hasSelectableSizes, ONE_SIZE } from "@/lib/product-size";
+import {
+  colourChoices,
+  defaultSelection,
+  findVariant,
+  hasColourAxis,
+  maxQuantityFor,
+  resolveSelection,
+  sizeChoices,
+  unavailableReason,
+} from "@/lib/product-variants";
+import { MAX_LINE_QUANTITY } from "@/store/cartStore";
 
 interface ProductDetailClientProps {
   product: Product;
+  /**
+   * The real purchasable matrix. Empty means nothing on this product can be
+   * bought right now — see the note on the derived state below.
+   */
+  variants: ProductVariant[];
   relatedProducts: Product[];
 }
 
-export function ProductDetailClient({ product, relatedProducts }: ProductDetailClientProps) {
+export function ProductDetailClient({
+  product,
+  variants,
+  relatedProducts,
+}: ProductDetailClientProps) {
   const router = useRouter();
   const addToCart = useAddToCart();
   const startBuyNow = useBuyNowStore((s) => s.setItem);
@@ -41,28 +61,87 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
   const addRecentlyViewed = useRecentlyViewedStore((s) => s.addSlug);
 
   const hasRealSizes = hasSelectableSizes(product.sizes);
-  const [size, setSize] = useState(product.sizes[0] ?? "");
-  const [colour, setColour] = useState(product.colours[0]?.name ?? "");
-  const [quantity, setQuantity] = useState(1);
+  const showColours = hasColourAxis(variants);
+
+  /*
+   * The selection is one pair, not two independent values.
+   *
+   * It used to be `size` and `colour` in separate state, each seeded from a
+   * flattened array, with nothing checking that the pair existed. Holding it as
+   * one object and pushing every change through resolveSelection() is what
+   * makes an impossible combination unrepresentable rather than merely
+   * discouraged.
+   */
+  const [selection, setSelection] = useState(() => defaultSelection(variants));
+  const [requestedQuantity, setQuantity] = useState(1);
   const [sizeGuideOpen, setSizeGuideOpen] = useState(false);
+
+  const selectedVariant = findVariant(variants, selection.size, selection.colour);
+  const sizes = useMemo(
+    () => sizeChoices(variants, selection.colour),
+    [variants, selection.colour],
+  );
+  const colours = useMemo(
+    () => colourChoices(variants, selection.size),
+    [variants, selection.size],
+  );
+
+  /*
+   * Everything about the purchase comes from the selected variant, not the
+   * product.
+   *
+   * `product.price` is the base price and `product.stock` is sum(stock) across
+   * every variant — both are summaries for a card. Showing them here is how a
+   * shopper is quoted one price and charged another by place_order(), and how
+   * the quantity stepper offered ten of a size with one left.
+   *
+   * An empty matrix means fail closed. `product_variants` holds the only rows
+   * that can be sold; if none are active, or the read failed, there is nothing
+   * to sell and the page says so rather than offering a purchase the server
+   * would refuse.
+   */
+  const effectivePrice = selectedVariant?.price ?? product.price;
+  const maxQuantity = maxQuantityFor(selectedVariant, MAX_LINE_QUANTITY);
+  const purchasable = maxQuantity > 0;
+  const soldOutReason = unavailableReason(variants, selection.size, selection.colour);
 
   useEffect(() => {
     addRecentlyViewed(product.slug);
   }, [product.slug, addRecentlyViewed]);
+
+  /*
+   * Clamped on read rather than corrected in an effect.
+   *
+   * A shopper who asked for 5 of one size and then switched to a size with 2
+   * left must not keep 5. Deriving it means the displayed quantity is never
+   * momentarily wrong — an effect would render the stale value once first —
+   * and it keeps the requested figure, so going back to a size that has 5
+   * again restores what they asked for rather than leaving them on 2.
+   */
+  const quantity = Math.min(Math.max(1, requestedQuantity), Math.max(1, maxQuantity));
+
+  const chooseSize = (next: string) =>
+    setSelection((current) => resolveSelection(variants, { ...current, size: next }, "size"));
+  const chooseColour = (next: string) =>
+    setSelection((current) => resolveSelection(variants, { ...current, colour: next }, "colour"));
 
   const buildCartItem = () => ({
     productId: product.id,
     slug: product.slug,
     name: product.name,
     image: product.images[0],
-    price: product.price,
-    size: size || product.sizes[0] || ONE_SIZE,
-    colour: colour || product.colours[0]?.name || "",
+    // The variant's effective price, so the bag shows what checkout will charge.
+    // place_order() still recomputes it; this is display truth, not authority.
+    price: effectivePrice,
+    size: selection.size || ONE_SIZE,
+    colour: selection.colour,
     quantity,
+    // The identity that makes this line exactly one database row.
+    variantId: selectedVariant?.id,
   });
 
   const handleAddToBag = () => {
-    if (product.stock === 0) return;
+    if (!purchasable) return;
     addToCart(buildCartItem());
   };
 
@@ -79,7 +158,7 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
    * does not move.
    */
   const handleBuyNow = () => {
-    if (product.stock === 0) return;
+    if (!purchasable) return;
     startBuyNow(buildCartItem());
     router.push("/checkout/buy-now");
   };
@@ -116,40 +195,63 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
             {product.rating.toFixed(1)} ({product.reviewCount} {"Customer Reviews"})
           </a>
 
-          <PriceDisplay price={product.price} previousPrice={product.previousPrice} size="lg" />
+          {/* The selected variant's price, which changes with the selection. */}
+          <PriceDisplay price={effectivePrice} previousPrice={product.previousPrice} size="lg" />
 
           <div className="flex flex-wrap gap-x-6 gap-y-1 font-sans text-xs text-muted mt-4 mb-6">
             <span className="font-normal">
               {"Product Code"}: {product.productCode}
             </span>
-            <span className="font-medium">
-              {"Availability"}: {product.stock > 0 ? "In Stock" : "Out of Stock"}
+            {/*
+              Availability of the chosen combination, not of the product. A
+              product with stock in three sizes is not "In Stock" for the size
+              this shopper has selected, and saying so is what sends them to a
+              checkout that refuses the order.
+            */}
+            <span className="font-medium" aria-live="polite">
+              {"Availability"}:{" "}
+              {purchasable
+                ? `In Stock (${maxQuantity} available)`
+                : soldOutReason === "missing"
+                  ? "Unavailable in this combination"
+                  : "Out of Stock"}
             </span>
           </div>
 
           <p className="font-sans font-normal text-sm text-muted leading-relaxed mb-6">{product.description}</p>
 
           <div className="flex flex-col gap-5 mb-6">
-            {product.colours.length > 0 && (
-              <ColourSelector colours={product.colours} selected={colour} onChange={setColour} />
+            {showColours && (
+              <ColourSelector
+                colours={colours}
+                selected={selection.colour}
+                onChange={chooseColour}
+              />
             )}
             {hasRealSizes && (
               <SizeSelector
-                sizes={product.sizes}
-                selected={size}
-                onChange={setSize}
+                sizes={sizes}
+                selected={selection.size}
+                onChange={chooseSize}
                 onOpenGuide={() => setSizeGuideOpen(true)}
               />
             )}
-            <QuantitySelector quantity={quantity} onChange={setQuantity} max={product.stock} />
+            {/* Capped by the selected variant's own stock. */}
+            <QuantitySelector quantity={quantity} onChange={setQuantity} max={maxQuantity} />
           </div>
 
           <div className="hidden min-[900px]:flex flex-col gap-3 mb-6">
             <div className="grid grid-cols-2 gap-3">
-              <Button onClick={handleAddToBag} size="lg" fullWidth disabled={product.stock === 0}>
-                {product.stock === 0 ? "Out of Stock" : "Add to Cart"}
+              <Button onClick={handleAddToBag} size="lg" fullWidth disabled={!purchasable}>
+                {purchasable ? "Add to Cart" : "Out of Stock"}
               </Button>
-              <Button onClick={handleBuyNow} variant="secondary" size="lg" fullWidth disabled={product.stock === 0}>
+              <Button
+                onClick={handleBuyNow}
+                variant="secondary"
+                size="lg"
+                fullWidth
+                disabled={!purchasable}
+              >
                 {"Buy Now"}
               </Button>
             </div>
@@ -290,10 +392,10 @@ export function ProductDetailClient({ product, relatedProducts }: ProductDetailC
       </Modal>
 
       <div className="fixed bottom-0 left-0 right-0 z-30 min-[900px]:hidden bg-white border-t border-border p-3 grid grid-cols-2 gap-3">
-        <Button onClick={handleAddToBag} fullWidth disabled={product.stock === 0}>
-          {product.stock === 0 ? "Out of Stock" : "Add to Cart"}
+        <Button onClick={handleAddToBag} fullWidth disabled={!purchasable}>
+          {purchasable ? "Add to Cart" : "Out of Stock"}
         </Button>
-        <Button onClick={handleBuyNow} variant="secondary" fullWidth disabled={product.stock === 0}>
+        <Button onClick={handleBuyNow} variant="secondary" fullWidth disabled={!purchasable}>
           {"Buy Now"}
         </Button>
       </div>

@@ -15,6 +15,9 @@
     "test:e2e:install": "playwright install --with-deps chromium",
     "verify": "npm run typecheck && npm run lint && npm test && npm run build"
   },
+  "engines": {
+    "node": ">=22.18.0"
+  },
   "dependencies": {
     "@supabase/ssr": "^0.12.4",
     "@supabase/supabase-js": "^2.111.0",

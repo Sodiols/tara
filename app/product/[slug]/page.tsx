@@ -1,6 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { getProductBySlug, getRelatedProducts } from "@/lib/supabase/queries/products";
+import {
+  getProductBySlug,
+  getProductVariants,
+  getRelatedProducts,
+} from "@/lib/supabase/queries/products";
 import { ProductDetailClient } from "@/components/product/ProductDetailClient";
 import { siteConfig } from "@/data/site";
 import { categoryHref, humanizeSlug } from "@/lib/utils";
@@ -72,10 +76,19 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const { slug } = await params;
   const product = await getProductBySlug(slug);
   if (!product) notFound();
-  const relatedProducts = await getRelatedProducts(product);
+
+  // The two are independent of each other, so they overlap rather than queue.
+  const [variants, relatedProducts] = await Promise.all([
+    getProductVariants(product.id),
+    getRelatedProducts(product),
+  ]);
 
   const productUrl = absoluteUrl(`/product/${product.slug}`);
-  const inStock = product.stock > 0;
+  // Availability from the real matrix, which is also what the page's selector
+  // and place_order() use. `product.stock` is sum(stock) across variants and
+  // would still say InStock for a product whose every variant is sold out
+  // except one that is not orderable.
+  const inStock = variants.some((variant) => variant.available);
 
   const productSchema = {
     "@context": "https://schema.org",
@@ -154,7 +167,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
       */}
       <script {...jsonLdScriptProps(productSchema)} />
       <script {...jsonLdScriptProps(breadcrumbSchema(productBreadcrumb(product)))} />
-      <ProductDetailClient product={product} relatedProducts={relatedProducts} />
+      <ProductDetailClient
+        product={product}
+        variants={variants}
+        relatedProducts={relatedProducts}
+      />
     </>
   );
 }

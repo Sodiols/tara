@@ -33,6 +33,12 @@ const checkoutInput = checkoutSchema.omit({ items: true }).extend({
         size: z.string().min(1).max(60),
         colour: z.string().min(1).max(60),
         quantity: z.number().int().min(1).max(20),
+        // Sent by every bag built since the storefront became variant-aware.
+        // Optional because a bag saved in a browser before that has none, and
+        // those still resolve by (product, size, colour) below. It is checked
+        // against the database either way — a browser naming a variant is not
+        // the same as a browser being believed about one.
+        variantId: z.string().uuid().optional(),
       }),
     )
     .min(1)
@@ -135,12 +141,35 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
     // the same inside resolve_cart_lines(), because the browser is not the
     // authority on which variant is being bought.
     const size = normaliseSizeValue(item.size);
-    const match = variants?.find(
-      (variant) =>
-        variant.product_id === item.productId &&
-        variant.size === size &&
-        variant.colour_en === item.colour,
-    );
+
+    /*
+     * The variant id the bag carries is a claim, not a fact.
+     *
+     * It is accepted only when the row it names was returned by the query
+     * above — which selected active variants of the products this order is
+     * for — so a hand-edited localStorage naming somebody else's variant, an
+     * inactive one, or one belonging to a different product resolves to
+     * nothing and the order is refused. That check is what makes trusting the
+     * id for *identity* safe; it never carries a price or a quantity, both of
+     * which place_order() reads from the database regardless.
+     *
+     * Falling back to (product, size, colour) keeps bags saved before variant
+     * ids existed working rather than emptying them at checkout.
+     */
+    const match =
+      (item.variantId
+        ? variants?.find(
+            (variant) =>
+              variant.id === item.variantId && variant.product_id === item.productId,
+          )
+        : undefined) ??
+      variants?.find(
+        (variant) =>
+          variant.product_id === item.productId &&
+          variant.size === size &&
+          variant.colour_en === item.colour,
+      );
+
     if (!match) return { ok: false, message: "A selected product option is no longer available." };
     resolved.push({ variantId: match.id, quantity: item.quantity });
   }

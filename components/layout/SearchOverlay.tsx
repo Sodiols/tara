@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
 import Image from "next/image";
@@ -8,7 +8,8 @@ import { X, Search as SearchIcon } from "lucide-react";
 import type { Product } from "@/types";
 import { formatPrice } from "@/lib/utils";
 import { useRouter } from "next/navigation";
-import { lockBodyScroll } from "@/lib/scroll-lock";
+import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
+import { isStringList, readStoredJson, writeStoredJson } from "@/lib/browser-storage";
 
 const RECENT_KEY = "tara-recent-searches";
 const suggestedKeywords = ["Unready", "Kurta", "Wine", "Festive", "Bag", "Earrings"];
@@ -31,24 +32,26 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   const [results, setResults] = useState<Product[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+
+  // A dialog, not a div that happens to cover the page: Escape closes it, Tab
+  // stays inside it, and focus goes back to the search button on the way out.
+  useDialogBehaviour({ isOpen, onClose, panelRef, initialFocusRef: inputRef });
 
   useEffect(() => {
     if (!isOpen) return;
-    const release = lockBodyScroll();
-    const focusTimer = setTimeout(() => inputRef.current?.focus(), 50);
-    const stored = window.localStorage.getItem(RECENT_KEY);
     // Opening the overlay starts a fresh search and reloads the recent list
     // from this device. Resetting on open rather than on close keeps the two
     // pieces of state in one place and leaves nothing to clear on the way out.
     /* eslint-disable react-hooks/set-state-in-effect */
     setQuery("");
     setResults([]);
-    setRecent(stored ? JSON.parse(stored) : []);
+    // Was `JSON.parse(window.localStorage.getItem(...))`, unguarded, inside
+    // this effect: malformed storage, or a browser that throws on storage
+    // access, took the whole overlay down for the sake of six saved words.
+    setRecent(readStoredJson(RECENT_KEY, isStringList, []));
     /* eslint-enable react-hooks/set-state-in-effect */
-    return () => {
-      clearTimeout(focusTimer);
-      release();
-    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -74,7 +77,7 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     if (!term.trim()) return;
     const next = [term, ...recent.filter((r) => r !== term)].slice(0, 6);
     setRecent(next);
-    window.localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+    writeStoredJson(RECENT_KEY, next);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -88,10 +91,26 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
   if (!isOpen || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[60] bg-white animate-fadeIn overflow-y-auto">
+    <div
+      ref={panelRef}
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby={titleId}
+      className="fixed inset-0 z-[60] bg-white animate-fadeIn overflow-y-auto"
+    >
       <div className="max-w-3xl mx-auto px-5 pt-8 pb-16">
-        <div className="flex items-center justify-end mb-6">
-          <button onClick={onClose} aria-label={"Close"} className="p-1 text-ink">
+        <div className="flex items-center justify-between mb-6">
+          {/* The dialog's accessible name. Visually hidden because the search
+              field's own label already says this on screen. */}
+          <h2 id={titleId} className="sr-only">
+            {"Search"}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label={"Close search"}
+            className="ml-auto p-1 text-ink"
+          >
             <X size={26} />
           </button>
         </div>

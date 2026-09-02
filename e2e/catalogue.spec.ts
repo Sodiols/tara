@@ -70,7 +70,15 @@ test.describe("filters live in the URL", () => {
       await openMobileFilters(page, testInfo.project.name);
     }
     await bands.nth(3).check();
-    await page.waitForURL(/price=[^&]*,/, { timeout: 20_000 });
+    // Matched on the DECODED parameter, not on the raw URL. The separator is a
+    // comma and a comma is percent-encoded to %2C by URLSearchParams, so
+    // /price=[^&]*,/ was asserting on an encoding detail rather than on the
+    // behaviour: the app was correctly producing `price=0-1500%2C3500-10000`
+    // and the regex never matched, so this failed for the wrong reason.
+    await page.waitForURL(
+      (url) => (url.searchParams.get("price") ?? "").split(",").length === 2,
+      { timeout: 20_000 },
+    );
 
     const url = new URL(page.url());
     const price = url.searchParams.get("price") ?? "";

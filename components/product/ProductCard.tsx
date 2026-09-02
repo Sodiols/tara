@@ -10,6 +10,7 @@ import { PriceDisplay } from "./PriceDisplay";
 import { WishlistButton } from "./WishlistButton";
 import { resolveCategoryLabel } from "@/lib/utils";
 import { ONE_SIZE, hasSelectableSizes, sortSizes } from "@/lib/product-size";
+import { requiresVariantChoice } from "@/lib/product-variants";
 import { primaryImageAlt } from "@/lib/product-media";
 
 interface ProductCardProps {
@@ -67,9 +68,21 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
   // between, so they are not advertised as if they were.
   const showSizes = hasSelectableSizes(product.sizes);
 
-  const handleAddToBag = (e: React.MouseEvent) => {
+  // A card carries the flattened summary, not the variant matrix, so it can
+  // only add straight to the bag when there is exactly one combination to add.
+  // Anything with a real choice opens Quick View instead of guessing
+  // `sizes[0] + colours[0]` — which for a product stocked as 38/Black,
+  // 40/Maroon, 42/Black is a combination that may not exist, and which the
+  // customer only finds out about at the end of checkout.
+  const needsChoice = requiresVariantChoice(product);
+
+  const handleBagButton = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (needsChoice) {
+      onQuickView(product);
+      return;
+    }
     addToCart({
       productId: product.id,
       slug: product.slug,
@@ -187,7 +200,14 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
                 {product.name}
               </h3>
             </Link>
-            <p className="mt-1 font-sans text-[12px] font-normal leading-tight text-taraTaupe sm:text-[13px]">
+            {/*
+              Muted TARA Black, not Warm Taupe. #B9AA9C on white measures
+              2.27:1, which fails WCAG AA for normal text by a wide margin and
+              was being used here at 12px — the smallest, hardest-to-read type
+              on the card. Warm Taupe stays where the brand guide puts it: on
+              borders and dividers, where contrast is not carrying meaning.
+            */}
+            <p className="mt-1 font-sans text-[12px] font-normal leading-tight text-muted sm:text-[13px]">
               {resolveCategoryLabel(product)}
             </p>
           </div>
@@ -198,7 +218,7 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
         {(showSizes || product.colours.length > 1) && (
           <div className="mt-1.5 flex items-center justify-between gap-2">
             {showSizes ? (
-              <p className="truncate font-sans text-[11px] uppercase leading-tight tracking-[0.12em] text-taraTaupe sm:text-[12px]">
+              <p className="truncate font-sans text-[11px] uppercase leading-tight tracking-[0.12em] text-muted sm:text-[12px]">
                 {sortSizes(product.sizes).join("  ")}
               </p>
             ) : (
@@ -229,10 +249,16 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
             />
             <button
               type="button"
-              onClick={handleAddToBag}
+              onClick={handleBagButton}
               disabled={soldOut}
-              aria-label={soldOut ? `${product.name} is sold out` : `Add ${product.name} to bag`}
-              title={soldOut ? "Sold out" : "Add to bag"}
+              aria-label={
+                soldOut
+                  ? `${product.name} is sold out`
+                  : needsChoice
+                    ? `Choose options for ${product.name}`
+                    : `Add ${product.name} to bag`
+              }
+              title={soldOut ? "Sold out" : needsChoice ? "Choose options" : "Add to bag"}
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-control bg-wine text-taraIvory transition-colors duration-200 hover:bg-taraBlack focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine disabled:cursor-not-allowed disabled:bg-taraTaupe/40 disabled:text-taraBlack/50 sm:h-11 sm:w-11"
             >
               <ShoppingBag size={17} aria-hidden="true" />

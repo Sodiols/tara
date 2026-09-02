@@ -1,9 +1,9 @@
 "use client";
 
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode, useRef } from "react";
 import { X } from "lucide-react";
 import { createPortal } from "react-dom";
-import { lockBodyScroll } from "@/lib/scroll-lock";
+import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
 
 interface ModalProps {
   isOpen: boolean;
@@ -13,49 +13,14 @@ interface ModalProps {
   maxWidthClass?: string;
 }
 
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 export function Modal({ isOpen, onClose, title, children, maxWidthClass = "max-w-2xl" }: ModalProps) {
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
-  const previouslyFocused = useRef<HTMLElement | null>(null);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    previouslyFocused.current = document.activeElement as HTMLElement | null;
-    const release = lockBodyScroll();
-    closeButtonRef.current?.focus();
-
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-        return;
-      }
-      if (e.key !== "Tab" || !panelRef.current) return;
-
-      const focusable = panelRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR);
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-
-      if (e.shiftKey && document.activeElement === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && document.activeElement === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-
-    document.addEventListener("keydown", handleKey);
-    return () => {
-      document.removeEventListener("keydown", handleKey);
-      release();
-      previouslyFocused.current?.focus();
-    };
-  }, [isOpen, onClose]);
+  // Escape, the focus trap, focus restoration and the scroll lock all live in
+  // the shared hook now, so this dialog, the search overlay and the mobile
+  // navigation drawer cannot drift apart on any of them.
+  useDialogBehaviour({ isOpen, onClose, panelRef, initialFocusRef: closeButtonRef });
 
   if (!isOpen || typeof document === "undefined") return null;
 

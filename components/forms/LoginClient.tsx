@@ -362,6 +362,31 @@ export function LoginClient({
 
             {!success && (
               <>
+                {/*
+                  Directly under the submit button, above the link that swaps
+                  between signing in and registering.
+
+                  It used to sit below that link, which put "Don't have an
+                  account? Create Account" between the two ways of doing the
+                  same thing. Google is an alternative to the form immediately
+                  above it, not an afterthought below the footer — and on a
+                  phone the old order pushed it under the fold on the register
+                  view, where the form is taller.
+
+                  One block serves both modes deliberately. Signing in with
+                  Google and signing up with Google are the same handshake:
+                  Supabase creates the account on first use, so there is no
+                  second button to write and no second flow to keep in step.
+                */}
+                {googleEnabled && (
+                  <>
+                    <p className="my-5 text-center text-xs text-muted">{"or"}</p>
+                    <form action={() => googleLoginAction(returnTo)}>
+                      <GoogleSubmitButton disabled={pending} />
+                    </form>
+                  </>
+                )}
+
                 <p className="mt-5 text-center text-sm text-muted">
                   {mode === "login" ? "Don't have an account?" : "Already have an account?"}{" "}
                   <button
@@ -372,15 +397,6 @@ export function LoginClient({
                     {mode === "login" ? "Create Account" : "Sign In"}
                   </button>
                 </p>
-
-                {googleEnabled && (
-                  <>
-                    <p className="my-5 text-center text-xs text-muted">{"or"}</p>
-                    <form action={() => googleLoginAction(returnTo)}>
-                      <GoogleSubmitButton disabled={pending} />
-                    </form>
-                  </>
-                )}
               </>
             )}
 

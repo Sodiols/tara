@@ -7,6 +7,7 @@ import type {
   ColourOption,
   Product,
   ProductImageMedia,
+  ProductVariant,
   Review,
 } from "@/types";
 import type { Json } from "@/types/database";
@@ -37,6 +38,7 @@ function logCatalogueFailure(
   }
   logFailure(event, error, context);
 }
+import { normaliseSizeValue } from "@/lib/product-size";
 import {
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
@@ -605,6 +607,70 @@ const readProductBySlug = unstable_cache(async (slug: string): Promise<Product |
 // render. React cache prevents those concurrent callers from issuing duplicate
 // product and review queries even on a cold shared-cache miss.
 export const getProductBySlug = cache(readProductBySlug);
+
+/**
+ * The real purchasable matrix for one product.
+ *
+ * Read straight from `product_variants` rather than from `search_catalogue()`,
+ * for two reasons. The catalogue function deliberately flattens variants into
+ * `distinct` size and colour arrays plus a `sum()` of stock — that shape is
+ * right for a card and for the filter facets and cannot express the pairing, so
+ * the pairing has to come from somewhere else. And putting the matrix into the
+ * catalogue payload would attach it to all 24 rows of every listing, which no
+ * listing needs; only a product page has a selector to drive.
+ *
+ * `product_variants_public_read` (migration 0000) already lets an anonymous
+ * caller read active variants of active products, and 0003 granted anon the
+ * table, so this needs no new policy — the same access the storefront already
+ * has through the catalogue function, asked a different question.
+ *
+ * Not cached alongside the product: this is stock, and stock is the one thing
+ * on a product page that must not be a minute stale while somebody is deciding
+ * whether the last one is theirs. `place_order()` is still the authority — it
+ * re-reads and locks every row — so a race here costs a clear rejection at
+ * checkout, not an oversell. What this prevents is the far more common case of
+ * a shopper being offered a size that sold out an hour ago.
+ */
+export async function getProductVariants(productId: string): Promise<ProductVariant[]> {
+  if (!isSupabaseConfigured()) return [];
+
+  const supabase = createPublicServerClient();
+  const { data, error } = await supabase
+    .from("product_variants")
+    .select("id,size,colour_en,colour_hex,stock_quantity,price_override,is_active")
+    .eq("product_id", productId)
+    .eq("is_active", true);
+
+  if (error) {
+    logFailure("catalogue.variant_lookup_failed", error, { productId });
+    return [];
+  }
+
+  // The base price has to come from the product, because `price_override` is
+  // null for most rows and the effective price is what the selector displays
+  // and what place_order() will independently recompute.
+  const { data: productRow } = await supabase
+    .from("products")
+    .select("base_price")
+    .eq("id", productId)
+    .maybeSingle();
+  const basePrice = asNumber(productRow?.base_price);
+
+  return (data ?? []).map((row): ProductVariant => {
+    const colourName = (row.colour_en ?? "").trim();
+    const stock = asNumber(row.stock_quantity);
+    return {
+      id: row.id,
+      size: normaliseSizeValue(asString(row.size)),
+      colour: colourName
+        ? { name: colourName, hex: asString(row.colour_hex, "#000000") }
+        : null,
+      stock,
+      price: row.price_override == null ? basePrice : asNumber(row.price_override),
+      available: stock > 0,
+    };
+  });
+}
 
 /**
  * Several products by slug, in one query.
