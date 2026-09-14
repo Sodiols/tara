@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { HeroSection } from "@/components/home/HeroSection";
-import { MainCategorySection } from "@/components/home/MainCategorySection";
 import { NewArrivalsSection } from "@/components/home/NewArrivalsSection";
 import { FeaturedBanner } from "@/components/home/FeaturedBanner";
-import { ShopByStyleSection } from "@/components/home/ShopByStyleSection";
 import { BestSellersSection } from "@/components/home/BestSellersSection";
 import { BrandStorySection } from "@/components/home/BrandStorySection";
 import { SocialGallery } from "@/components/home/SocialGallery";
@@ -35,11 +33,9 @@ export default async function HomePage() {
   return (
     <>
       <HeroSection />
-      <MainCategorySection />
+      <BestSellersSection products={bestSellers} />
       <NewArrivalsSection products={newArrivals} />
       <FeaturedBanner />
-      <ShopByStyleSection />
-      <BestSellersSection products={bestSellers} />
       <BrandStorySection />
       <SocialGallery
         instagramUrl={settings.instagramUrl}

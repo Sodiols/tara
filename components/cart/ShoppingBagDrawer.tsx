@@ -102,11 +102,6 @@ export function ShoppingBagDrawer({ announcement }: { announcement: string | nul
                 <span className="text-ink font-medium">{formatPrice(subtotal())}</span>
               </div>
               {announcement && <p className="text-xs text-muted">{announcement}</p>}
-              <Link href="/bag" onClick={closeBag}>
-                <Button variant="secondary" fullWidth>
-                  {"Shopping Bag"}
-                </Button>
-              </Link>
               <Link href="/checkout" onClick={closeBag}>
                 <Button fullWidth>{"Proceed to Checkout"}</Button>
               </Link>

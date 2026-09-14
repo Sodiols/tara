@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useMemo, type FormEvent, type ReactNode } from "react";
+import { useState, useRef, useMemo, useEffect, type FormEvent, type ReactNode } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { CheckCircle2 } from "lucide-react";
@@ -45,9 +45,61 @@ export interface CheckoutFormProps {
   emptyState: ReactNode;
 }
 
-interface FormErrors {
-  [key: string]: string;
-}
+type FieldKey =
+  | "email"
+  | "phone"
+  | "name"
+  | "address"
+  | "city"
+  | "postalCode"
+  | "deliveryZone"
+  | "coupon"
+  | "agreeTerms";
+
+type FormErrors = Partial<Record<FieldKey, string>>;
+
+/**
+ * The order the fields appear on the page, top to bottom (and in DOM order, so
+ * it holds when the summary column stacks under the form on a phone). When
+ * several fields are wrong, the customer is taken to the first one they would
+ * meet reading down the form.
+ */
+const FIELD_ORDER: readonly FieldKey[] = [
+  "email",
+  "phone",
+  "name",
+  "address",
+  "city",
+  "postalCode",
+  "deliveryZone",
+  "coupon",
+  "agreeTerms",
+];
+
+/** The element each field's error sends the customer to. */
+const FIELD_IDS: Record<FieldKey, string> = {
+  email: "checkout-email",
+  phone: "checkout-phone",
+  name: "checkout-name",
+  address: "checkout-address",
+  city: "checkout-city",
+  postalCode: "checkout-postal-code",
+  deliveryZone: "checkout-delivery-zone",
+  coupon: "checkout-coupon",
+  agreeTerms: "checkout-terms",
+};
+
+/** Server field names (lib/validation.ts checkoutSchema) → the field shown here. */
+const SERVER_FIELDS: Record<string, FieldKey> = {
+  customerEmail: "email",
+  customerPhone: "phone",
+  customerName: "name",
+  shippingAddress: "address",
+  couponCode: "coupon",
+};
+
+/** Mirrors `personName` in lib/validation.ts, so the server never has to reject it. */
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/;
 
 /**
  * A checkout section heading.
@@ -113,6 +165,9 @@ export function CheckoutForm({
 
   const [agreeTerms, setAgreeTerms] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
+  // Bumped on every failed submit, so the effect below runs even when the same
+  // field is wrong twice in a row.
+  const [errorFocusRequest, setErrorFocusRequest] = useState(0);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
   const [trackingToken, setTrackingToken] = useState("");
   const [orderTotal, setOrderTotal] = useState<number | null>(null);
@@ -167,6 +222,46 @@ export function CheckoutForm({
     setCouponMessage(`Coupon applied — you saved ${formatPrice(result.data.discount)}`);
   };
 
+  /**
+   * After a failed submit, take the customer straight to the first problem:
+   * scroll it to the middle of the screen (clear of the sticky header) and
+   * focus it, so they can type the correction immediately. Runs after the
+   * render that painted the error messages, so the scroll lands on the final
+   * layout rather than one that shifts as messages appear.
+   */
+  useEffect(() => {
+    if (errorFocusRequest === 0) return;
+    const first = FIELD_ORDER.find((key) => errors[key]);
+    if (!first) return;
+    // For the delivery area, land on the chosen radio (or the first one).
+    const element =
+      first === "deliveryZone"
+        ? (document.querySelector<HTMLInputElement>('input[name="deliveryZone"]:checked') ??
+          document.querySelector<HTMLInputElement>('input[name="deliveryZone"]'))
+        : document.getElementById(FIELD_IDS[first]);
+    if (!element) return;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    element.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "center" });
+    element.focus({ preventScroll: true });
+    // Only a new submit attempt should move focus, never an edit clearing an error.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [errorFocusRequest]);
+
+  /** Clears one field's message as soon as the customer starts correcting it. */
+  const clearError = (key: FieldKey) => {
+    setErrors((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const showErrors = (next: FormErrors) => {
+    setErrors(next);
+    setErrorFocusRequest((count) => count + 1);
+  };
+
   const validate = (): boolean => {
     const next: FormErrors = {};
     if (!isValidBdPhone(phone)) {
@@ -176,12 +271,16 @@ export function CheckoutForm({
       next.email = "Enter a valid email address for your confirmation and receipt.";
     }
     if (name.trim().length < 2) next.name = "Enter the name the order is for.";
+    else if (CONTROL_CHARACTERS.test(name)) next.name = "Use letters, spaces and punctuation only.";
     if (address.trim().length < 8) next.address = "Enter the full street address.";
     if (city.trim().length < 2) next.city = "Enter your city or town.";
     // Optional, but if it is filled in it should be a real shape rather than
     // silently stored as nonsense.
     if (postalCode.trim() && !/^\d{4}$/.test(postalCode.trim())) {
       next.postalCode = "A Bangladesh postal code is four digits, for example 3100.";
+    }
+    if (!DELIVERY_ZONES.includes(deliveryZone)) {
+      next.deliveryZone = "Choose a delivery area.";
     }
     if (!agreeTerms) {
       next.agreeTerms = "Please accept the Terms and Conditions to place your order.";
@@ -192,8 +291,12 @@ export function CheckoutForm({
     if (couponCode.trim() && !appliedCoupon) {
       next.coupon = "Press Apply to use your coupon code, or clear the box to continue without it.";
     }
-    setErrors(next);
-    return Object.keys(next).length === 0;
+    if (Object.keys(next).length > 0) {
+      showErrors(next);
+      return false;
+    }
+    setErrors({});
+    return true;
   };
 
   const handleSubmit = async (event: FormEvent) => {
@@ -231,6 +334,23 @@ export function CheckoutForm({
 
     if (!result.ok || !result.data) {
       setSubmitting(false);
+      // The server re-validates everything. If it rejects a field the checks
+      // above let through, point at that field exactly as a client error would.
+      if (!result.ok && result.fieldErrors) {
+        const serverErrors: FormErrors = {};
+        for (const [field, messages] of Object.entries(result.fieldErrors)) {
+          const key = SERVER_FIELDS[field];
+          if (key && messages?.length && !serverErrors[key]) {
+            serverErrors[key] =
+              key === "address" ? "Check your delivery address and try again." : messages[0];
+          }
+        }
+        if (Object.keys(serverErrors).length > 0) {
+          setSubmitError("");
+          showErrors(serverErrors);
+          return;
+        }
+      }
       setSubmitError(
         result.ok
           ? "Your order could not be placed. Nothing has been ordered — please try again."
@@ -324,7 +444,11 @@ export function CheckoutForm({
                 placeholder="you@example.com"
                 hint="We send your confirmation and receipt here."
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                id={FIELD_IDS.email}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  clearError("email");
+                }}
                 error={errors.email}
               />
               <Input
@@ -336,7 +460,11 @@ export function CheckoutForm({
                 placeholder="01XXXXXXXXX"
                 hint="We call this number to confirm your order before delivery."
                 value={phone}
-                onChange={(event) => setPhone(event.target.value)}
+                id={FIELD_IDS.phone}
+                onChange={(event) => {
+                  setPhone(event.target.value);
+                  clearError("phone");
+                }}
                 error={errors.phone}
               />
             </div>
@@ -353,7 +481,11 @@ export function CheckoutForm({
                 autoComplete="name"
                 required
                 value={name}
-                onChange={(event) => setName(event.target.value)}
+                id={FIELD_IDS.name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                  clearError("name");
+                }}
                 error={errors.name}
                 containerClassName="sm:col-span-2"
               />
@@ -363,7 +495,11 @@ export function CheckoutForm({
                 required
                 placeholder="House and road, plus any landmark"
                 value={address}
-                onChange={(event) => setAddress(event.target.value)}
+                id={FIELD_IDS.address}
+                onChange={(event) => {
+                  setAddress(event.target.value);
+                  clearError("address");
+                }}
                 error={errors.address}
                 containerClassName="sm:col-span-2"
               />
@@ -379,7 +515,11 @@ export function CheckoutForm({
                 autoComplete="address-level2"
                 required
                 value={city}
-                onChange={(event) => setCity(event.target.value)}
+                id={FIELD_IDS.city}
+                onChange={(event) => {
+                  setCity(event.target.value);
+                  clearError("city");
+                }}
                 error={errors.city}
               />
               <Input
@@ -388,7 +528,11 @@ export function CheckoutForm({
                 inputMode="numeric"
                 maxLength={4}
                 value={postalCode}
-                onChange={(event) => setPostalCode(event.target.value)}
+                id={FIELD_IDS.postalCode}
+                onChange={(event) => {
+                  setPostalCode(event.target.value);
+                  clearError("postalCode");
+                }}
                 error={errors.postalCode}
               />
             </div>
@@ -405,7 +549,11 @@ export function CheckoutForm({
               the customer states it, and the same value is what the database
               prices from.
             */}
-            <fieldset>
+            <fieldset
+              id={FIELD_IDS.deliveryZone}
+              aria-invalid={!!errors.deliveryZone}
+              aria-describedby={errors.deliveryZone ? "checkout-delivery-zone-error" : undefined}
+            >
               <legend className="sr-only">{"Choose a delivery area"}</legend>
               <div className="flex flex-col gap-3">
                 {DELIVERY_ZONES.map((zone) => {
@@ -423,7 +571,10 @@ export function CheckoutForm({
                         name="deliveryZone"
                         value={zone}
                         checked={selected}
-                        onChange={() => setDeliveryZone(zone)}
+                        onChange={() => {
+                          setDeliveryZone(zone);
+                          clearError("deliveryZone");
+                        }}
                         className="h-4 w-4 shrink-0 accent-wine"
                       />
                       <span className="flex-1 text-sm text-ink">
@@ -437,6 +588,11 @@ export function CheckoutForm({
                 })}
               </div>
             </fieldset>
+            {errors.deliveryZone && (
+              <p id="checkout-delivery-zone-error" role="alert" className="mt-2 text-xs text-wine">
+                {errors.deliveryZone}
+              </p>
+            )}
             {deliveryQuote.amountToFreeDelivery != null &&
               deliveryQuote.amountToFreeDelivery > 0 && (
                 <p className="mt-3 text-xs text-muted">
@@ -528,16 +684,23 @@ export function CheckoutForm({
           </div>
 
           <div className="flex flex-col gap-2 border-t border-border pt-4">
-            <label htmlFor="checkout-coupon" className="text-xs uppercase tracking-wide text-muted">
+            <label htmlFor={FIELD_IDS.coupon} className="text-xs uppercase tracking-wide text-muted">
               {"Coupon Code"}
             </label>
             <div className="flex gap-2">
               <input
-                id="checkout-coupon"
+                id={FIELD_IDS.coupon}
                 value={couponCode}
-                onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+                aria-invalid={!!errors.coupon}
+                aria-describedby={errors.coupon ? "checkout-coupon-error" : undefined}
+                onChange={(event) => {
+                  setCouponCode(event.target.value.toUpperCase());
+                  clearError("coupon");
+                }}
                 disabled={couponDiscount > 0}
-                className="h-11 flex-1 rounded-control border border-border bg-white px-3.5 text-sm transition-colors focus:border-wine focus:outline-none disabled:bg-beige/60 disabled:text-muted"
+                className={`h-11 flex-1 rounded-control border bg-white px-3.5 text-sm transition-colors focus:border-wine focus:outline-none disabled:bg-beige/60 disabled:text-muted ${
+                  errors.coupon ? "border-wine" : "border-border"
+                }`}
               />
               {couponDiscount > 0 ? (
                 <Button
@@ -549,6 +712,7 @@ export function CheckoutForm({
                     setAppliedCoupon("");
                     setCouponDiscount(0);
                     setCouponMessage("");
+                    clearError("coupon");
                   }}
                 >
                   {"Remove coupon"}
@@ -567,7 +731,7 @@ export function CheckoutForm({
             </div>
             {couponMessage && <p className="text-xs text-wine">{couponMessage}</p>}
             {errors.coupon && (
-              <p role="alert" className="text-xs text-wine">
+              <p id="checkout-coupon-error" role="alert" className="text-xs text-wine">
                 {errors.coupon}
               </p>
             )}
@@ -600,13 +764,19 @@ export function CheckoutForm({
             <input
               type="checkbox"
               checked={agreeTerms}
-              onChange={(event) => setAgreeTerms(event.target.checked)}
+              id={FIELD_IDS.agreeTerms}
+              aria-invalid={!!errors.agreeTerms}
+              aria-describedby={errors.agreeTerms ? "checkout-terms-error" : undefined}
+              onChange={(event) => {
+                setAgreeTerms(event.target.checked);
+                clearError("agreeTerms");
+              }}
               className="mt-0.5 h-4 w-4 shrink-0 accent-wine"
             />
             {"I agree to the Terms and Conditions and Privacy Policy"}
           </label>
           {errors.agreeTerms && (
-            <p role="alert" className="-mt-2 text-xs text-wine">
+            <p id="checkout-terms-error" role="alert" className="-mt-2 text-xs text-wine">
               {errors.agreeTerms}
             </p>
           )}

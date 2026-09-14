@@ -1,6 +1,6 @@
 # Collections editorial
 
-The existing `FeaturedBanner` is replaced in place; `app/page.tsx`, the logo, global styles, commerce, auth and Find Your Look are unchanged.
+The existing `FeaturedBanner` is replaced in place; `app/page.tsx`, the logo, global styles, commerce and auth are unchanged.
 
 ## Layout and interaction
 
