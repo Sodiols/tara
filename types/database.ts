@@ -219,6 +219,7 @@ export interface Database {
           cancelled_at: string | null;
           delivered_at: string | null;
           risk_flags: string[];
+          archived_at: string | null;
         }
       >;
       order_items: Table<{
@@ -315,7 +316,7 @@ export interface Database {
         created_at: string;
       }>;
       archived_items: Table<{
-        entity_type: "product" | "category" | "collection" | "coupon" | "review";
+        entity_type: "order" | "product" | "category" | "collection" | "coupon" | "review";
         entity_id: string;
         label: string;
         detail: string | null;
@@ -472,6 +473,7 @@ export interface Database {
       admin_archive_item: { Args: { p_type: string; p_id: string }; Returns: Json };
       admin_restore_archived_item: { Args: { p_type: string; p_id: string }; Returns: Json };
       admin_purge_archived_item: { Args: { p_type: string; p_id: string }; Returns: Json };
+      admin_purge_archived_order: { Args: { p_id: string; p_restock_shipped?: boolean }; Returns: Json };
       admin_save_settings: { Args: { p_settings: Json }; Returns: Json };
       admin_dashboard_metrics: {
         Args: Record<PropertyKey, never>;

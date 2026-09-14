@@ -165,6 +165,8 @@ export async function getAdminOrders(
       { count: "exact" },
     );
 
+  // Archived orders live in Archive & Trash, not in the working list.
+  query = query.is("archived_at", null);
   if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
   if (filters.paymentStatus && filters.paymentStatus !== "all") {
     query = query.eq("payment_status", filters.paymentStatus);
@@ -732,7 +734,7 @@ export async function getArchivedItems(filters: {
   const [from, to] = range(page, DEFAULT_PAGE_SIZE);
 
   let query = supabase.from("archived_items").select("*", { count: "exact" });
-  if (filters.type && ["product", "category", "collection", "coupon", "review"].includes(filters.type)) {
+  if (filters.type && ["order", "product", "category", "collection", "coupon", "review"].includes(filters.type)) {
     query = query.eq("entity_type", filters.type as Tables<"archived_items">["entity_type"]);
   }
 

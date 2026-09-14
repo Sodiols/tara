@@ -22,6 +22,7 @@ describe("row level security", { skip: hasDatabase ? false : SKIP_REASON }, () =
   let otherCustomer: SupabaseClient | null = null;
   let support: SupabaseClient | null = null;
   let fulfilment: SupabaseClient | null = null;
+  let manager: SupabaseClient | null = null;
 
   before(async () => {
     anon = anonClient();
@@ -29,6 +30,7 @@ describe("row level security", { skip: hasDatabase ? false : SKIP_REASON }, () =
     otherCustomer = await signedInClient("TEST_CUSTOMER_B");
     support = await signedInClient("TEST_SUPPORT");
     fulfilment = await signedInClient("TEST_FULFILMENT");
+    manager = await signedInClient("TEST_MANAGER");
   });
 
   describe("anonymous visitor", () => {
@@ -250,6 +252,64 @@ describe("row level security", { skip: hasDatabase ? false : SKIP_REASON }, () =
         p_role: "admin",
       });
       assert.ok(error, "staff.manage is admin-only");
+    });
+  });
+
+  /*
+   * Order deletion is administrator-only. Every probe below is refused, so
+   * nothing is archived or deleted in the project these tests run against.
+   * TEST_MANAGER_EMAIL / TEST_MANAGER_PASSWORD (role = manager) is optional.
+   */
+  describe("order deletion", () => {
+    const staffClients = () =>
+      [
+        ["manager", manager],
+        ["support", support],
+        ["fulfilment", fulfilment],
+      ] as const;
+
+    test("no non-admin role can archive, restore or permanently delete an order", async (t) => {
+      let probed = 0;
+      for (const [role, client] of staffClients()) {
+        if (!client) continue;
+        const { data: order } = await client.from("orders").select("id").limit(1).maybeSingle();
+        if (!order) continue;
+        probed += 1;
+
+        const archive = await client.rpc("admin_archive_item", { p_type: "order", p_id: order.id });
+        assert.ok(archive.error, `${role} must not archive an order`);
+        const purge = await client.rpc("admin_purge_archived_order", { p_id: order.id, p_restock_shipped: false });
+        assert.ok(purge.error, `${role} must not permanently delete an order`);
+        const trash = await client.rpc("admin_purge_archived_item", { p_type: "order", p_id: order.id });
+        assert.ok(trash.error, `${role} must not purge an order from the Trash`);
+        const restore = await client.rpc("admin_restore_archived_item", { p_type: "order", p_id: order.id });
+        assert.ok(restore.error, `${role} must not restore an order`);
+
+        const direct = await client.from("orders").delete().eq("id", order.id).select("id");
+        assert.ok(direct.error || (direct.data ?? []).length === 0, `${role} must not delete an order row directly`);
+        const { data: stillThere } = await client.from("orders").select("id").eq("id", order.id).maybeSingle();
+        assert.equal(stillThere?.id, order.id, `the order ${role} probed must still exist`);
+      }
+      if (probed === 0) t.skip("No manager, support or fulfilment account with a readable order configured.");
+    });
+
+    test("an anonymous request cannot reach order deletion at all", async () => {
+      const { error } = await anon.rpc("admin_purge_archived_order", {
+        p_id: "00000000-0000-0000-0000-000000000000",
+        p_restock_shipped: false,
+      });
+      assert.ok(error, "anon has no EXECUTE on admin_purge_archived_order");
+    });
+
+    test("no non-admin role can read Archive & Trash", async (t) => {
+      let probed = 0;
+      for (const [role, client] of staffClients()) {
+        if (!client) continue;
+        probed += 1;
+        const { data } = await client.from("archived_items").select("entity_id").limit(1);
+        assert.deepEqual(data ?? [], [], `${role} must see nothing in archived_items`);
+      }
+      if (probed === 0) t.skip("No staff accounts configured.");
     });
   });
 });

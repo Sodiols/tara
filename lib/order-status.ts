@@ -191,6 +191,9 @@ export function describeTransitionError(message: string): string {
   if (message.includes("invalid_transition")) {
     return "That is not a valid next step for this order.";
   }
+  if (message.includes("order_archived")) {
+    return "This order is archived. An administrator must restore it before it can change.";
+  }
   if (message.includes("order_not_found")) {
     return "This order no longer exists.";
   }

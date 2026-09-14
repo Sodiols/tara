@@ -19,6 +19,7 @@ import {
 } from "@/components/admin/ui";
 import { OrderStatusBadge, PaymentStatusBadge } from "@/components/admin/status";
 import { OrderActions } from "@/components/admin/OrderActions";
+import { OrderDeletePanel } from "@/components/admin/OrderDeletePanel";
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 import { formatOrderAddress } from "@/lib/order-address";
 import { deliveryZoneLabel } from "@/lib/delivery";
@@ -55,6 +56,8 @@ export default async function AdminOrderDetailPage({
   });
   const address = shipping.lines;
   const pipelineIndex = FULFILMENT_PIPELINE.indexOf(order.status);
+  const archived = Boolean(order.archived_at);
+  const canDelete = staff.permissions.includes("archive.manage");
 
   const printLinkClass =
     "inline-flex h-11 items-center gap-2 rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine";
@@ -83,7 +86,19 @@ export default async function AdminOrderDetailPage({
         }
       />
 
+      {archived && (
+        <div
+          role="status"
+          className="mb-5 rounded-panel border border-[#8A6A1F]/30 bg-[#8A6A1F]/10 px-4 py-3 font-sans text-sm text-[#6B521A]"
+        >
+          This order is archived{order.archived_at ? ` (${formatDateTime(order.archived_at)})` : ""}. It cannot move
+          through fulfilment until an administrator restores it, and it still counts in revenue until it is
+          permanently deleted.
+        </div>
+      )}
+
       <div className="mb-5 flex flex-wrap items-center gap-2">
+        {archived && <Badge tone="warning">Archived</Badge>}
         <OrderStatusBadge status={order.status} />
         <PaymentStatusBadge status={order.payment_status} />
         <Badge tone="neutral">Cash on delivery</Badge>
@@ -432,12 +447,23 @@ export default async function AdminOrderDetailPage({
             </div>
           </Panel>
 
-          <OrderActions
-            orderId={order.id}
-            status={order.status}
-            paymentStatus={order.payment_status}
-            permissions={staff.permissions}
-          />
+          {!archived && (
+            <OrderActions
+              orderId={order.id}
+              status={order.status}
+              paymentStatus={order.payment_status}
+              permissions={staff.permissions}
+            />
+          )}
+
+          {canDelete && (
+            <OrderDeletePanel
+              orderId={order.id}
+              orderNumber={order.order_number}
+              status={order.status}
+              archived={archived}
+            />
+          )}
         </div>
       </div>
     </>

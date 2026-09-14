@@ -1,21 +1,21 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useTransition } from "react";
-import { AlertTriangle, Loader2 } from "lucide-react";
+import { useState, useTransition } from "react";
+import { Loader2 } from "lucide-react";
 import {
   ARCHIVE_TYPE_LABELS,
   MAX_BULK_ARCHIVE_ITEMS,
-  PURGE_CONFIRMATION_WORD,
+  orderDeletionWarning,
   purgeNeedsTypedConfirmation,
   type ArchiveType,
 } from "@/lib/archive";
 import { purgeArchivedItemsAction, restoreArchivedItemsAction } from "@/lib/supabase/actions/archive";
 import { formatDateTime } from "@/lib/format";
 import { roleLabel } from "@/lib/permissions";
-import { lockBodyScroll } from "@/lib/scroll-lock";
 import { useToastStore } from "@/store/toastStore";
 import { cn } from "@/lib/utils";
 import { AdminEmptyState, Badge, TableWrap, Td, Th } from "./ui";
+import { ConfirmDeleteDialog } from "./ConfirmDeleteDialog";
 
 export interface ArchiveRow {
   type: ArchiveType;
@@ -78,7 +78,7 @@ export function ArchiveTable({ items, filtered }: { items: ArchiveRow[]; filtere
         description={
           filtered
             ? "Try another name, ID or type, or reset the filters."
-            : "Products, categories, collections, coupons and reviews that anyone archives appear here."
+            : "Orders, products, categories, collections, coupons and reviews that are archived appear here."
         }
       />
     );
@@ -192,8 +192,9 @@ export function ArchiveTable({ items, filtered }: { items: ArchiveRow[]; filtere
       </TableWrap>
 
       {purgeTarget && (
-        <PurgeDialog
-          rows={purgeTarget}
+        <ConfirmDeleteDialog
+          {...purgeWarning(purgeTarget)}
+          requireWord={purgeNeedsTypedConfirmation(purgeTarget.map((row) => row.type))}
           pending={pending}
           onCancel={() => setPurgeTarget(null)}
           onConfirm={(confirmation) => purge(purgeTarget, confirmation)}
@@ -203,114 +204,25 @@ export function ArchiveTable({ items, filtered }: { items: ArchiveRow[]; filtere
   );
 }
 
-function PurgeDialog({
-  rows,
-  pending,
-  onCancel,
-  onConfirm,
-}: {
-  rows: ArchiveRow[];
-  pending: boolean;
-  onCancel: () => void;
-  onConfirm: (confirmation: string) => void;
-}) {
-  const titleId = useId();
-  const descriptionId = useId();
-  const inputId = useId();
-  const [typed, setTyped] = useState("");
-  const firstControl = useRef<HTMLButtonElement | HTMLInputElement | null>(null);
-  const needsWord = purgeNeedsTypedConfirmation(rows.map((row) => row.type));
-  const ready = !needsWord || typed.trim() === PURGE_CONFIRMATION_WORD;
+/** The dialog copy: the order warning for orders, a general one otherwise. */
+function purgeWarning(rows: ArchiveRow[]): { title: string; body: string[] } {
+  const orders = rows.filter((row) => row.type === "order").length;
+  if (orders === rows.length) {
+    const warning = orderDeletionWarning(rows.length);
+    return {
+      ...warning,
+      body: [...warning.body, "Stock still held by an order that never shipped is returned, and coupon usage is released."],
+    };
+  }
   const single = rows.length === 1 ? rows[0] : null;
-
-  useEffect(() => {
-    firstControl.current?.focus();
-    const release = lockBodyScroll();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !pending) onCancel();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      release();
-    };
-  }, [onCancel, pending]);
-
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div className="absolute inset-0 bg-taraBlack/50" aria-hidden="true" onClick={() => !pending && onCancel()} />
-      <div
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descriptionId}
-        className="relative w-full max-w-md rounded-panel border border-border bg-taraWhite p-6 shadow-xl"
-      >
-        <div className="flex items-start gap-3">
-          <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#8C2F2F]/10 text-[#8C2F2F]">
-            <AlertTriangle size={18} aria-hidden="true" />
-          </span>
-          <div className="min-w-0">
-            <h2 id={titleId} className="font-serif text-xl text-ink">
-              {single ? "Permanently delete this item?" : `Permanently delete ${rows.length} items?`}
-            </h2>
-            <div id={descriptionId} className="mt-2 flex flex-col gap-2 text-sm leading-6 text-muted">
-              <p>
-                <strong className="text-ink">This action cannot be undone.</strong>{" "}
-                {single
-                  ? `"${single.label || "Untitled"}" (${ARCHIVE_TYPE_LABELS[single.type].toLowerCase()}) will be removed from the database.`
-                  : "Every selected item will be removed from the database."}
-              </p>
-              <p>
-                Anything linked to past orders or still in use is kept for the records instead, and stays in the
-                archive.
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {needsWord && (
-          <div className="mt-5">
-            <label htmlFor={inputId} className="font-sans text-sm font-medium text-ink">
-              Type <span className="font-mono font-semibold">{PURGE_CONFIRMATION_WORD}</span> to confirm
-            </label>
-            <input
-              id={inputId}
-              ref={(element) => {
-                firstControl.current = element;
-              }}
-              value={typed}
-              onChange={(event) => setTyped(event.target.value)}
-              autoComplete="off"
-              spellCheck={false}
-              className="mt-2 h-11 w-full rounded-control border border-border bg-taraWhite px-3 font-mono text-sm outline-none focus:border-[#8C2F2F]"
-            />
-          </div>
-        )}
-
-        <div className="mt-6 flex flex-wrap justify-end gap-2">
-          <button
-            type="button"
-            ref={(element) => {
-              if (!needsWord) firstControl.current = element;
-            }}
-            className={secondaryButton}
-            disabled={pending}
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className={cn(buttonBase, "border border-[#8C2F2F] bg-[#8C2F2F] text-taraWhite hover:bg-taraBlack hover:border-taraBlack")}
-            disabled={pending || !ready}
-            onClick={() => onConfirm(needsWord ? typed.trim() : "confirmed")}
-          >
-            {pending && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
-            Permanently Delete
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  return {
+    title: single ? "Permanently delete this item?" : `Permanently delete ${rows.length} items?`,
+    body: [
+      single
+        ? `"${single.label || "Untitled"}" (${ARCHIVE_TYPE_LABELS[single.type].toLowerCase()}) will be removed from the database. This action cannot be undone.`
+        : "Every selected item will be removed from the database. This action cannot be undone.",
+      ...(orders > 0 ? ["Deleted orders stop counting in revenue and statistics."] : []),
+      "Anything linked to past orders or still in use is kept for the records instead, and stays in the archive.",
+    ],
+  };
 }

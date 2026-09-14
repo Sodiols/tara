@@ -7,14 +7,16 @@ import {
   ARCHIVE_TYPES,
   describeArchiveError,
   isArchiveType,
+  orderDeletionWarning,
   purgeNeedsTypedConfirmation,
 } from "../lib/archive";
 
 const migration = readFile(new URL("../supabase/migrations/0023_archive_and_trash.sql", import.meta.url), "utf8");
+const orderMigration = readFile(new URL("../supabase/migrations/0024_archive_and_delete_orders.sql", import.meta.url), "utf8");
 
-/** The body of one `create or replace function public.<name>(` in the migration. */
-async function functionBody(name: string): Promise<string> {
-  const sql = await migration;
+/** The body of one `create or replace function public.<name>(` in a migration. */
+async function functionBody(name: string, source: Promise<string> = migration): Promise<string> {
+  const sql = await source;
   const start = sql.indexOf(`create or replace function public.${name}(`);
   assert.ok(start >= 0, `${name} is defined`);
   const end = sql.indexOf("\n$$;", start);
@@ -31,7 +33,7 @@ describe("archive permissions", () => {
 
   test("managers and legacy staff can still archive what they manage today", () => {
     for (const role of ["manager", "staff"] as const) {
-      for (const type of ARCHIVE_TYPES) {
+      for (const type of ARCHIVE_TYPES.filter((t) => t !== "order")) {
         assert.equal(roleHasPermission(role, ARCHIVE_PERMISSION[type]), true, `${role} archives ${type}`);
       }
     }
@@ -40,6 +42,14 @@ describe("archive permissions", () => {
       for (const type of ARCHIVE_TYPES) {
         assert.equal(roleHasPermission(role, ARCHIVE_PERMISSION[type]), false, `${role} archives ${type}`);
       }
+    }
+  });
+
+  test("only an administrator can archive, restore or delete an order", () => {
+    assert.equal(ARCHIVE_PERMISSION.order, "archive.manage");
+    assert.equal(roleHasPermission("admin", ARCHIVE_PERMISSION.order), true);
+    for (const role of ["manager", "staff", "fulfilment", "support", "customer"] as const) {
+      assert.equal(roleHasPermission(role, ARCHIVE_PERMISSION.order), false, role);
     }
   });
 
@@ -68,7 +78,7 @@ describe("archive database rules", () => {
 
   test("archiving needs the permission that already governs each type", async () => {
     const body = await functionBody("admin_archive_item");
-    for (const type of ARCHIVE_TYPES) {
+    for (const type of ARCHIVE_TYPES.filter((t) => t !== "order")) {
       assert.match(
         body,
         new RegExp(`when '${type}' then\\s+perform public\\.require_permission\\('${ARCHIVE_PERMISSION[type].replace(".", "\\.")}'\\)`),
@@ -129,7 +139,8 @@ describe("archive UI rules", () => {
     assert.match(describeArchiveError("retained_order_history", "purge"), /past orders/);
     assert.match(describeArchiveError("retained_in_use", "purge"), /still assigned/);
     assert.match(describeArchiveError("permission_denied:archive.manage", "restore"), /Only an administrator/);
-    assert.equal(isArchiveType("order"), false);
+    assert.equal(isArchiveType("payment"), false);
+    assert.equal(isArchiveType("order"), true);
     assert.equal(isArchiveType("product"), true);
   });
 
@@ -141,5 +152,101 @@ describe("archive UI rules", () => {
     const actions = await readFile(new URL("../lib/supabase/actions/archive.ts", import.meta.url), "utf8");
     assert.match(actions, /restoreArchivedItemsAction[\s\S]{0,120}await requirePermission\(ARCHIVE_ADMIN_PERMISSION\)/);
     assert.match(actions, /purgeArchivedItemsAction[\s\S]{0,160}await requirePermission\(ARCHIVE_ADMIN_PERMISSION\)/);
+  });
+});
+
+describe("order deletion", () => {
+  test("every entry point checks archive.manage first", async () => {
+    for (const name of ["purge_archived_order", "admin_purge_archived_order", "admin_restore_archived_item", "admin_purge_archived_item"]) {
+      const body = await functionBody(name, orderMigration);
+      const check = body.indexOf("perform public.require_permission('archive.manage');");
+      assert.ok(check > 0, `${name} requires archive.manage`);
+      assert.ok(check < body.search(/\b(update|delete from|return public\.)/), `${name} checks before acting`);
+    }
+    const archive = await functionBody("admin_archive_item", orderMigration);
+    assert.match(archive, /if p_type <> 'order' then\s+return public\.archive_catalogue_archive_item/);
+    assert.ok(
+      archive.indexOf("require_permission('archive.manage')") < archive.indexOf("update public.orders"),
+      "order archiving checks archive.manage before writing",
+    );
+  });
+
+  test("the internal helpers and order data cannot be reached through the API", async () => {
+    const sql = await orderMigration;
+    for (const helper of [
+      "purge_archived_order(uuid, boolean)",
+      "archive_catalogue_purge_item(text, uuid)",
+      "archive_catalogue_restore_item(text, uuid)",
+      "archive_catalogue_archive_item(text, uuid)",
+    ]) {
+      assert.ok(sql.includes(`revoke execute on function public.${helper} from public, anon, authenticated;`), helper);
+    }
+    assert.match(sql, /revoke execute on function public\.admin_purge_archived_order\(uuid, boolean\) from public, anon;/);
+    assert.match(
+      sql,
+      /revoke delete on table public\.orders, public\.order_items, public\.order_tracking_events,\s+public\.order_internal_notes, public\.coupon_redemptions, public\.inventory_adjustments\s+from anon, authenticated;/,
+    );
+  });
+
+  test("stock is returned once, only for orders still holding it", async () => {
+    const body = await functionBody("purge_archived_order", orderMigration);
+    assert.match(body, /should_restock := order_record\.stock_restored_at is null and \(/);
+    assert.match(body, /order_record\.status in \('pending', 'confirmed', 'processing', 'packed'\)/);
+    assert.match(body, /coalesce\(p_restock_shipped, false\) and order_record\.status in \('shipped', 'delivered'\)/);
+    assert.match(body, /insert into public\.inventory_adjustments/);
+  });
+
+  test("coupon usage is released, reviews are kept, and the audit entry has no personal data", async () => {
+    const body = await functionBody("purge_archived_order", orderMigration);
+    assert.match(body, /set usage_count = greatest\(usage_count - redemption\.uses, 0\)/);
+    assert.match(body, /update public\.reviews set order_item_id = null/);
+    assert.doesNotMatch(body, /delete from public\.(reviews|profiles|products|product_variants|coupons)/);
+    const audit = body.slice(body.indexOf("'order.purged'"));
+    assert.doesNotMatch(audit, /customer_|shipping_address|email|phone/);
+  });
+
+  test("revenue is never stored, so no figure needs adjusting after a delete", async () => {
+    const sql = await orderMigration;
+    assert.doesNotMatch(sql, /update public\.(store_settings|analytics|dashboard)/);
+    const hardening = await readFile(new URL("../supabase/migrations/0002_production_hardening.sql", import.meta.url), "utf8");
+    const dashboard = hardening.slice(hardening.indexOf("create or replace function public.admin_dashboard_metrics()"));
+    assert.match(
+      dashboard,
+      /'totalRevenue', \(\s+select coalesce\(sum\(total\), 0\) from public\.orders\s+where status not in \('cancelled', 'returned'\)/,
+    );
+  });
+
+  test("an archived order is frozen until restored", async () => {
+    const body = await functionBody("orders_archive_guard", orderMigration);
+    assert.match(body, /raise exception 'order_archived'/);
+    assert.match(body, /archive_require_restore_right\(\)/);
+  });
+
+  test("the warning uses the agreed wording", () => {
+    assert.deepEqual(orderDeletionWarning(1), {
+      title: "Permanently delete this order?",
+      body: [
+        "This will remove the order and update revenue, sales statistics, and related dashboard data. This action cannot be undone.",
+      ],
+    });
+    assert.equal(orderDeletionWarning(23).title, "You are about to permanently delete 23 orders.");
+    assert.deepEqual(orderDeletionWarning(23).body, [
+      "Revenue and related statistics will be recalculated.",
+      "This action cannot be undone.",
+    ]);
+    assert.equal(purgeNeedsTypedConfirmation(["order"]), true);
+  });
+
+  test("delete controls render only for archive.manage, and the actions check it server-side", async () => {
+    const page = await readFile(new URL("../app/admin/orders/page.tsx", import.meta.url), "utf8");
+    assert.match(page, /const canDelete = staff\.permissions\.includes\("archive\.manage"\);/);
+    const detail = await readFile(new URL("../app/admin/orders/[id]/page.tsx", import.meta.url), "utf8");
+    assert.match(detail, /\{canDelete && \(\s+<OrderDeletePanel/);
+    const table = await readFile(new URL("../components/admin/OrdersTable.tsx", import.meta.url), "utf8");
+    assert.match(table, /\{canDelete && \(\s+<div/);
+    const actions = await readFile(new URL("../lib/supabase/actions/archive.ts", import.meta.url), "utf8");
+    assert.match(actions, /archiveOrdersAction[\s\S]{0,200}await requirePermission\(ARCHIVE_ADMIN_PERMISSION\)/);
+    assert.match(actions, /deleteOrdersAction[\s\S]{0,200}await requirePermission\(ARCHIVE_ADMIN_PERMISSION\)/);
+    assert.match(actions, /if \(confirmation\.trim\(\) !== PURGE_CONFIRMATION_WORD\)/);
   });
 });

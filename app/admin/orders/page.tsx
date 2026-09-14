@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { getAdminOrders, parsePage } from "@/lib/supabase/queries/admin";
-import { formatDateTime, formatTaka, storeDateInputValue } from "@/lib/format";
-import { formatBdPhone } from "@/lib/phone";
+import { requireStaff } from "@/lib/supabase/auth";
+import { storeDateInputValue } from "@/lib/format";
 import { ORDER_STATUSES, PAYMENT_STATUSES, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/order-status";
 import {
   AdminEmptyState,
@@ -9,13 +9,10 @@ import {
   PageHeader,
   Pagination,
   Panel,
-  TableWrap,
-  Td,
-  Th,
   Toolbar,
   adminInputClass,
 } from "@/components/admin/ui";
-import { OrderStatusBadge, PaymentStatusBadge } from "@/components/admin/status";
+import { OrdersTable } from "@/components/admin/OrdersTable";
 import type { OrderStatus, PaymentStatus } from "@/types/database";
 
 type SearchParams = {
@@ -48,7 +45,9 @@ export default async function AdminOrdersPage({
   const params = await searchParams;
   const page = parsePage(params.page);
 
-  const { rows, total, pageSize } = await getAdminOrders({
+  const [staff, { rows, total, pageSize }] = await Promise.all([
+    requireStaff(),
+    getAdminOrders({
     page,
     search: params.q,
     status: (params.status as OrderStatus) || "all",
@@ -56,7 +55,10 @@ export default async function AdminOrdersPage({
     from: params.from,
     to: params.to,
     sort: (params.sort as "newest" | "oldest" | "highest" | "lowest") || "newest",
-  });
+    }),
+  ]);
+  // Controls only; every delete path re-checks archive.manage on the server.
+  const canDelete = staff.permissions.includes("archive.manage");
 
   const buildHref = (nextPage: number) => {
     const query = new URLSearchParams();
@@ -74,7 +76,7 @@ export default async function AdminOrdersPage({
       <PageHeader
         eyebrow="Selling"
         title="Orders"
-        description={`${total.toLocaleString("en-US")} order${total === 1 ? "" : "s"} match the current filters.`}
+        description={`${total.toLocaleString("en-US")} order${total === 1 ? "" : "s"} match the current filters.${canDelete ? " Archived orders are in Archive & Trash." : ""}`}
       />
 
       <nav aria-label="Quick filters" className="mb-4 flex flex-wrap gap-2">
@@ -199,55 +201,7 @@ export default async function AdminOrdersPage({
           />
         ) : (
           <>
-            <TableWrap>
-              <thead>
-                <tr>
-                  <Th>Order</Th>
-                  <Th>Customer</Th>
-                  <Th>Fulfilment</Th>
-                  <Th>Payment</Th>
-                  <Th align="right">Total</Th>
-                  <Th align="right">Placed</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((order) => (
-                  <tr key={order.id} className="transition-colors hover:bg-taraIvory/50">
-                    <Td>
-                      <Link
-                        href={`/admin/orders/${order.id}`}
-                        className="font-semibold text-taraWine underline-offset-4 hover:underline"
-                      >
-                        {order.order_number}
-                      </Link>
-                      {order.risk_flags.includes("repeat_cancellations") && (
-                        <span className="mt-1 block font-sans text-[11px] font-semibold uppercase tracking-wide text-[#8A6A1F]">
-                          Repeat cancellations
-                        </span>
-                      )}
-                    </Td>
-                    <Td>
-                      <span className="block">{order.customer_name}</span>
-                      <span className="block font-sans text-xs text-muted">
-                        {formatBdPhone(order.customer_phone)}
-                      </span>
-                    </Td>
-                    <Td>
-                      <OrderStatusBadge status={order.status} />
-                    </Td>
-                    <Td>
-                      <PaymentStatusBadge status={order.payment_status} />
-                    </Td>
-                    <Td align="right" className="font-semibold">
-                      {formatTaka(order.total)}
-                    </Td>
-                    <Td align="right" className="whitespace-nowrap text-xs text-muted">
-                      {formatDateTime(order.created_at)}
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </TableWrap>
+            <OrdersTable rows={rows} canDelete={canDelete} />
             <Pagination
               page={page}
               pageSize={pageSize}

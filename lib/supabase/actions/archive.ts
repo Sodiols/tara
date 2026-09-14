@@ -41,9 +41,21 @@ type ArchiveItem = z.infer<typeof itemSchema>;
 function revalidateFor(types: Iterable<ArchiveType>) {
   const seen = new Set(types);
   revalidatePath("/admin/archive");
-  if (seen.has("product") || seen.has("category") || seen.has("collection") || seen.has("review")) {
+  if (seen.has("order") || seen.has("product") || seen.has("category") || seen.has("collection") || seen.has("review")) {
+    // Every page below the root layout -- the storefront, the dashboard, the
+    // analytics, customer pages -- renders from fresh data on its next request,
+    // and the catalogue cache is dropped because deleting an order can return
+    // stock and change what is available to buy.
     updateTag("catalogue");
     revalidatePath("/", "layout");
+  }
+  if (seen.has("order")) {
+    revalidatePath("/admin");
+    revalidatePath("/admin/orders");
+    revalidatePath("/admin/analytics");
+    revalidatePath("/admin/customers");
+    revalidatePath("/admin/inventory");
+    revalidatePath("/admin/coupons");
   }
   if (seen.has("product")) revalidatePath("/admin/products");
   if (seen.has("category")) revalidatePath("/admin/categories");
@@ -161,4 +173,96 @@ export async function purgeArchivedItemsAction(
 
   revalidateFor(parsed.data.map((item) => item.type));
   return summarise(outcomes, "permanently deleted");
+}
+
+// ---------------------------------------------------------------------------
+// Orders (administrators only)
+// ---------------------------------------------------------------------------
+
+const orderIdsSchema = z.array(z.string().uuid()).min(1).max(MAX_BULK_ARCHIVE_ITEMS);
+
+/** Moves orders into Archive & Trash. Reversible; they still count in revenue until deleted. */
+export async function archiveOrdersAction(orderIds: string[]): Promise<ActionResult> {
+  await requirePermission(ARCHIVE_ADMIN_PERMISSION);
+  const parsed = orderIdsSchema.safeParse(orderIds);
+  if (!parsed.success) return { ok: false, message: `Select between 1 and ${MAX_BULK_ARCHIVE_ITEMS} orders.` };
+
+  const supabase = await createClient();
+  let archived = 0;
+  const reasons = new Set<string>();
+  for (const id of parsed.data) {
+    const { error } = await supabase.rpc("admin_archive_item", { p_type: "order", p_id: id });
+    if (error) {
+      logFailure("admin.order_archive", error);
+      reasons.add(describeArchiveError(error.message, "archive"));
+    } else {
+      archived += 1;
+    }
+  }
+
+  revalidateFor(["order"]);
+  const total = parsed.data.length;
+  if (archived === total) {
+    return {
+      ok: true,
+      message: total === 1 ? "Order archived. Restore or delete it from Archive & Trash." : `${total} orders archived. Restore or delete them from Archive & Trash.`,
+    };
+  }
+  return { ok: false, message: `${archived} of ${total} orders archived. ${[...reasons].join(" ")}` };
+}
+
+/**
+ * Permanently deletes orders. Each one is archived first if it is not already,
+ * so every deletion still passes through the Trash, then removed by
+ * admin_purge_archived_order(), which returns stock that was still held,
+ * releases coupon usage and writes a minimal audit entry.
+ *
+ * `restockShipped` additionally returns stock for shipped or delivered orders,
+ * for test orders that were pushed through the pipeline; real shipped goods
+ * have left the building, so it defaults to off.
+ */
+export async function deleteOrdersAction(
+  orderIds: string[],
+  confirmation: string,
+  restockShipped = false,
+): Promise<ActionResult<{ deleted: number; restocked: number }>> {
+  await requirePermission(ARCHIVE_ADMIN_PERMISSION);
+  const parsed = orderIdsSchema.safeParse(orderIds);
+  if (!parsed.success) return { ok: false, message: `Select between 1 and ${MAX_BULK_ARCHIVE_ITEMS} orders.` };
+  if (confirmation.trim() !== PURGE_CONFIRMATION_WORD) {
+    return { ok: false, message: `Type ${PURGE_CONFIRMATION_WORD} to confirm.` };
+  }
+
+  const supabase = await createClient();
+  let deleted = 0;
+  let restocked = 0;
+  const reasons = new Set<string>();
+  for (const id of parsed.data) {
+    const { data, error } = await supabase.rpc("admin_purge_archived_order", {
+      p_id: id,
+      p_restock_shipped: restockShipped === true,
+    });
+    if (error) {
+      logFailure("admin.order_delete", error);
+      reasons.add(describeArchiveError(error.message, "purge"));
+      continue;
+    }
+    deleted += 1;
+    if ((data as { restocked?: boolean } | null)?.restocked) restocked += 1;
+  }
+
+  revalidateFor(["order"]);
+  const total = parsed.data.length;
+  const stockNote = restocked > 0 ? ` Stock returned for ${restocked}.` : "";
+  if (deleted === total) {
+    return {
+      ok: true,
+      message: `${total === 1 ? "Order" : `${total} orders`} permanently deleted. Revenue and statistics are updated.${stockNote}`,
+      data: { deleted, restocked },
+    };
+  }
+  return {
+    ok: false,
+    message: `${deleted} of ${total} orders deleted.${stockNote} ${[...reasons].join(" ")}`,
+  };
 }
