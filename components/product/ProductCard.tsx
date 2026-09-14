@@ -16,6 +16,13 @@ import { primaryImageAlt } from "@/lib/product-media";
 interface ProductCardProps {
   product: Product;
   onQuickView: (product: Product) => void;
+  /**
+   * How urgently the main photograph is fetched. Cards in the first rows of a
+   * listing are on screen immediately, and a lazy image there waits for layout
+   * before it even starts downloading — on a category page that photograph is
+   * the largest thing on the first screen.
+   */
+  imagePriority?: "high" | "eager";
 }
 
 /**
@@ -55,7 +62,7 @@ interface ProductCardProps {
  * price and bag aligned across the row. Nothing is a fixed pixel height, so
  * this survives a long Bangla product name and a narrow phone equally.
  */
-export function ProductCard({ product, onQuickView }: ProductCardProps) {
+export function ProductCard({ product, onQuickView, imagePriority }: ProductCardProps) {
   const addToCart = useAddToCart();
   const [hovered, setHovered] = useState(false);
 
@@ -112,6 +119,8 @@ export function ProductCard({ product, onQuickView }: ProductCardProps) {
           src={product.images[0]}
           alt={primaryAlt}
           fill
+          loading={imagePriority ? "eager" : "lazy"}
+          fetchPriority={imagePriority === "high" ? "high" : undefined}
           sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
           className={`object-cover transition-opacity duration-300 ${
             hovered && product.images[1] ? "opacity-0" : "opacity-100"

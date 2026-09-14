@@ -703,10 +703,9 @@ export function CheckoutForm({
                 }`}
               />
               {couponDiscount > 0 ? (
-                <Button
+                <button
                   type="button"
-                  variant="outline"
-                  size="sm"
+                  aria-label="Remove coupon"
                   onClick={() => {
                     setCouponCode("");
                     setAppliedCoupon("");
@@ -714,9 +713,10 @@ export function CheckoutForm({
                     setCouponMessage("");
                     clearError("coupon");
                   }}
+                  className="h-11 shrink-0 whitespace-nowrap rounded-control border border-border bg-white px-3 font-sans text-[11px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-wine hover:text-wine focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine"
                 >
-                  {"Remove coupon"}
-                </Button>
+                  {"Remove"}
+                </button>
               ) : (
                 <Button
                   type="button"

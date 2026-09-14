@@ -14,9 +14,16 @@ const QuickViewModal = dynamic(
 
 interface ProductGridProps {
   products: Product[];
+  /**
+   * Cards whose photograph loads immediately instead of lazily. Set it where
+   * the grid starts on the first screen (a category listing); leave it at 0
+   * where the grid is below the fold (the homepage). The first two also get a
+   * high fetch priority: the top row on a phone.
+   */
+  eagerImages?: number;
 }
 
-export function ProductGrid({ products }: ProductGridProps) {
+export function ProductGrid({ products, eagerImages = 0 }: ProductGridProps) {
   const [quickViewProduct, setQuickViewProduct] = useState<Product | null>(null);
 
   if (products.length === 0) {
@@ -40,8 +47,13 @@ export function ProductGrid({ products }: ProductGridProps) {
         larger of the two so rows still separate without a rule between them.
       */}
       <div className="grid grid-cols-2 gap-x-3 gap-y-8 md:grid-cols-3 md:gap-x-4 lg:grid-cols-4 lg:gap-x-5">
-        {products.map((product) => (
-          <ProductCard key={product.id} product={product} onQuickView={setQuickViewProduct} />
+        {products.map((product, index) => (
+          <ProductCard
+            key={product.id}
+            product={product}
+            onQuickView={setQuickViewProduct}
+            imagePriority={index < Math.min(2, eagerImages) ? "high" : index < eagerImages ? "eager" : undefined}
+          />
         ))}
       </div>
       {quickViewProduct ? (

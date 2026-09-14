@@ -52,6 +52,16 @@ const nextConfig = {
     // size the layout actually asks for, and does not carry EXIF through — so a
     // 4000px original uploaded by staff is never what reaches a phone.
     qualities: [75, 90],
+    // The default list ends at 3840px. Nothing on the site is laid out wider
+    // than a 1440px container, so a 3840px rendition only ever went to a
+    // high-density monitor asking for a full-width image — the slowest file to
+    // generate and the largest to download, for no visible gain. Capping at
+    // 2048 means fewer renditions per photograph to encode and cache.
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920, 2048],
+    // The smallest image on the site is a 56px bag thumbnail (112px on a
+    // high-density screen), so the default 16/32/48px renditions were never
+    // chosen — they only lengthened every srcset in the HTML.
+    imageSizes: [64, 96, 128, 256, 384],
     // A year: the URL contains the source, the width and the quality, so a
     // different rendition is a different URL and this can be cached hard.
     minimumCacheTTL: 31536000,

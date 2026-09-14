@@ -7,6 +7,7 @@ import {
   type UploadOutcome,
 } from "@/lib/product-image-workflow";
 import { uploadProductImageAction } from "@/lib/supabase/actions/admin";
+import { prepareImageForUpload } from "@/lib/client-image-resize";
 
 /** The shape both callers already have. Deliberately structural rather than
  *  importing the component's `PendingImage`, so this stays a leaf module. */
@@ -55,7 +56,9 @@ export async function uploadPendingImages({
     upload: async (item) => {
       const formData = new FormData();
       formData.set("productId", productId);
-      formData.set("file", item.file);
+      // A camera original is shrunk to what the site can actually display
+      // before it leaves the browser; see lib/client-image-resize.ts.
+      formData.set("file", await prepareImageForUpload(item.file));
       const result = await uploadProductImageAction(formData);
       return result.ok
         ? { ok: true, imageId: result.data?.imageId }

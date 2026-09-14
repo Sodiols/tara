@@ -255,7 +255,7 @@ export function ProductListingClient({
           </div>
 
           <div className={isPending ? "opacity-60 transition-opacity" : undefined}>
-            <ProductGrid products={visibleProducts} />
+            <ProductGrid products={visibleProducts} eagerImages={4} />
           </div>
 
           {loadError && (

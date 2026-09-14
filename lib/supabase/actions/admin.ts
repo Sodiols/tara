@@ -585,7 +585,10 @@ async function storeProductImage(
 
   const { error: uploadError } = await supabase.storage
     .from("product-images")
-    .upload(path, file, { contentType: file.type, upsert: false });
+    // The path is a fresh UUID and never overwritten (upsert: false), so the
+    // object is immutable and can be cached for a year instead of Storage's
+    // one-hour default.
+    .upload(path, file, { contentType: file.type, upsert: false, cacheControl: "31536000" });
   if (uploadError) {
     logFailure("admin.image_upload_failed", uploadError, { productId });
     return { ok: false, reason: "The file could not be stored. Try again." };

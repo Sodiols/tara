@@ -53,7 +53,7 @@ export function Footer({ identity }: { identity: StoreIdentity }) {
   ];
 
   return (
-    <footer className="bg-wine">
+    <footer className="defer-render bg-wine [--defer-render-size:1155px] md:[--defer-render-size:705px] lg:[--defer-render-size:740px]">
       <Container className="py-16 lg:py-20">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-10 mb-12">
           <div className="col-span-2 md:col-span-1">

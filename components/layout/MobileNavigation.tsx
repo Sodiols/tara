@@ -6,9 +6,7 @@ import { navItems } from "./DesktopNavigation";
 import { MobileCollectionAccordion } from "./MobileCollectionAccordion";
 import type { StoreIdentity } from "@/lib/supabase/queries/settings";
 import { createPortal } from "react-dom";
-import { useEffect, useId, useRef, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
-import { isSupabaseConfigured } from "@/lib/supabase/env";
+import { useId, useRef } from "react";
 import { logoutAction } from "@/lib/supabase/actions/auth";
 import { useCartStore } from "@/store/cartStore";
 import { useWishlistStore } from "@/store/wishlistStore";
@@ -18,23 +16,16 @@ interface MobileNavigationProps {
   isOpen: boolean;
   onClose: () => void;
   identity: StoreIdentity;
+  /** From the header, which already follows the session — no second SDK subscription. */
+  authenticated: boolean;
 }
 
-export function MobileNavigation({ isOpen, onClose, identity }: MobileNavigationProps) {
-  const [authenticated, setAuthenticated] = useState(false);
+export function MobileNavigation({ isOpen, onClose, identity, authenticated }: MobileNavigationProps) {
   const panelRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const clearBag = useCartStore((s) => s.clearBag);
   const clearWishlist = useWishlistStore((s) => s.replaceItems);
-
-  useEffect(() => {
-    if (!isSupabaseConfigured()) return;
-    const supabase = createClient();
-    void supabase.auth.getUser().then(({ data }) => setAuthenticated(!!data.user));
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => setAuthenticated(!!session?.user));
-    return () => data.subscription.unsubscribe();
-  }, []);
 
   // The drawer covers the page but the page stays rendered and focusable
   // behind it, so without a trap Tab walked straight out of the navigation and

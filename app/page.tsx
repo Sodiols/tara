@@ -32,16 +32,34 @@ export default async function HomePage() {
   ]);
   return (
     <>
+      {/* The first screen renders at once; everything below it is deferred (see
+          .defer-render in globals.css). The size hints are each section's measured
+          height at phone, tablet and desktop widths, so the scrollbar holds still
+          as sections render. */}
       <HeroSection />
       <BestSellersSection products={bestSellers} />
-      <NewArrivalsSection products={newArrivals} />
-      <FeaturedBanner />
-      <BrandStorySection />
-      <SocialGallery
-        instagramUrl={settings.instagramUrl}
-        handle={siteConfig.instagramHandle}
-      />
-      <ServiceBenefits delivery={settings.delivery} />
+      <div className="defer-render [--defer-render-size:1430px] md:[--defer-render-size:1200px] lg:[--defer-render-size:1490px]">
+        <NewArrivalsSection products={newArrivals} />
+      </div>
+      <div className="defer-render [--defer-render-size:560px] md:[--defer-render-size:665px] lg:[--defer-render-size:940px]">
+        <FeaturedBanner />
+      </div>
+      <div className="defer-render [--defer-render-size:765px] md:[--defer-render-size:530px] lg:[--defer-render-size:780px]">
+        <BrandStorySection />
+      </div>
+      {/* SocialGallery renders nothing without an Instagram URL; an empty
+          deferred box would leave its reserved height as a blank gap. */}
+      {settings.instagramUrl ? (
+        <div className="defer-render [--defer-render-size:435px] md:[--defer-render-size:345px] lg:[--defer-render-size:525px]">
+          <SocialGallery
+            instagramUrl={settings.instagramUrl}
+            handle={siteConfig.instagramHandle}
+          />
+        </div>
+      ) : null}
+      <div className="defer-render [--defer-render-size:255px] md:[--defer-render-size:180px] lg:[--defer-render-size:140px]">
+        <ServiceBenefits delivery={settings.delivery} />
+      </div>
     </>
   );
 }

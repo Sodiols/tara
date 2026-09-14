@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
@@ -26,6 +26,19 @@ const AccountMenu = dynamic(
   { ssr: false },
 );
 
+/**
+ * Whether the browser holds a Supabase session cookie at all.
+ *
+ * Read without the Supabase SDK, so a signed-out visitor — most of them — sees
+ * the plain account link at once instead of a dimmed one while ~250KB of SDK
+ * downloads. It only chooses what to show first: the SDK, loaded once the page
+ * is idle, is still what decides.
+ */
+const SESSION_COOKIE = /(?:^|;\s*)sb-[^=;]+-auth-token(?:\.\d+)?=/;
+const noSubscription = () => () => {};
+const readSessionCookie = () => SESSION_COOKIE.test(document.cookie);
+const serverSessionCookie = () => null;
+
 export function Header({ identity }: { identity: StoreIdentity }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -36,9 +49,12 @@ export function Header({ identity }: { identity: StoreIdentity }) {
   const wishlistCountRaw = useWishlistStore((s) => s.items.length);
   const cartCount = cartHasHydrated ? cartCountRaw : 0;
   const wishlistCount = hasMounted ? wishlistCountRaw : 0;
-  const [authState, setAuthState] = useState<
+  const [sdkAuthState, setAuthState] = useState<
     "loading" | "authenticated" | "anonymous"
   >(() => (isSupabaseConfigured() ? "loading" : "anonymous"));
+  const hasSessionCookie = useSyncExternalStore(noSubscription, readSessionCookie, serverSessionCookie);
+  const authState =
+    sdkAuthState === "loading" && hasSessionCookie === false ? "anonymous" : sdkAuthState;
   // Set at signup and not refreshed after a profile edit — good enough for a
   // header greeting without an extra profiles query on every page load.
   const [accountName, setAccountName] = useState<string | undefined>();
@@ -49,22 +65,35 @@ export function Header({ identity }: { identity: StoreIdentity }) {
     let unsubscribe: (() => void) | undefined;
 
     // Authentication changes the small account affordance but is not needed to
-    // paint the page. Loading the SDK after hydration keeps it out of the
-    // critical bundle; INITIAL_SESSION reads the locally stored session and
-    // avoids a getUser() network request for display-only state.
-    void import("@/lib/supabase/client").then(({ createClient }) => {
-      if (!active) return;
-      const supabase = createClient();
-      const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    // paint the page. The SDK is the largest script on the site, so it is
+    // fetched only once the browser is idle — after the first paint and the
+    // hero image, not competing with them. INITIAL_SESSION reads the locally
+    // stored session and avoids a getUser() network request.
+    const load = () => {
+      void import("@/lib/supabase/client").then(({ createClient }) => {
         if (!active) return;
-        setAuthState(session?.user ? "authenticated" : "anonymous");
-        setAccountName(session?.user?.user_metadata?.full_name as string | undefined);
+        const supabase = createClient();
+        const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+          if (!active) return;
+          setAuthState(session?.user ? "authenticated" : "anonymous");
+          setAccountName(session?.user?.user_metadata?.full_name as string | undefined);
+        });
+        unsubscribe = () => data.subscription.unsubscribe();
       });
-      unsubscribe = () => data.subscription.unsubscribe();
-    });
+    };
+
+    let idleId: number | undefined;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    if ("requestIdleCallback" in window) {
+      idleId = window.requestIdleCallback(load, { timeout: 2000 });
+    } else {
+      timeoutId = globalThis.setTimeout(load, 1000);
+    }
 
     return () => {
       active = false;
+      if (idleId !== undefined) window.cancelIdleCallback(idleId);
+      if (timeoutId !== undefined) globalThis.clearTimeout(timeoutId);
       unsubscribe?.();
     };
   }, []);
@@ -194,6 +223,7 @@ export function Header({ identity }: { identity: StoreIdentity }) {
           isOpen
           onClose={() => setMobileNavOpen(false)}
           identity={identity}
+          authenticated={authState === "authenticated"}
         />
       ) : null}
       {searchOpen ? <SearchOverlay isOpen onClose={() => setSearchOpen(false)} /> : null}

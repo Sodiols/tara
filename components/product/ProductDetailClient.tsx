@@ -384,7 +384,16 @@ export function ProductDetailClient({
         />
       </div>
 
-      <RelatedProductsSection products={relatedProducts} />
+      {/* Deferred only when there is something to show: an empty deferred box
+          would hold its estimated height open as a blank gap. Recently viewed
+          is read from the browser after mount, so it is never deferred. */}
+      {relatedProducts.length > 0 ? (
+        <div className="defer-render [--defer-render-size:700px]">
+          <RelatedProductsSection products={relatedProducts} />
+        </div>
+      ) : (
+        <RelatedProductsSection products={relatedProducts} />
+      )}
       <RecentlyViewedSection excludeSlug={product.slug} />
 
       <Modal isOpen={sizeGuideOpen} onClose={() => setSizeGuideOpen(false)} title={"Size Guide"}>

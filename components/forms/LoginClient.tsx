@@ -207,10 +207,16 @@ export function LoginClient({
       <div className="mx-auto grid w-full max-w-[1536px] lg:min-h-[calc(100vh-7rem)] lg:grid-cols-[44%_56%]">
         <div className="relative hidden min-h-[720px] overflow-hidden lg:block">
           <Image
-            src="/images/account/tara-account-login.png"
+            src="/images/account/tara-account-login.webp"
             alt="A woman wearing an embroidered TARA ready three piece outfit"
             fill
-            priority
+            // Not `priority`: that emits a <link rel="preload"> for every viewport,
+            // and this column is hidden below lg, so every phone downloaded a
+            // photograph it never shows. A lazy image inside a display:none
+            // parent is not fetched at all; on a desktop it is in view at first
+            // layout, and fetchPriority keeps it at the front of the queue.
+            loading="lazy"
+            fetchPriority="high"
             sizes="44vw"
             className="object-cover object-[48%_58%]"
           />
