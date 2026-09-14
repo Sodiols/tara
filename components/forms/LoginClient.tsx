@@ -208,7 +208,7 @@ export function LoginClient({
         <div className="relative hidden min-h-[720px] overflow-hidden lg:block">
           <Image
             src="/images/account/tara-account-login.png"
-            alt="A woman wearing an embroidered TARA three-piece outfit"
+            alt="A woman wearing an embroidered TARA ready three piece outfit"
             fill
             priority
             sizes="44vw"

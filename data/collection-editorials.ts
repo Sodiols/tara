@@ -25,7 +25,7 @@ export const collectionEditorials: readonly CollectionEditorialItem[] = [
   },
   {
     id: "summer", name: "Summer", label: "Summer edit", image: summer,
-    alt: "A model in a light sage botanical-print three piece and airy dupatta in courtyard sunlight",
+    alt: "A model in a light sage botanical-print ready three piece and airy dupatta in courtyard sunlight",
     href: "/collection/summer", collectionSlug: "summer", objectPosition: "50% 50%",
   },
   {
@@ -35,7 +35,7 @@ export const collectionEditorials: readonly CollectionEditorialItem[] = [
   },
   {
     id: "festive", name: "Festive", label: "Festive edit", image: festive,
-    alt: "A model wearing a deep wine three piece with fine gold embroidery and a sheer matching dupatta",
+    alt: "A model wearing a deep wine ready three piece with fine gold embroidery and a sheer matching dupatta",
     href: "/collection/festive", collectionSlug: "festive", objectPosition: "50% 50%",
   },
   {

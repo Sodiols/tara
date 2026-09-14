@@ -23,7 +23,7 @@ export async function generateMetadata({
   return listingMetadata({
     title: "New Arrivals",
     description:
-      "The newest women's clothing at TARA — three piece, two piece, hijab and accessories, added as each batch arrives.",
+      "The newest women's clothing at TARA — ready three piece, two piece, hijab and accessories, added as each batch arrives.",
     path: "/new-arrivals",
     searchParams: await searchParams,
   });

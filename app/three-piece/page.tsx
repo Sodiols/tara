@@ -13,9 +13,9 @@ import type { ListingSearchParams } from "@/lib/product-listing";
  */
 const config: CategoryRouteConfig = {
   slug: "three-piece",
-  name: "Three Piece",
+  name: "Ready Three Piece",
   description:
-    "Three piece sets from TARA — kameez, bottom and dupatta together, in fabrics chosen for Bangladesh's weather and finished for everyday wear.",
+    "Ready three piece sets from TARA — kameez, bottom and dupatta together, in fabrics chosen for Bangladesh's weather and finished for everyday wear.",
   intro:
     "Kameez, bottom and dupatta as one set, in fabrics chosen for the weather here and finished for wearing rather than saving for an occasion.",
 };

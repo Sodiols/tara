@@ -19,7 +19,7 @@ export default function NotFound() {
           {"Unready Three Piece"}
         </LinkButton>
         <LinkButton href="/three-piece" variant="outline">
-          {"Three Piece"}
+          {"Ready Three Piece"}
         </LinkButton>
         <LinkButton href="/two-piece" variant="outline">
           {"Two Piece"}

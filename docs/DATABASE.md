@@ -54,6 +54,7 @@ migration has been applied.
 | `0019_catalogue_seo_fields.sql` | Carries `products.seo_title`, `products.seo_description` and `product_images.alt_en` through `search_catalogue()`. Before it, all three were editable in /admin and had no effect on the live site. |
 | `0020_rename_category_slugs.sql` | Renames the slugs `unstitched-three-piece` → `unready-three-piece` and `ready-three-piece` → `two-piece`. **Ship with the code in the same release** — the routes and the permanent redirects in `next.config.mjs` are the other two thirds of the change. |
 | `0021_add_receipt_rate_limit.sql` | Adds the `receipt` bucket (20 per 600 s) to `consume_public_rate_limit()`. The receipt route already asked for it, but the function had no such arm, raised `unknown_rate_limit_bucket`, and the app's fail-open handler let every request through — so receipt PDFs had no shared limit at all. Every existing bucket keeps its allowance. `tests/rate-limit-buckets.test.ts` now fails the suite if the app ever names a bucket the database does not handle. |
+| `0022_rename_three_piece_to_ready_three_piece.sql` | Renames the `three-piece` category's `name_en` from **Three Piece** to **Ready Three Piece**, matching the storefront wording. The slug and URL `/three-piece` are unchanged. Equivalent to renaming it in /admin/categories. |
 
 ---
 

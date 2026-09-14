@@ -20,7 +20,7 @@ import { buildMetadata } from "@/lib/seo";
 export const metadata: Metadata = buildMetadata({
   title: "Women's Clothing Online in Bangladesh",
   description:
-    "Shop women's clothing online at TARA — unready three piece, three piece, two piece, hijab and accessories. Based in Sylhet, delivering across Bangladesh with cash on delivery.",
+    "Shop women's clothing online at TARA — unready three piece, ready three piece, two piece, hijab and accessories. Based in Sylhet, delivering across Bangladesh with cash on delivery.",
   path: "/",
 });
 

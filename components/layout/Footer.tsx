@@ -29,7 +29,7 @@ export function Footer({ identity }: { identity: StoreIdentity }) {
 
   const shopLinks = [
     { label: "Unready Three Piece", href: "/unready-three-piece" },
-    { label: "Three Piece", href: "/three-piece" },
+    { label: "Ready Three Piece", href: "/three-piece" },
     { label: "Two Piece", href: "/two-piece" },
     { label: "New Arrivals", href: "/new-arrivals" },
     { label: "Accessories", href: "/accessories" },

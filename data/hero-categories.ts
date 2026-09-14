@@ -14,7 +14,7 @@
  * There are three of them and they are easy to confuse:
  *
  *   /unready-three-piece   "Unready Three Piece"   fabric, not made up
- *   /three-piece           "Three Piece"
+ *   /three-piece           "Ready Three Piece"
  *   /two-piece             "Two Piece"
  *
  * Slug and label agree since migration 0020; the former paths
@@ -47,9 +47,9 @@ export const heroCategories: readonly HeroCategory[] = [
   },
   {
     href: "/three-piece",
-    name: "Three Piece",
+    name: "Ready Three Piece",
     image: "/images/hero/three-piece.jpg",
-    alt: "Model wearing a TARA three piece with the dupatta draped over one shoulder",
+    alt: "Model wearing a TARA ready three piece with the dupatta draped over one shoulder",
   },
   {
     href: "/unready-three-piece",

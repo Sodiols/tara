@@ -6,7 +6,7 @@ import { getStoreIdentity } from "@/lib/supabase/queries/settings";
 export const metadata: Metadata = buildMetadata({
   title: "About Us",
   description:
-    "TARA is a women's clothing brand from Zakiganj, Sylhet, making three piece, two piece, hijab and accessories for everyday wear across Bangladesh.",
+    "TARA is a women's clothing brand from Zakiganj, Sylhet, making ready three piece, two piece, hijab and accessories for everyday wear across Bangladesh.",
   path: "/about",
 });
 

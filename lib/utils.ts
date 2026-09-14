@@ -43,7 +43,7 @@ export function formatPrice(value: number | string | null | undefined): string {
  */
 const builtInCategoryLabels: Record<ProductCategory, string> = {
   "unready-three-piece": "Unready Three Piece",
-  "three-piece": "Three Piece",
+  "three-piece": "Ready Three Piece",
   "two-piece": "Two Piece",
   hijab: "Hijab",
   accessories: "Accessories",

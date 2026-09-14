@@ -37,7 +37,7 @@ describe("built-in category labels", () => {
     assert.equal(getBuiltInCategoryLabel("unready-three-piece"), "Unready Three Piece");
     // "three-piece" is its own category, not an alias of either neighbour: the
     // three slugs are three different products on three different pages.
-    assert.equal(getBuiltInCategoryLabel("three-piece"), "Three Piece");
+    assert.equal(getBuiltInCategoryLabel("three-piece"), "Ready Three Piece");
     assert.equal(getBuiltInCategoryLabel("two-piece"), "Two Piece");
     assert.equal(getBuiltInCategoryLabel("hijab"), "Hijab");
     assert.equal(getBuiltInCategoryLabel("accessories"), "Accessories");
@@ -233,8 +233,8 @@ describe("hero category cards", () => {
   });
 
   test("every card shows the same wording as the rest of the site", () => {
-    // Not cosmetic: "Two Piece" and "Ready Three Piece" are the same slug under
-    // its new and old names, and the hero must never revive the old one.
+    // Not cosmetic: the hero must use exactly the wording the navigation and
+    // the rest of the site use for each category.
     for (const category of heroCategories) {
       const slug = category.href.replace(/^\//, "");
       assert.equal(getBuiltInCategoryLabel(slug), category.name, slug);

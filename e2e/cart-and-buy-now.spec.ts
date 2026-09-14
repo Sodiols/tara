@@ -156,13 +156,11 @@ test.describe("shop by category", () => {
     // The slugs stay as they are; only the wording changed.
     await expect(section.getByRole("heading", { name: /^unready three piece$/i })).toBeVisible();
     await expect(section.getByRole("heading", { name: /^two piece$/i })).toBeVisible();
-    // Anchored, because "Three Piece" is a substring of "Unready Three Piece"
-    // and an unanchored match would pass even if the new card were missing.
-    await expect(section.getByRole("heading", { name: /^three piece$/i })).toBeVisible();
-    // The old wording must be gone. The word boundary matters: "Unready Three
-    // Piece" contains "ready three piece", so an unanchored match would fail
-    // against the correct new label.
-    await expect(section.getByRole("heading", { name: /^ready three piece$/i })).toHaveCount(0);
+    // Anchored, because "Ready Three Piece" is a substring of "Unready Three
+    // Piece" and an unanchored match would pass even if the card were missing.
+    await expect(section.getByRole("heading", { name: /^ready three piece$/i })).toBeVisible();
+    // The old wording must be gone.
+    await expect(section.getByRole("heading", { name: /^three piece$/i })).toHaveCount(0);
     await expect(section.getByRole("heading", { name: /^unstitched three piece$/i })).toHaveCount(0);
   });
 

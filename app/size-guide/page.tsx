@@ -5,7 +5,7 @@ import { SizeGuideClient } from "@/components/policies/SizeGuideClient";
 export const metadata: Metadata = buildMetadata({
   title: "Size Guide",
   description:
-    "Measurements for TARA three piece and two piece sets, with guidance on choosing between sizes.",
+    "Measurements for TARA ready three piece and two piece sets, with guidance on choosing between sizes.",
   path: "/size-guide",
 });
 
