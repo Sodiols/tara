@@ -28,6 +28,8 @@ export const PERMISSIONS = [
   "staff.manage",
   "audit.view",
   "analytics.view",
+  // Admin only: see the Archive & Trash, restore, permanently delete.
+  "archive.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

@@ -5,6 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
+  Archive,
   Boxes,
   ClipboardList,
   FileClock,
@@ -75,6 +76,7 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/settings", label: "Store settings", icon: Settings, permission: "settings.manage" },
       { href: "/admin/staff", label: "Staff and roles", icon: ShieldCheck, permission: "staff.manage" },
       { href: "/admin/audit-log", label: "Audit log", icon: FileClock, permission: "audit.view" },
+      { href: "/admin/archive", label: "Archive & Trash", icon: Archive, permission: "archive.manage" },
     ],
   },
 ];

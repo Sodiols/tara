@@ -33,6 +33,7 @@ import { isMissingExecuteGrant } from "../errors";
 import { dispatchNotificationAsAdmin, dispatchOrderNotificationsAsStaff } from "@/lib/email/dispatch";
 import { getStoreIdentity } from "@/lib/supabase/queries/settings";
 import { getEmailConfiguration, getEmailProvider } from "@/lib/email/provider";
+import { parseRecipientList } from "@/lib/email/recipients";
 import { buildTestEmail } from "@/lib/email/templates";
 
 /**
@@ -1032,31 +1033,6 @@ export async function saveCategoryAction(formData: FormData): Promise<ActionResu
   return { ok: true, message: "Category saved." };
 }
 
-export async function deleteCategoryAction(id: string): Promise<ActionResult> {
-  await requirePermission("catalogue.manage");
-  const supabase = await createClient();
-
-  // Products carry a NOT NULL reference to their category, so deleting one that
-  // is still in use would either fail with a foreign-key error or orphan the
-  // catalogue. Refuse with a message that says what to do instead.
-  const { count } = await supabase
-    .from("products")
-    .select("id", { count: "exact", head: true })
-    .eq("category_id", id);
-  if ((count ?? 0) > 0) {
-    return fail(
-      `${count} product${count === 1 ? "" : "s"} still use this category. Move them first, or deactivate the category instead.`,
-    );
-  }
-
-  const { error } = await supabase.from("categories").delete().eq("id", id);
-  if (error) return logAndFail("category delete", error, "Could not delete this category.");
-
-  updateTag("catalogue");
-  revalidatePath("/admin/categories");
-  return { ok: true, message: "Category deleted." };
-}
-
 export async function saveCollectionAction(formData: FormData): Promise<ActionResult> {
   await requirePermission("catalogue.manage");
 
@@ -1101,28 +1077,6 @@ export async function saveCollectionAction(formData: FormData): Promise<ActionRe
   revalidatePath("/admin/collections");
   revalidatePath("/collection");
   return { ok: true, message: "Collection saved." };
-}
-
-export async function deleteCollectionAction(id: string): Promise<ActionResult> {
-  await requirePermission("catalogue.manage");
-  const supabase = await createClient();
-
-  const { count } = await supabase
-    .from("products")
-    .select("id", { count: "exact", head: true })
-    .eq("collection_id", id);
-  if ((count ?? 0) > 0) {
-    return fail(
-      `${count} product${count === 1 ? "" : "s"} are still in this collection. Remove them first, or deactivate the collection instead.`,
-    );
-  }
-
-  const { error } = await supabase.from("collections").delete().eq("id", id);
-  if (error) return logAndFail("collection delete", error, "Could not delete this collection.");
-
-  updateTag("catalogue");
-  revalidatePath("/admin/collections");
-  return { ok: true, message: "Collection deleted." };
 }
 
 // ---------------------------------------------------------------------------
@@ -1171,21 +1125,6 @@ export async function saveCouponAction(formData: FormData): Promise<ActionResult
   revalidatePath("/admin/coupons");
   if (error) return logAndFail("coupon save", error, "Could not save this coupon.");
   return { ok: true, message: "Coupon saved." };
-}
-
-export async function archiveCouponAction(
-  couponId: string,
-  archived: boolean,
-): Promise<ActionResult> {
-  await requirePermission("coupons.manage");
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("admin_archive_coupon", {
-    p_coupon_id: couponId,
-    p_archived: archived,
-  });
-  revalidatePath("/admin/coupons");
-  if (error) return logAndFail("coupon archive", error, "Could not update this coupon.");
-  return { ok: true, message: archived ? "Coupon archived." : "Coupon restored." };
 }
 
 // ---------------------------------------------------------------------------
@@ -1310,8 +1249,8 @@ export async function sendTestEmailAction(): Promise<ActionResult> {
   if (!getEmailConfiguration().configured) return fail("Configure RESEND_API_KEY and EMAIL_FROM before sending a test.");
   const supabase = await createClient();
   const { data: setting } = await supabase.from("store_settings").select("value").eq("key", "order_notification_email").maybeSingle();
-  const recipient = typeof setting?.value === "string" ? setting.value.trim() : "";
-  if (!recipient) return fail("Save an order notification email first.");
+  const recipient = parseRecipientList(setting?.value);
+  if (recipient.length === 0) return fail("Save an order notification email first.");
   const { data: allowed, error } = await supabase.rpc("can_send_test_email");
   if (error) return logAndFail("test_email_limit", error, "Could not send the test email.");
   if (allowed !== true) return fail("Test email limit reached. You can send up to three per hour.");

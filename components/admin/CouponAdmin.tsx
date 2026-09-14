@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { archiveCouponAction, saveCouponAction } from "@/lib/supabase/actions/admin";
+import { saveCouponAction } from "@/lib/supabase/actions/admin";
+import { archiveItemAction } from "@/lib/supabase/actions/archive";
 import { formatDate, formatTaka, isoToStoreLocal } from "@/lib/format";
 import type { Tables } from "@/types/database";
 import { ActionForm, RowActionButton, SubmitButton } from "./AdminForm";
@@ -140,19 +141,13 @@ export function CouponAdmin({ coupons }: { coupons: Coupon[] }) {
                         >
                           Edit
                         </button>
-                        {coupon.archived_at ? (
-                          <RowActionButton action={async () => archiveCouponAction(coupon.id, false)}>
-                            Restore
-                          </RowActionButton>
-                        ) : (
-                          <RowActionButton
-                            tone="danger"
-                            confirm={`Archive "${coupon.code}"? It stops working immediately. Orders that already used it keep their discount.`}
-                            action={async () => archiveCouponAction(coupon.id, true)}
-                          >
-                            Archive
-                          </RowActionButton>
-                        )}
+                        <RowActionButton
+                          tone="danger"
+                          confirm={`Archive "${coupon.code}"? It stops working immediately. Orders that already used it keep their discount. An administrator can restore it from Archive & Trash.`}
+                          action={async () => archiveItemAction("coupon", coupon.id)}
+                        >
+                          Archive
+                        </RowActionButton>
                       </div>
                     </Td>
                   </tr>

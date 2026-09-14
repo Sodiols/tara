@@ -102,6 +102,7 @@ export interface Database {
           sort_order: number;
           seo_title: string | null;
           seo_description: string | null;
+          archived_at: string | null;
         }
       >;
       collections: Table<
@@ -118,6 +119,7 @@ export interface Database {
           sort_order: number;
           seo_title: string | null;
           seo_description: string | null;
+          archived_at: string | null;
         }
       >;
       products: Table<
@@ -275,6 +277,7 @@ export interface Database {
           moderated_by: string | null;
           moderated_at: string | null;
           moderation_note: string | null;
+          archived_at: string | null;
         }
       >;
       order_tracking_events: Table<{
@@ -310,6 +313,17 @@ export interface Database {
         note: string | null;
         adjusted_by: string | null;
         created_at: string;
+      }>;
+      archived_items: Table<{
+        entity_type: "product" | "category" | "collection" | "coupon" | "review";
+        entity_id: string;
+        label: string;
+        detail: string | null;
+        previous_state: Json;
+        archived_at: string;
+        archived_by: string | null;
+        archived_by_email: string;
+        archived_by_role: string;
       }>;
       admin_audit_log: Table<{
         id: string;
@@ -455,6 +469,9 @@ export interface Database {
         Args: { p_coupon_id: string; p_archived: boolean };
         Returns: Json;
       };
+      admin_archive_item: { Args: { p_type: string; p_id: string }; Returns: Json };
+      admin_restore_archived_item: { Args: { p_type: string; p_id: string }; Returns: Json };
+      admin_purge_archived_item: { Args: { p_type: string; p_id: string }; Returns: Json };
       admin_save_settings: { Args: { p_settings: Json }; Returns: Json };
       admin_dashboard_metrics: {
         Args: Record<PropertyKey, never>;

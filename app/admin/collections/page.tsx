@@ -8,7 +8,8 @@ export default async function AdminCollectionsPage() {
   const supabase = await createClient();
 
   const [{ data: collections }, { data: products }] = await Promise.all([
-    supabase.from("collections").select("*").order("sort_order").order("name_en"),
+    // Archived collections live in Archive & Trash, not here.
+    supabase.from("collections").select("*").is("archived_at", null).order("sort_order").order("name_en"),
     supabase
       .from("products")
       .select("collection_id")

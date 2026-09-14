@@ -188,15 +188,18 @@ export function StoreSettingsForm({ values }: { values: StoreSettingsValues }) {
             </select>
           </Field>
           <Field
-            label="Internal order notification inbox"
+            label="Internal order notification inboxes"
             htmlFor="order_notification_email"
             className="sm:col-span-2"
-            hint="Where the store's own copy of each new order is emailed. Private — never shown on the storefront. Leave blank to keep the record in Order events only."
+            hint="Where the store's own copy of each new order is emailed. Separate several addresses with commas; each receives every new order once. Private — never shown on the storefront. Leave blank to keep the record in Order events only."
           >
             <input
               id="order_notification_email"
               name="order_notification_email"
-              type="email"
+              type="text"
+              inputMode="email"
+              autoComplete="off"
+              placeholder="orders@tarabd.co, owner@example.com"
               defaultValue={values.order_notification_email}
               className={adminInputClass}
             />

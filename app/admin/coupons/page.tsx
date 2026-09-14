@@ -8,7 +8,6 @@ type SearchParams = { page?: string; q?: string; state?: string };
 const STATES = [
   { value: "", label: "All" },
   { value: "active", label: "Active" },
-  { value: "archived", label: "Archived" },
 ];
 
 export default async function AdminCouponsPage({

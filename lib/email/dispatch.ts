@@ -7,7 +7,8 @@ import { parseOrderReceiptSnapshot } from "@/lib/order-receipt";
 import { generateOrderReceiptPdf } from "@/lib/pdf/order-receipt";
 import { getStoreIdentity } from "@/lib/supabase/queries/settings";
 import { getEmailProvider, isEmailConfigured } from "./provider";
-import { buildContactNotificationEmail, buildOrderNotificationEmail, type ContactNotificationSnapshot } from "./templates";
+import { parseRecipientList } from "./recipients";
+import { buildContactNotificationEmail, buildOrderNotificationEmail, type ContactNotificationSnapshot, type ProductImageMap } from "./templates";
 
 interface ClaimedNotification {
   id: string;
@@ -41,6 +42,37 @@ function parseContact(value: unknown): ContactNotificationSnapshot | null {
   };
 }
 
+/**
+ * The primary image for each ordered product, for the staff notification.
+ *
+ * Best effort: product images are public catalogue data, and a failure here
+ * costs the email its thumbnails, never the email itself. Only absolute HTTPS
+ * URLs are kept, because anything else will not load in a mail client.
+ */
+async function productImages(supabase: Awaited<ReturnType<typeof createClient>>, productIds: string[]): Promise<ProductImageMap> {
+  const ids = [...new Set(productIds.filter(Boolean))];
+  if (ids.length === 0) return {};
+  try {
+    const { data, error } = await supabase
+      .from("product_images")
+      .select("product_id,image_url,is_primary,sort_order")
+      .in("product_id", ids)
+      .order("is_primary", { ascending: false })
+      .order("sort_order", { ascending: true });
+    if (error) throw error;
+    const images: ProductImageMap = {};
+    for (const row of data ?? []) {
+      if (!images[row.product_id] && typeof row.image_url === "string" && row.image_url.startsWith("https://")) {
+        images[row.product_id] = row.image_url;
+      }
+    }
+    return images;
+  } catch (error) {
+    logFailure("email.product_images_failed", error, { products: ids.length });
+    return {};
+  }
+}
+
 async function confirm(supabase: Awaited<ReturnType<typeof createClient>>, notification: ClaimedNotification, status: "sent" | "failed" | "skipped", error?: string, providerId?: string) {
   const result = await supabase.rpc("confirm_notification_dispatch_v2", {
     p_id: notification.id,
@@ -58,13 +90,14 @@ async function deliver(supabase: Awaited<ReturnType<typeof createClient>>, claim
 
   for (const notification of claimed) {
     try {
-      let recipient = notification.recipient;
+      let recipient: string | string[] = notification.recipient;
       if (recipient === "store") {
         const { data, error } = await supabase.rpc("store_notification_recipient", { p_id: notification.id, p_dispatch_token: notification.dispatchToken });
         if (error) throw error;
-        recipient = typeof data === "string" ? data.trim() : "";
+        // One or more staff inboxes, de-duplicated, all on this single send.
+        recipient = parseRecipientList(data);
       }
-      if (!recipient) {
+      if (recipient.length === 0) {
         await confirm(supabase, notification, "skipped", "No recipient configured");
         continue;
       }
@@ -81,7 +114,10 @@ async function deliver(supabase: Awaited<ReturnType<typeof createClient>>, claim
         if (error) throw error;
         const snapshot = parseOrderReceiptSnapshot(data);
         if (!snapshot) throw new Error("Order notification snapshot is unavailable");
-        message = buildOrderNotificationEmail(notification.template, recipient, snapshot, store);
+        const images = notification.template === "admin_new_order"
+          ? await productImages(supabase, snapshot.items.map((item) => item.productId))
+          : {};
+        message = buildOrderNotificationEmail(notification.template, recipient, snapshot, store, images);
         if (message && notification.template === "order_placed" && notification.recipient !== "store") {
           const receipt = await generateOrderReceiptPdf(snapshot, store);
           message.attachments = [{ filename: `TARA-Order-${snapshot.order.orderNumber}.pdf`, content: receipt, contentType: "application/pdf" }];

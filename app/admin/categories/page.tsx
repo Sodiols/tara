@@ -8,7 +8,8 @@ export default async function AdminCategoriesPage() {
   const supabase = await createClient();
 
   const [{ data: categories }, { data: products }] = await Promise.all([
-    supabase.from("categories").select("*").order("sort_order").order("name_en"),
+    // Archived categories live in Archive & Trash, not here.
+    supabase.from("categories").select("*").is("archived_at", null).order("sort_order").order("name_en"),
     // Only the foreign key is fetched, so counting stays cheap even on a large
     // catalogue and no product row is transferred unnecessarily.
     supabase.from("products").select("category_id").neq("status", "archived"),
@@ -24,7 +25,7 @@ export default async function AdminCategoriesPage() {
       <PageHeader
         eyebrow="Selling"
         title="Categories"
-        description="The top-level structure of the catalogue. A category still in use cannot be deleted."
+        description="The top-level structure of the catalogue. Archiving a category hides it from the storefront; an administrator can restore it from Archive & Trash."
       />
       <TaxonomyAdmin
         kind="categories"

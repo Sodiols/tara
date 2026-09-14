@@ -1,10 +1,8 @@
 import Link from "next/link";
 import { getAdminProducts, getTaxonomyOptions, parsePage } from "@/lib/supabase/queries/admin";
 import { formatDateTime, formatTaka } from "@/lib/format";
-import {
-  setProductStatusAction,
-  duplicateProductAction,
-} from "@/lib/supabase/actions/admin";
+import { duplicateProductAction } from "@/lib/supabase/actions/admin";
+import { archiveItemAction } from "@/lib/supabase/actions/archive";
 import {
   AdminEmptyState,
   Field,
@@ -34,7 +32,7 @@ export default async function AdminProductsPage({
     getAdminProducts({
       page,
       search: params.q,
-      status: (params.status as "draft" | "active" | "archived") || "all",
+      status: params.status === "active" || params.status === "draft" ? params.status : "all",
       categoryId: params.category,
     }),
     getTaxonomyOptions(),
@@ -87,7 +85,6 @@ export default async function AdminProductsPage({
               <option value="">All statuses</option>
               <option value="active">Active</option>
               <option value="draft">Draft</option>
-              <option value="archived">Archived</option>
             </select>
           </Field>
           <Field label="Category" htmlFor="product-category" className="min-w-[190px]">
@@ -206,27 +203,16 @@ export default async function AdminProductsPage({
                           >
                             Duplicate
                           </RowActionButton>
-                          {product.status === "archived" ? (
-                            <RowActionButton
-                              action={async () => {
-                                "use server";
-                                return setProductStatusAction(product.id, "draft");
-                              }}
-                            >
-                              Restore
-                            </RowActionButton>
-                          ) : (
-                            <RowActionButton
-                              tone="danger"
-                              confirm={`Archive "${product.name_en}"? It will be hidden from the storefront. Past orders keep their own price and name snapshots, so order history is unaffected.`}
-                              action={async () => {
-                                "use server";
-                                return setProductStatusAction(product.id, "archived");
-                              }}
-                            >
-                              Archive
-                            </RowActionButton>
-                          )}
+                          <RowActionButton
+                            tone="danger"
+                            confirm={`Archive "${product.name_en}"? It will be hidden from the storefront. Past orders keep their own price and name snapshots, so order history is unaffected. An administrator can restore it from Archive & Trash.`}
+                            action={async () => {
+                              "use server";
+                              return archiveItemAction("product", product.id);
+                            }}
+                          >
+                            Archive
+                          </RowActionButton>
                         </div>
                       </Td>
                     </tr>

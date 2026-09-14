@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getAdminReviews, parsePage } from "@/lib/supabase/queries/admin";
 import { moderateReviewAction } from "@/lib/supabase/actions/admin";
+import { archiveItemAction } from "@/lib/supabase/actions/archive";
 import { formatDateTime } from "@/lib/format";
 import { AdminEmptyState, PageHeader, Pagination, Panel } from "@/components/admin/ui";
 import { ReviewStatusBadge } from "@/components/admin/status";
@@ -160,6 +161,16 @@ export default async function AdminReviewsPage({
                         Return to pending
                       </RowActionButton>
                     )}
+                    <RowActionButton
+                      tone="danger"
+                      confirm="Archive this review? It is removed from this list and never shown publicly. An administrator can restore it from Archive & Trash."
+                      action={async () => {
+                        "use server";
+                        return archiveItemAction("review", review.id);
+                      }}
+                    >
+                      Archive
+                    </RowActionButton>
                     {review.products?.slug && (
                       <Link
                         href={`/product/${review.products.slug}`}

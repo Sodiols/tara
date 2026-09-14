@@ -2,6 +2,7 @@ import { z } from "zod";
 import { normalizeBdPhone } from "./phone";
 import { DIVISIONS, resolveLocation } from "@/data/bangladesh-geography";
 import { DELIVERY_ZONES } from "@/lib/delivery";
+import { MAX_NOTIFICATION_RECIPIENTS, isRecipientAddress, parseRecipientList } from "@/lib/email/recipients";
 
 const email = z.string().trim().toLowerCase().email().max(200);
 
@@ -469,8 +470,23 @@ export const adminSettingsSchema = z.object({
   cod_enabled: z.boolean(),
   maintenance_mode: z.boolean(),
   // Where the store's own "new order" notification is sent. Private — never
-  // exposed to the storefront — and now genuinely used by lib/email.
-  order_notification_email: z.union([email, z.literal("")]),
+  // exposed to the storefront — and now genuinely used by lib/email. One
+  // address or several separated by commas; saved normalised and de-duplicated
+  // so lib/email/recipients.ts reads back exactly what staff were shown.
+  order_notification_email: z
+    .string()
+    .trim()
+    .max(2000)
+    .superRefine((value, context) => {
+      const parts = value.split(/[\s,;]+/).map((part) => part.trim()).filter(Boolean);
+      const invalid = parts.find((part) => !isRecipientAddress(part.toLowerCase()));
+      if (invalid) {
+        context.addIssue({ code: "custom", message: `"${invalid.slice(0, 80)}" is not a valid notification email address.` });
+      } else if (parseRecipientList(value).length < new Set(parts.map((part) => part.toLowerCase())).size) {
+        context.addIssue({ code: "custom", message: `Use at most ${MAX_NOTIFICATION_RECIPIENTS} notification email addresses.` });
+      }
+    })
+    .transform((value) => parseRecipientList(value).join(", ")),
 });
 
 export const orderTransitionSchema = z.object({

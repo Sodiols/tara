@@ -21,6 +21,9 @@ type SearchParams = { page?: string; q?: string; entity?: string };
 const ENTITY_TYPES = [
   { value: "", label: "All records" },
   { value: "order", label: "Orders" },
+  { value: "product", label: "Products" },
+  { value: "category", label: "Categories" },
+  { value: "collection", label: "Collections" },
   { value: "product_variant", label: "Inventory" },
   { value: "coupon", label: "Coupons" },
   { value: "review", label: "Reviews" },

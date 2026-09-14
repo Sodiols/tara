@@ -20,7 +20,8 @@ import { logger } from "@/lib/logger";
  */
 
 export interface EmailMessage {
-  to: string;
+  /** One address, or several on a single send (each receives it once). */
+  to: string | string[];
   subject: string;
   /** Plain text is required; HTML is optional and falls back to the text. */
   text: string;
@@ -87,7 +88,7 @@ export function createResendProvider(apiKey: string): EmailProvider {
           },
           body: JSON.stringify({
             from,
-            to: [message.to],
+            to: Array.isArray(message.to) ? message.to : [message.to],
             subject: message.subject,
             text: message.text,
             ...(message.html ? { html: message.html } : {}),

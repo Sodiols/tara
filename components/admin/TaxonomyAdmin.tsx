@@ -2,12 +2,8 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  deleteCategoryAction,
-  deleteCollectionAction,
-  saveCategoryAction,
-  saveCollectionAction,
-} from "@/lib/supabase/actions/admin";
+import { saveCategoryAction, saveCollectionAction } from "@/lib/supabase/actions/admin";
+import { archiveItemAction } from "@/lib/supabase/actions/archive";
 import { formatDate, isoToStoreLocal } from "@/lib/format";
 import { slugify } from "@/lib/utils";
 import type { Tables } from "@/types/database";
@@ -54,7 +50,7 @@ export function TaxonomyAdmin({
 
   const isCollections = kind === "collections";
   const save = isCollections ? saveCollectionAction : saveCategoryAction;
-  const remove = isCollections ? deleteCollectionAction : deleteCategoryAction;
+  const archiveType = isCollections ? "collection" : "category";
   const singular = isCollections ? "collection" : "category";
 
   const openEditor = (row: Row | null) => {
@@ -167,12 +163,12 @@ export function TaxonomyAdmin({
                           tone="danger"
                           confirm={
                             count > 0
-                              ? `"${row.name_en}" still has ${count} product${count === 1 ? "" : "s"}. Deleting will be refused — deactivate it instead?`
-                              : `Delete "${row.name_en}"? This cannot be undone.`
+                              ? `Archive "${row.name_en}"? It is hidden from the storefront, and its ${count} product${count === 1 ? "" : "s"} keep this ${singular}. An administrator can restore it from Archive & Trash.`
+                              : `Archive "${row.name_en}"? It is hidden from the storefront. An administrator can restore it from Archive & Trash.`
                           }
-                          action={async () => remove(row.id)}
+                          action={async () => archiveItemAction(archiveType, row.id)}
                         >
-                          Delete
+                          Archive
                         </RowActionButton>
                       </div>
                     </Td>

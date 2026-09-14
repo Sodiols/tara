@@ -1,46 +1,4 @@
-/*
-TARA MIGRATION 0019 -- Product SEO fields and image alt text reach the storefront
 
-Run after 0018. Safe to re-run. One transaction. Destroys nothing.
-
-THE PROBLEM
------------
-Three columns were editable in the admin panel, saved correctly, and then had
-no effect whatsoever on the live site:
-
-  products.seo_title        the <title> override
-  products.seo_description  the meta description override
-  product_images.alt_en     image alt text
-
-The storefront never reads those tables directly. Every catalogue read --
-listings, search, related products, and the product page itself -- goes through
-search_catalogue(), which builds one JSON document per product, and that
-projection did not include them. Staff could fill the fields in, watch them
-save, reload the product page, and find the old title still in the tab.
-
-WHAT THIS CHANGES
------------------
-Three additions to the item projection. Nothing is removed or renamed:
-
-  seoTitle        null when blank, so the caller falls back to the product name
-  seoDescription  null when blank, same
-  media           the photographs as objects: url, alt, isPrimary, sortOrder
-
-`images` is deliberately left exactly as it was -- a flat array of URLs in the
-same order -- so every existing consumer keeps working and `media` is additive
-alongside it rather than a breaking replacement.
-
-NO SCHEMA CHANGE
-----------------
-No table, column, index or policy is touched. This replaces one function body,
-with the same name, argument, return type, volatility, security setting and
-search_path that 0009 created.
-
-VERIFY
-------
-  select jsonb_pretty(public.search_catalogue('{"limit":1}'::jsonb) -> 'items' -> 0);
-  -- expect seoTitle, seoDescription and media keys to be present
-*/
 
 begin;
 

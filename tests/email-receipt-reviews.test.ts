@@ -2,11 +2,14 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { PDFDocument } from "pdf-lib";
-import { reviewSchema } from "../lib/validation";
+import { adminSettingsSchema, reviewSchema } from "../lib/validation";
 import { parseOrderReceiptSnapshot, type OrderReceiptSnapshot } from "../lib/order-receipt";
 import { generateOrderReceiptPdf } from "../lib/pdf/order-receipt";
 import { buildContactNotificationEmail, buildOrderNotificationEmail } from "../lib/email/templates";
 import { createResendProvider } from "../lib/email/provider";
+import { parseRecipientList } from "../lib/email/recipients";
+
+const orderNotificationSettingsSchema = adminSettingsSchema.shape.order_notification_email;
 
 const snapshot: OrderReceiptSnapshot = {
   order: {
@@ -79,6 +82,50 @@ describe("transactional email", () => {
     assert.match(admin?.text ?? "", /Ayesha Rahman/);
   });
 
+  test("admin new-order mail carries the logo, the summary and protected absolute actions", () => {
+    const admin = buildOrderNotificationEmail("admin_new_order", ["owner@example.com", "staff@example.com"], snapshot, store, {
+      "product-1": "https://images.example.com/kurta.jpg",
+    });
+    assert.ok(admin);
+    const html = admin.html ?? "";
+    assert.equal(admin.subject, "New Order Arrived at TARA | Order #TARA-1052");
+    assert.deepEqual(admin.to, ["owner@example.com", "staff@example.com"]);
+    assert.match(html, /<img src="https:\/\/[^"]+\/logo\/logo-meroon\.png"[^>]*alt="TARA"/);
+    assert.match(html, /A New Order Has Arrived/);
+    assert.match(html, /Order #TARA-1052/);
+    assert.match(html, /Cash on Delivery/);
+    assert.match(html, /New Order/);
+    assert.match(html, /Ayesha Rahman/);
+    assert.match(html, /01712345678/);
+    assert.match(html, /House 12, Road 3/);
+    assert.match(html, /Size: M/);
+    assert.match(html, /Colour: Wine/);
+    assert.match(html, /Qty: 2/);
+    assert.match(html, /Delivery charge/);
+    assert.match(html, /Discount/);
+    assert.match(html, /Grand total/);
+    assert.match(html, /https:\/\/images\.example\.com\/kurta\.jpg/);
+    assert.match(html, /href="https:\/\/[^"]+\/admin\/orders\/16de7294-88bb-486e-95b5-fd8cbea83c0a"[^>]*>Open Order</);
+    assert.match(html, /href="https:\/\/[^"]+\/admin\/orders\/16de7294-88bb-486e-95b5-fd8cbea83c0a\/invoice"[^>]*>View Receipt</);
+    assert.match(html, /This is an automatic order notification from the TARA website\./);
+    // Every link and image must survive being opened in Gmail on a phone.
+    for (const [, url] of html.matchAll(/(?:href|src)="([^"]+)"/g)) {
+      assert.match(url, /^https:\/\//, url);
+      assert.doesNotMatch(url, /localhost|127\.0\.0\.1/, url);
+    }
+    // The tracking token grants customer access to the order; staff mail never carries it.
+    assert.doesNotMatch(html, new RegExp("a".repeat(48)));
+    assert.match(admin.text, /Open Order: https:\/\/.+\/admin\/orders\//);
+  });
+
+  test("notification recipients are a de-duplicated list and a bad entry drops out", () => {
+    assert.deepEqual(parseRecipientList("Owner@tarabd.co, staff@tarabd.co;owner@TARABD.co  not-an-email"), ["owner@tarabd.co", "staff@tarabd.co"]);
+    assert.deepEqual(parseRecipientList(""), []);
+    assert.deepEqual(parseRecipientList(null), []);
+    assert.equal(orderNotificationSettingsSchema.parse("a@tarabd.co; b@tarabd.co, A@tarabd.co"), "a@tarabd.co, b@tarabd.co");
+    assert.equal(orderNotificationSettingsSchema.safeParse("a@tarabd.co, nope").success, false);
+  });
+
   test("contact mail keeps the verified sender and assigns customer Reply-To", () => {
     const message = buildContactNotificationEmail("owner@example.com", { id: "message-1", name: "Sodiol Sayem", email: "customer@example.com", phone: "01712345678", message: "Please help me choose the right size.", createdAt: "2026-08-27T12:00:00Z" }, store);
     assert.equal(message.to, "owner@example.com");
@@ -98,6 +145,9 @@ describe("transactional email", () => {
       return new Response(JSON.stringify({ id: "email-1" }), { status: 200, headers: { "content-type": "application/json" } });
     }) as typeof fetch;
     try {
+      const list = await createResendProvider("test-key").send({ to: ["owner@tarabd.co", "staff@tarabd.co"], subject: "New order", text: "Order" });
+      assert.equal(list.status, "sent");
+      assert.deepEqual(requestBody.to, ["owner@tarabd.co", "staff@tarabd.co"]);
       const outcome = await createResendProvider("test-key").send({ to: "customer@example.com", subject: "Receipt", text: "Attached", idempotencyKey: "tara-notification-one", attachments: [{ filename: "receipt.pdf", content: new Uint8Array([37, 80, 68, 70]), contentType: "application/pdf" }] });
       assert.equal(outcome.status, "sent");
       assert.equal(new Headers(requestHeaders).get("idempotency-key"), "tara-notification-one");

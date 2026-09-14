@@ -324,7 +324,9 @@ export async function getAdminProducts(filters: ProductFilters) {
       count: "exact",
     });
 
+  // Archived products live in Archive & Trash, not in the product list.
   if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
+  else query = query.neq("status", "archived");
   if (filters.categoryId) query = query.eq("category_id", filters.categoryId);
 
   const term = escapeFilterValue(filters.search ?? "");
@@ -551,11 +553,9 @@ export async function getAdminCoupons(filters: { page?: number; search?: string;
   const page = filters.page ?? 1;
   const [from, to] = range(page, DEFAULT_PAGE_SIZE);
 
-  let query = supabase.from("coupons").select("*", { count: "exact" });
-  if (filters.state === "active") {
-    query = query.eq("is_active", true).is("archived_at", null);
-  }
-  if (filters.state === "archived") query = query.not("archived_at", "is", null);
+  // Archived coupons live in Archive & Trash, not here.
+  let query = supabase.from("coupons").select("*", { count: "exact" }).is("archived_at", null);
+  if (filters.state === "active") query = query.eq("is_active", true);
 
   const term = escapeFilterValue(filters.search ?? "");
   if (term) query = query.ilike("code", `%${term}%`);
@@ -577,9 +577,11 @@ export async function getAdminReviews(filters: {
   const page = filters.page ?? 1;
   const [from, to] = range(page, DEFAULT_PAGE_SIZE);
 
+  // Archived reviews live in Archive & Trash, not here.
   let query = supabase
     .from("reviews")
-    .select("*, products(name_en,slug)", { count: "exact" });
+    .select("*, products(name_en,slug)", { count: "exact" })
+    .is("archived_at", null);
   if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
 
   const term = escapeFilterValue(filters.search ?? "");
@@ -704,4 +706,57 @@ export async function getNotificationOutbox(limit = 20) {
     .order("created_at", { ascending: false })
     .limit(limit);
   return data ?? [];
+}
+
+// --- Archive & Trash --------------------------------------------------------
+
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * What is in the archive right now. Administrators only — archive.manage is
+ * checked here and again by the table's row-level security policy.
+ *
+ * Search matches the item's name, its detail line (product code, slug, coupon
+ * description, reviewed product), the archiving member of staff's email or role,
+ * or the type; a full UUID is matched against the item's own id exactly.
+ */
+export async function getArchivedItems(filters: {
+  page?: number;
+  search?: string;
+  type?: string;
+  sort?: string;
+}) {
+  await requirePermission("archive.manage");
+  const supabase = await createClient();
+  const page = filters.page ?? 1;
+  const [from, to] = range(page, DEFAULT_PAGE_SIZE);
+
+  let query = supabase.from("archived_items").select("*", { count: "exact" });
+  if (filters.type && ["product", "category", "collection", "coupon", "review"].includes(filters.type)) {
+    query = query.eq("entity_type", filters.type as Tables<"archived_items">["entity_type"]);
+  }
+
+  const raw = (filters.search ?? "").trim();
+  if (UUID_SHAPE.test(raw)) {
+    query = query.eq("entity_id", raw.toLowerCase());
+  } else {
+    const term = escapeFilterValue(raw);
+    if (term) {
+      query = query.or(
+        [
+          `label.ilike.*${term}*`,
+          `detail.ilike.*${term}*`,
+          `archived_by_email.ilike.*${term}*`,
+          `archived_by_role.ilike.*${term}*`,
+          `entity_type.ilike.*${term}*`,
+        ].join(","),
+      );
+    }
+  }
+
+  const { data, count } = await query
+    .order("archived_at", { ascending: filters.sort === "oldest" })
+    .order("entity_id")
+    .range(from, to);
+  return { rows: data ?? [], total: count ?? 0, page, pageSize: DEFAULT_PAGE_SIZE };
 }
