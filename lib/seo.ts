@@ -84,6 +84,45 @@ export const NOINDEX_NOFOLLOW = {
   googleBot: { index: false, follow: false },
 } as const;
 
+/**
+ * The image a shared link shows when the page has none of its own.
+ *
+ * Without it, the homepage and every content page — about, contact, the
+ * policies, a category with no image uploaded — produced no og:image at all,
+ * and a link pasted into WhatsApp, Facebook or Messenger rendered as a bare
+ * grey card with a title. For a fashion shop that is the moment somebody decides
+ * whether to tap.
+ *
+ * 1200 x 630 (1.91:1), the ratio every major platform renders uncropped. It is
+ * a composition of the Deep Wine wordmark and the Festive campaign photograph,
+ * built by scripts/generate-social-image.mjs from assets already in /public.
+ *
+ * A page's own image always wins: a product shares its photograph, a collection
+ * its cover. This is only ever the fallback.
+ */
+export const DEFAULT_SOCIAL_IMAGE = {
+  path: "/og/tara-default.png",
+  width: 1200,
+  height: 630,
+  alt: "TARA — women's clothing and accessories from Sylhet, Bangladesh",
+} as const;
+
+/** The default image as absolute Open Graph and Twitter values. */
+export function defaultSocialImages() {
+  const url = absoluteUrl(DEFAULT_SOCIAL_IMAGE.path);
+  return {
+    openGraph: [
+      {
+        url,
+        width: DEFAULT_SOCIAL_IMAGE.width,
+        height: DEFAULT_SOCIAL_IMAGE.height,
+        alt: DEFAULT_SOCIAL_IMAGE.alt,
+      },
+    ],
+    twitter: [{ url, alt: DEFAULT_SOCIAL_IMAGE.alt }],
+  };
+}
+
 export interface PageSeoInput {
   /** Page title WITHOUT the brand — the root template appends "| TARA". */
   title: string;
@@ -116,7 +155,14 @@ export function buildMetadata({
   absoluteTitle = false,
 }: PageSeoInput): Metadata {
   const url = absoluteUrl(path);
-  const resolved = (images ?? []).map((image) => absoluteUrl(image)).filter(Boolean);
+  const resolved = (images ?? [])
+    .filter((image) => typeof image === "string" && image.trim() !== "")
+    .map((image) => absoluteUrl(image))
+    .filter(Boolean);
+  // A page's own images when it has any; the branded default otherwise. Never
+  // an empty list — an empty og:image is worse than none, and none is what a
+  // shared link used to get on every page without a photograph.
+  const fallback = resolved.length === 0 ? defaultSocialImages() : null;
   // Open Graph carries the brand even when the tab title does not: a shared
   // link has no site chrome around it to say whose page this is.
   const socialTitle = absoluteTitle ? title : `${title} | ${siteConfig.name}`;
@@ -133,13 +179,13 @@ export function buildMetadata({
       siteName: siteConfig.name,
       locale: "en_US",
       type,
-      ...(resolved.length > 0 ? { images: resolved } : {}),
+      images: fallback ? fallback.openGraph : resolved,
     },
     twitter: {
       card: "summary_large_image",
       title: socialTitle,
       description,
-      ...(resolved.length > 0 ? { images: [resolved[0]] } : {}),
+      images: fallback ? fallback.twitter : [resolved[0]],
     },
   };
 }

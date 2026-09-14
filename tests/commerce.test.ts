@@ -472,3 +472,54 @@ describe("input validation", () => {
     );
   });
 });
+
+describe("names are one line of printable text", () => {
+  // `trim()` only strips the ends. These all used to pass, and the contact
+  // form puts the name straight into an email subject line.
+  const hostile = [
+    "Bob\r\nBcc: victim@example.com",
+    "Bob\nSmith",
+    "Bob\tSmith",
+    "Bob\u0000Null",
+    "Bob\u0085Next",
+  ];
+  const genuine = ["Nusrat Jahan", "Mary-Jane O'Connor", "নুসরাত জাহান", "José Álvarez", "Dr. A. Rahman"];
+
+  const contact = (name: string) =>
+    contactSchema.safeParse({ name, email: "ok@tarabd.co", message: "Hello, this is long enough." });
+
+  test("control characters are refused in the contact name", () => {
+    for (const name of hostile) assert.equal(contact(name).success, false, JSON.stringify(name));
+  });
+
+  test("real names in any script are still accepted", () => {
+    for (const name of genuine) assert.equal(contact(name).success, true, name);
+  });
+
+  test("the checkout name gets the same rule", () => {
+    // Same shape as the fixture in "input validation" above, which is scoped to
+    // that block.
+    const validCheckout = {
+      customerName: "Ayesha Rahman",
+      customerEmail: "ayesha@example.com",
+      customerPhone: "+880 1712 345678",
+      shippingAddress: {
+        address: "House 12, Road 3, Batortal Bazar",
+        apartment: "",
+        city: "Sylhet",
+        postalCode: "3100",
+        deliveryZone: "inside_sylhet" as const,
+      },
+      items: [{ variantId: "3f1e9a6c-1d2b-4c3a-9e5f-6a7b8c9d0e1f", quantity: 2 }],
+    };
+    const base = checkoutSchema.safeParse(validCheckout);
+    assert.equal(base.success, true, "fixture must be valid for this test to mean anything");
+    for (const customerName of hostile) {
+      assert.equal(
+        checkoutSchema.safeParse({ ...validCheckout, customerName }).success,
+        false,
+        JSON.stringify(customerName),
+      );
+    }
+  });
+});

@@ -125,8 +125,11 @@ export default async function ProductPage({ params }: ProductPageProps) {
         : "https://schema.org/OutOfStock",
       seller: { "@id": SCHEMA_IDS.organization },
     },
-    // Rating and reviews come from the same approved set the page renders, so
-    // structured data and visible content cannot disagree.
+    // Rating and count are derived from approved review rows in
+    // readProductBySlug(), not read from the denormalised product columns, so
+    // structured data can only describe reviews that exist. This comment used to
+    // make that promise while the code read the cached columns, and a seeded
+    // database published ratings for products with no reviews at all.
     ...(product.reviewCount > 0 && product.rating > 0
       ? {
           aggregateRating: {

@@ -8,8 +8,9 @@
  * limit that does not match the one enforced.
  *
  * These are also the limits configured on the `product-images` storage bucket
- * in supabase/TARA_COMPLETE_SETUP.sql, so Supabase rejects an oversized upload
- * even if both layers above it were bypassed.
+ * in supabase/migrations/0000_baseline_schema.sql (file_size_limit and
+ * allowed_mime_types), so Supabase rejects an oversized or non-image upload even
+ * if both layers above it were bypassed. Change one side, change the other.
  */
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;

@@ -23,10 +23,16 @@
  * Bangladesh divisions and districts used to live here too, in a list that was
  * both wrong and duplicated. They are now in data/bangladesh-geography.ts.
  */
+import { SITE_ORIGIN } from "@/lib/site-url";
+
 export const siteConfig = {
   name: "TARA",
   domain: "www.tarabd.co",
-  url: process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/+$/, "") || "https://www.tarabd.co",
+  // Resolved in lib/site-url.ts, which refuses a localhost or malformed value in
+  // a production build. This line used to read the variable directly, and a
+  // `next build` with the developer's http://localhost:3000 in .env.local shipped
+  // canonical URLs, robots.txt and a sitemap all pointing at localhost.
+  url: SITE_ORIGIN,
   instagram: "https://instagram.com/tarabd.co",
   facebook: "https://facebook.com/tarabd.co",
   tiktok: "https://tiktok.com/@tarabd.co",

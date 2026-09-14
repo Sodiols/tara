@@ -64,15 +64,30 @@ export function CollectionEditorial({ collections }: { collections: readonly Col
 
     // Warm the small responsive renditions just before this below-fold section.
     // Nothing is preloaded in the document head at the expense of the hero.
-    const observer = new IntersectionObserver(([entry]) => {
-      if (entry.isIntersecting) {
+    //
+    // Both observers below read the LAST entry of each batch, never the first.
+    // An observer queues one entry per state change and delivers them together,
+    // oldest first — so if the section is scrolled into view before the initial
+    // report has been delivered (a reload with scroll restoration, a fast
+    // scroll, a jump link), the batch is [not visible, fully visible]. The
+    // callbacks used to destructure `([entry])`, read the stale first entry,
+    // and record "not in view" while the section filled the screen. Nothing
+    // changed afterwards, so the observer never fired again and autoplay
+    // stayed dead until the section was scrolled away and back. Measured: 6
+    // of 60 desktop loads stalled, every one of them on a two-entry batch, and
+    // none of the 54 that played had one.
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (entry?.isIntersecting) {
         imagesRef.current.forEach((image) => { if (image) image.loading = "eager"; });
         observer.disconnect();
       }
     }, { rootMargin: "500px" });
     if (sectionRef.current) observer.observe(sectionRef.current);
 
-    const visibilityObserver = new IntersectionObserver(([entry]) => {
+    const visibilityObserver = new IntersectionObserver((entries) => {
+      const entry = entries[entries.length - 1];
+      if (!entry) return;
       inViewRef.current = entry.isIntersecting && entry.intersectionRatio >= 0.5;
       resumeAtRef.current = Math.max(resumeAtRef.current, Date.now() + AUTOPLAY_INTERVAL_MS);
     }, { threshold: 0.5, rootMargin: "-80px 0px 0px" });

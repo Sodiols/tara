@@ -294,7 +294,26 @@ test("a manual request during an automatic transition is respected after the pri
   await openEditorial(page);
   await section(page).getByRole("button", { name: "Play automatic collection changes" }).click();
   await page.mouse.move(0, 0);
-  await expect(stack(page)).toHaveAttribute("aria-busy", "true");
+  // Sampled every animation frame, not by expect()'s poll. aria-busy is true
+  // only for the ~600 ms a turn takes (measured 604 ms on Next 16.2.12 and
+  // 16.3.5 alike), and expect() backs off to one-second polls that can land
+  // either side of that window. Same condition and 10 s budget; it just cannot
+  // fall between two samples.
+  //
+  // That was not what made this test flaky, though. The intermittent 10 s
+  // timeouts were a real component bug: the visibility observer read the first
+  // entry of a batch, so a batch of [stale "not visible", current "visible"]
+  // left autoplay believing the section was off screen, forever. See the
+  // regression test "autoplay survives an observer batch that reports stale
+  // state first" below.
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-collection-editorial] [role="group"][aria-label="Collection photographs"]')
+        ?.getAttribute("aria-busy") === "true",
+    null,
+    { polling: "raf", timeout: 10_000 },
+  );
   const previous = await section(page).getByRole("button", { name: "Previous collection", exact: true }).boundingBox();
   // Mouse input can arrive while aria-disabled is true; it must not be lost
   // just because an automatic turn had started before the customer clicked.
@@ -302,6 +321,53 @@ test("a manual request during an automatic transition is respected after the pri
   await expect(stack(page)).toHaveAttribute("aria-busy", "false");
   await expect(section(page)).toHaveAttribute("data-active-collection", "eid");
   await expect(section(page).getByRole("status").first()).toHaveAttribute("aria-live", "polite");
+});
+
+test("autoplay survives an observer batch that reports stale state first", async ({ page }) => {
+  // IntersectionObserver delivers queued entries together, oldest first. When
+  // the section is scrolled into view before the initial report arrives — a
+  // reload with scroll restoration, a fast scroll — the batch is
+  // [not visible, visible]. The component read `entries[0]`, recorded "not in
+  // view" while the section filled the screen, and autoplay never ran again
+  // until it was scrolled away and back: 6 of 60 desktop loads, every one on a
+  // two-entry batch.
+  //
+  // That only happened on some loads, so a test waiting for it would be flaky.
+  // This forces the trigger on every load instead: each batch delivered to the
+  // visibility observer (threshold 0.5) is prefixed with a stale "not visible"
+  // entry. A callback that reads the latest entry is unaffected; one that
+  // reads the first never plays. Nothing else about the observer changes.
+  await page.addInitScript(() => {
+    const Native = window.IntersectionObserver;
+    const Patched = function (
+      callback: IntersectionObserverCallback,
+      options?: IntersectionObserverInit,
+    ) {
+      const isVisibilityObserver = options?.threshold === 0.5;
+      const wrapped: IntersectionObserverCallback = isVisibilityObserver
+        ? (entries, observer) => {
+            const stale = { ...entries[0], isIntersecting: false, intersectionRatio: 0 };
+            return callback([stale as IntersectionObserverEntry, ...entries], observer);
+          }
+        : callback;
+      return new Native(wrapped, options);
+    } as unknown as typeof IntersectionObserver;
+    Patched.prototype = Native.prototype;
+    window.IntersectionObserver = Patched;
+  });
+
+  await openEditorial(page);
+  await section(page).getByRole("button", { name: "Play automatic collection changes" }).click();
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(
+    () =>
+      document
+        .querySelector('[data-collection-editorial] [role="group"][aria-label="Collection photographs"]')
+        ?.getAttribute("aria-busy") === "true",
+    null,
+    { polling: "raf", timeout: 10_000 },
+  );
+  await expect(section(page)).toHaveAttribute("data-active-collection", "summer");
 });
 
 test("autoplay is initially enabled but stops outside the viewport and for keyboard focus", async ({ page }) => {

@@ -4,12 +4,8 @@ import { ProductListingSection } from "@/components/product/ProductListingSectio
 import { getPublicCollectionBySlug } from "@/lib/supabase/queries/products";
 import type { ListingSearchParams } from "@/lib/product-listing";
 import { jsonLdScriptProps } from "@/lib/json-ld";
-import {
-  NOINDEX_NOFOLLOW,
-  breadcrumbSchema,
-  listingMetadata,
-  metaDescription,
-} from "@/lib/seo";
+import { breadcrumbSchema } from "@/lib/seo";
+import { collectionMetadata } from "@/lib/collection-metadata";
 
 /**
  * Every collection that is not one of the four with a hand-written page.
@@ -29,26 +25,8 @@ export async function generateMetadata({
   params,
   searchParams,
 }: CollectionPageProps): Promise<Metadata> {
-  const [{ slug }, resolvedSearchParams] = await Promise.all([params, searchParams]);
-  const collection = await getPublicCollectionBySlug(slug);
-
-  // A collection outside its schedule, deactivated, or simply absent renders
-  // notFound() below. Its metadata must refuse indexing rather than leave a
-  // 404 that returns HTML looking like a real page.
-  if (!collection) {
-    return { title: "Collection not found", robots: NOINDEX_NOFOLLOW };
-  }
-
-  return listingMetadata({
-    title: collection.seoTitle ?? collection.name,
-    description: metaDescription(
-      collection.seoDescription ?? collection.description,
-      `Shop the ${collection.name} collection from TARA — women's clothing delivered across Bangladesh.`,
-    ),
-    path: `/collection/${collection.slug}`,
-    ...(collection.imageUrl ? { images: [collection.imageUrl] } : {}),
-    searchParams: resolvedSearchParams,
-  });
+  const { slug } = await params;
+  return collectionMetadata(slug, searchParams);
 }
 
 export default async function CollectionSlugPage({ params, searchParams }: CollectionPageProps) {

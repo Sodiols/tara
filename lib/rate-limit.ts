@@ -5,7 +5,7 @@ import { headers } from "next/headers";
 
 import { createClient } from "./supabase/server";
 import { isSupabaseConfigured } from "./supabase/env";
-import { logger } from "./logger";
+import { describeError, logger } from "./logger";
 
 /**
  * Rate limiting, in two layers.
@@ -134,9 +134,14 @@ export async function consumeDurableLimit(
     if (error) throw error;
     return data !== false;
   } catch (error) {
+    // describeError, not String(error): Supabase reports failures as plain
+    // objects, and String() of one is the literal text "[object Object]". That
+    // is what this line logged for every receipt request while the database was
+    // missing the receipt bucket -- the message that named the fault,
+    // unknown_rate_limit_bucket, was the one thing thrown away.
     logger.warn("rate_limit.durable_unavailable", {
       bucket,
-      error: error instanceof Error ? error.message : String(error),
+      error: describeError(error),
     });
     return true;
   }

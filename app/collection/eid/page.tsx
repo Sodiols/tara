@@ -3,20 +3,16 @@ import { notFound } from "next/navigation";
 import { ProductListingSection } from "@/components/product/ProductListingSection";
 import { getPublicCollectionBySlug } from "@/lib/supabase/queries/products";
 import type { ListingSearchParams } from "@/lib/product-listing";
-import { siteConfig } from "@/data/site";
+import { collectionMetadata } from "@/lib/collection-metadata";
 
 const SLUG = "eid";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const collection = await getPublicCollectionBySlug(SLUG);
-  if (!collection) return { title: "Collection Not Found", robots: { index: false } };
-  const description = collection.description?.trim() || "Shop TARA's Eid Collection.";
-  return {
-    title: collection.name,
-    description,
-    openGraph: { title: collection.name, description },
-    alternates: { canonical: `${siteConfig.url}/collection/${SLUG}` },
-  };
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: ListingSearchParams;
+}): Promise<Metadata> {
+  return collectionMetadata(SLUG, searchParams);
 }
 
 /**

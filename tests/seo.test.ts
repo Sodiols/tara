@@ -2,6 +2,7 @@ import test, { describe } from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DEFAULT_SOCIAL_IMAGE,
   NOINDEX_FOLLOW,
   NOINDEX_NOFOLLOW,
   SCHEMA_IDS,
@@ -103,11 +104,42 @@ describe("Open Graph and Twitter", () => {
     assert.deepEqual(meta.twitter?.images, [`${siteConfig.url}/images/a.jpg`]);
   });
 
-  test("no image keys are emitted when there is no image", () => {
-    // An empty images array renders an empty og:image, which is worse than none.
-    const meta = buildMetadata({ title: "T", description: "d", path: "/p" });
-    assert.equal("images" in (meta.openGraph ?? {}), false);
-    assert.equal("images" in (meta.twitter ?? {}), false);
+  test("a page with no image shares the branded default, never an empty list", () => {
+    // The original invariant still holds — an empty og:image is worse than
+    // none. What changed is that "none" is no longer the answer: every page
+    // without a photograph used to share as a bare grey card.
+    const expected = `${siteConfig.url}${DEFAULT_SOCIAL_IMAGE.path}`;
+    for (const images of [undefined, [], ["", "   "]]) {
+      const meta = buildMetadata({ title: "T", description: "d", path: "/p", images });
+      assert.deepEqual(
+        meta.openGraph?.images,
+        [{ url: expected, width: 1200, height: 630, alt: DEFAULT_SOCIAL_IMAGE.alt }],
+        `images=${JSON.stringify(images)}`,
+      );
+      assert.deepEqual(meta.twitter?.images, [{ url: expected, alt: DEFAULT_SOCIAL_IMAGE.alt }]);
+    }
+  });
+
+  test("a page's own image always overrides the default", () => {
+    // A product shares its photograph, not the brand card.
+    const photo = "https://project.supabase.co/storage/v1/object/public/products/silk.jpg";
+    const meta = buildMetadata({
+      title: "Silk Kameez", description: "d", path: "/product/silk-kameez", images: [photo],
+    });
+    const serialised = JSON.stringify([meta.openGraph?.images, meta.twitter?.images]);
+    assert.equal(serialised.includes(DEFAULT_SOCIAL_IMAGE.path), false);
+    assert.deepEqual(meta.openGraph?.images, [photo]);
+    assert.deepEqual(meta.twitter?.images, [photo]);
+  });
+
+  test("the default image is the size every platform renders uncropped", async () => {
+    const { readFile } = await import("node:fs/promises");
+    const png = await readFile(new URL(`../public${DEFAULT_SOCIAL_IMAGE.path}`, import.meta.url));
+    // PNG signature, then the IHDR chunk carries width and height big-endian.
+    assert.equal(png.subarray(1, 4).toString("latin1"), "PNG");
+    assert.equal(png.readUInt32BE(16), DEFAULT_SOCIAL_IMAGE.width);
+    assert.equal(png.readUInt32BE(20), DEFAULT_SOCIAL_IMAGE.height);
+    assert.ok(png.length < 300_000, "social scrapers do not reliably fetch large images");
   });
 });
 

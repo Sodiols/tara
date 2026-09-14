@@ -39,6 +39,7 @@ function logCatalogueFailure(
   logFailure(event, error, context);
 }
 import { normaliseSizeValue } from "@/lib/product-size";
+import { summariseReviews } from "@/lib/review-summary";
 import {
   DEFAULT_PAGE_SIZE,
   MAX_PAGE_SIZE,
@@ -582,13 +583,42 @@ const readProductBySlug = unstable_cache(async (slug: string): Promise<Product |
   const product = toProduct(items[0]);
   if (!product) return null;
 
-  const { data: reviewRows } = await supabase
-    .from("reviews")
-    .select("id,author_name,rating,created_at,title,comment_en,order_item_id")
-    .eq("product_id", product.id)
-    .eq("status", "approved")
-    .order("created_at", { ascending: false })
-    .limit(50);
+  // Two reads of the same approved set: the newest 50 with their text for the
+  // page, and every rating (bounded) with an exact count for the summary.
+  const [{ data: reviewRows }, { data: ratingRows, count: approvedCount }] = await Promise.all([
+    supabase
+      .from("reviews")
+      .select("id,author_name,rating,created_at,title,comment_en,order_item_id")
+      .eq("product_id", product.id)
+      .eq("status", "approved")
+      .order("created_at", { ascending: false })
+      .limit(50),
+    supabase
+      .from("reviews")
+      .select("rating", { count: "exact" })
+      .eq("product_id", product.id)
+      .eq("status", "approved")
+      .limit(1000),
+  ]);
+
+  /*
+   * The rating shown under the title, in the reviews summary and in Product
+   * JSON-LD comes from the approved reviews themselves — not from
+   * products.average_rating / review_count.
+   *
+   * Those columns are a denormalised cache that anything writing the products
+   * table directly can make lie. A database with the development seed loaded
+   * published aggregateRating { 4.6, 27 } for products with no approved reviews
+   * at all, and showed "27 Customer Reviews" above an empty section. A rating
+   * nobody can read is fabricated structured data; deriving it here makes the
+   * three places that display it agree with the reviews actually on the page.
+   */
+  const summary = summariseReviews(
+    (ratingRows ?? []).map((row) => row.rating),
+    approvedCount,
+  );
+  product.rating = summary.rating;
+  product.reviewCount = summary.reviewCount;
 
   product.reviews = (reviewRows ?? []).map((review) => ({
     id: review.id,

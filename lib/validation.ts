@@ -4,6 +4,33 @@ import { DIVISIONS, resolveLocation } from "@/data/bangladesh-geography";
 import { DELIVERY_ZONES } from "@/lib/delivery";
 
 const email = z.string().trim().toLowerCase().email().max(200);
+
+/**
+ * A person's name: one line of printable text.
+ *
+ * `z.string().trim()` only strips control characters from the ENDS, so
+ * "Bob\r\nBcc: victim@example.com" passed every name field on the site. That
+ * value is interpolated into the subject line of the contact-form alert
+ * ("New TARA Contact Message — <name>"), printed on PDF receipts and shown in
+ * the admin panel. Resend is a JSON API rather than raw SMTP, so this is not a
+ * demonstrated header injection — but no real name contains a line break, a tab
+ * or a NUL, and a NUL additionally makes Postgres refuse the whole write, which
+ * surfaced to the customer as an unexplained failure.
+ *
+ * Rejected rather than silently stripped, so the person sees why and nothing
+ * they typed is quietly rewritten. C0 controls, DEL and C1 controls are refused;
+ * every printable character in any script is still allowed.
+ */
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F-\u009F]/;
+
+const personName = z
+  .string()
+  .trim()
+  .min(2)
+  .max(100)
+  .refine((value) => !CONTROL_CHARACTERS.test(value), {
+    message: "Use letters, spaces and punctuation only.",
+  });
 const password = z
   .string()
   .min(8)
@@ -30,7 +57,7 @@ export const loginSchema = z.object({
 
 export const registerSchema = z
   .object({
-    fullName: z.string().trim().min(2).max(100),
+    fullName: personName,
     phone: bangladeshPhone,
     email,
     password,
@@ -61,7 +88,7 @@ export const changePasswordSchema = z
   });
 
 export const profileSchema = z.object({
-  fullName: z.string().trim().min(2).max(100),
+  fullName: personName,
   phone: bangladeshPhone,
 });
 
@@ -71,7 +98,7 @@ export const profileSchema = z.object({
 export const addressSchema = z
   .object({
     id: z.string().uuid().optional(),
-    recipientName: z.string().trim().min(2).max(100),
+    recipientName: personName,
     phone: bangladeshPhone,
     division: z.string().trim().min(2).max(80),
     district: z.string().trim().min(2).max(80),
@@ -135,7 +162,7 @@ export const shippingAddressSchema = z.object({
 });
 
 export const checkoutSchema = z.object({
-  customerName: z.string().trim().min(2).max(100),
+  customerName: personName,
   // Required for both account and guest checkout because the saved order is the
   // source for the customer's confirmation and PDF receipt.
   customerEmail: email,
@@ -160,7 +187,7 @@ export const checkoutSchema = z.object({
 
 export const newsletterSchema = z.object({ email });
 export const contactSchema = z.object({
-  name: z.string().trim().min(2).max(100),
+  name: personName,
   email,
   phone: z.union([bangladeshPhone, z.literal("")]).optional(),
   message: z.string().trim().min(10).max(3000),

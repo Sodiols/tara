@@ -11,7 +11,7 @@ import { SupabaseConfigurationNotice } from "@/components/SupabaseConfigurationN
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 import { jsonLdScriptProps } from "@/lib/json-ld";
 import { freeDeliveryHeadline } from "@/lib/delivery";
-import { SCHEMA_IDS, postalAddress, websiteSchema } from "@/lib/seo";
+import { SCHEMA_IDS, defaultSocialImages, postalAddress, websiteSchema } from "@/lib/seo";
 
 const bodoniModa = Bodoni_Moda({
   subsets: ["latin"],
@@ -50,12 +50,17 @@ export const metadata: Metadata = {
     siteName: "TARA",
     locale: "en_US",
     type: "website",
+    // Inherited only by routes that set no openGraph of their own. Every route
+    // built with buildMetadata() gets its own images or this same default, so
+    // a page never ends up with an empty or missing share image.
+    images: defaultSocialImages().openGraph,
   },
   twitter: {
     card: "summary_large_image",
     title: "TARA | Women's Clothing and Accessories in Bangladesh",
     description:
       "Refined unready three piece and two piece clothing, and fashion accessories from Sylhet, Bangladesh.",
+    images: defaultSocialImages().twitter,
   },
   // Google Search Console domain verification, from the environment so no
   // personal token is committed. Absent or blank means no tag is emitted at
