@@ -85,7 +85,16 @@ export function Header({ identity }: { identity: StoreIdentity }) {
           what the three grid columns are for; 1fr / auto / 1fr centres the logo
           in the bar however wide either side happens to be.
         */}
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-x-6 h-16 lg:h-20 lg:flex lg:justify-between lg:gap-x-8">
+        {/*
+          BELOW sm the columns are auto / 1fr / auto, not 1fr / auto / 1fr.
+          A phone header now carries four icons — search, account, wishlist,
+          bag — and four icons beside a hamburger cannot share a bar with a
+          logo held at the exact centre until roughly 430px: the equal side
+          columns are too narrow for the icon group, which then overflows into
+          the logo. So on a phone the logo centres in the space between the
+          two sides instead, and from sm up the true centre returns.
+        */}
+        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 h-16 sm:grid-cols-[1fr_auto_1fr] sm:gap-x-6 lg:h-20 lg:flex lg:justify-between lg:gap-x-8">
           <div className="flex min-w-0 items-center lg:hidden">
             <button
               onClick={() => setMobileNavOpen(true)}
@@ -124,24 +133,27 @@ export function Header({ identity }: { identity: StoreIdentity }) {
           */}
           <div className="flex min-w-0 shrink-0 items-center justify-end gap-6 xl:gap-10">
             <DesktopNavigation />
-            <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+            <div className="flex shrink-0 items-center gap-0 sm:gap-1">
               <button
                 onClick={() => setSearchOpen(true)}
                 aria-label={"Search"}
-                className="p-2 text-ink hover:text-wine transition-colors"
+                className="p-1.5 sm:p-2 text-ink hover:text-wine transition-colors"
               >
                 <Search size={20} />
               </button>
+              {/*
+                Visible at every width. It used to be desktop-only, which left a
+                phone with no way into the account area from the bar at all —
+                only from inside the hamburger drawer.
+              */}
               {authState === "authenticated" ? (
-                <div className="hidden lg:inline-flex">
-                  <AccountMenu fullName={accountName} />
-                </div>
+                <AccountMenu fullName={accountName} />
               ) : (
                 <Link
                   href="/login"
                   aria-label={"Account"}
                   aria-busy={authState === "loading"}
-                  className={`p-2 text-ink hover:text-wine transition-colors hidden lg:inline-flex ${
+                  className={`inline-flex p-1.5 sm:p-2 text-ink hover:text-wine transition-colors ${
                     authState === "loading" ? "opacity-50" : ""
                   }`}
                 >
@@ -151,11 +163,11 @@ export function Header({ identity }: { identity: StoreIdentity }) {
               <Link
                 href="/wishlist"
                 aria-label={"Wishlist"}
-                className="relative p-2 text-ink hover:text-wine transition-colors hidden sm:inline-flex"
+                className="relative inline-flex p-1.5 sm:p-2 text-ink hover:text-wine transition-colors"
               >
                 <Heart size={20} />
                 {wishlistCount > 0 && (
-                  <span className="absolute top-1 right-1 bg-wine text-white text-[10px] leading-none rounded-full w-4 h-4 flex items-center justify-center">
+                  <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 bg-wine text-white text-[10px] leading-none rounded-full w-4 h-4 flex items-center justify-center">
                     {wishlistCount}
                   </span>
                 )}
@@ -163,11 +175,11 @@ export function Header({ identity }: { identity: StoreIdentity }) {
               <button
                 onClick={openBag}
                 aria-label={"Shopping Bag"}
-                className="relative p-2 text-ink hover:text-wine transition-colors"
+                className="relative p-1.5 sm:p-2 text-ink hover:text-wine transition-colors"
               >
                 <ShoppingBag size={20} />
                 {cartCount > 0 && (
-                  <span className="absolute top-1 right-1 bg-wine text-white text-[10px] leading-none rounded-full w-4 h-4 flex items-center justify-center">
+                  <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 bg-wine text-white text-[10px] leading-none rounded-full w-4 h-4 flex items-center justify-center">
                     {cartCount}
                   </span>
                 )}
