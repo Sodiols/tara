@@ -8,7 +8,7 @@ import { logFailure } from "@/lib/logger";
  * Only publicly indexable pages appear here.
  *
  * Deliberately excluded: the admin panel, the account area, checkout, the bag,
- * the wishlist, every auth screen, order tracking and search results. Those are
+ * every auth screen, order tracking and search results. Those are
  * either private, transient, or infinite-variant URLs that would dilute the
  * index without ever earning a click.
  *

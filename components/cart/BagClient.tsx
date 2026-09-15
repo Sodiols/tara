@@ -5,8 +5,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { ShoppingBag, Minus, Plus } from "lucide-react";
 import { useCartStore } from "@/store/cartStore";
-import { useWishlistStore } from "@/store/wishlistStore";
-import { useToastStore } from "@/store/toastStore";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -27,8 +25,6 @@ interface BagClientProps {
 export function BagClient({ deliverySettings }: BagClientProps) {
   const { items, removeItem, updateQuantity, subtotal } = useCartStore();
   const hasHydrated = useCartStore((state) => state.hasHydrated);
-  const addWishlistItem = useWishlistStore((s) => s.addItem);
-  const { addToast } = useToastStore();
   const [coupon, setCoupon] = useState("");
   const [couponMessage, setCouponMessage] = useState("");
   const [couponDiscount, setCouponDiscount] = useState(0);
@@ -43,18 +39,6 @@ export function BagClient({ deliverySettings }: BagClientProps) {
   const deliveryFee = subtotalValue === 0 ? 0 : deliveryQuote.fee;
   const total = Math.max(0, subtotalValue + deliveryFee - couponDiscount);
   const deliveryHeadline = freeDeliveryHeadline(deliverySettings);
-
-  const handleMoveToWishlist = (item: (typeof items)[number]) => {
-    addWishlistItem({
-      productId: item.productId,
-      slug: item.slug,
-      name: item.name,
-      image: item.image,
-      price: item.price,
-    });
-    removeItem(item.productId, item.size, item.colour);
-    addToast("Move to Bag");
-  };
 
   const handleApplyCoupon = async () => {
     if (!coupon.trim()) {
@@ -149,12 +133,6 @@ export function BagClient({ deliverySettings }: BagClientProps) {
                       </button>
                     </div>
                     <div className="flex items-center gap-4">
-                      <button
-                        onClick={() => handleMoveToWishlist(item)}
-                        className="text-xs text-muted hover:text-ink underline underline-offset-2"
-                      >
-                        {"Move to Wishlist"}
-                      </button>
                       <button
                         onClick={() => removeItem(item.productId, item.size, item.colour)}
                         className="text-xs text-muted hover:text-wine underline underline-offset-2"

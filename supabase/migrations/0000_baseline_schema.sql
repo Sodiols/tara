@@ -227,14 +227,6 @@ create table if not exists public.cart_items (
   unique (cart_id, product_variant_id)
 );
 
-create table if not exists public.wishlist_items (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.profiles(id) on delete cascade,
-  product_id uuid not null references public.products(id) on delete cascade,
-  created_at timestamptz not null default now(),
-  unique (user_id, product_id)
-);
-
 create table if not exists public.coupons (
   id uuid primary key default gen_random_uuid(),
   code text not null unique,
@@ -1102,7 +1094,6 @@ alter table public.product_images enable row level security;
 alter table public.product_variants enable row level security;
 alter table public.carts enable row level security;
 alter table public.cart_items enable row level security;
-alter table public.wishlist_items enable row level security;
 alter table public.coupons enable row level security;
 alter table public.orders enable row level security;
 alter table public.order_items enable row level security;
@@ -1129,7 +1120,6 @@ drop policy if exists product_variants_public_read on public.product_variants;
 drop policy if exists product_variants_staff_manage on public.product_variants;
 drop policy if exists carts_own on public.carts;
 drop policy if exists cart_items_own on public.cart_items;
-drop policy if exists wishlist_own on public.wishlist_items;
 drop policy if exists orders_own_or_staff_read on public.orders;
 drop policy if exists orders_staff_update on public.orders;
 drop policy if exists order_items_owner_or_staff_read on public.order_items;
@@ -1178,8 +1168,6 @@ create policy carts_own on public.carts for all using (user_id = auth.uid()) wit
 create policy cart_items_own on public.cart_items for all
   using (exists (select 1 from public.carts c where c.id = cart_id and c.user_id = auth.uid()))
   with check (exists (select 1 from public.carts c where c.id = cart_id and c.user_id = auth.uid()));
-create policy wishlist_own on public.wishlist_items for all
-  using (user_id = auth.uid()) with check (user_id = auth.uid());
 
 create policy orders_own_or_staff_read on public.orders for select
   using (user_id = auth.uid() or public.is_staff());
@@ -1222,7 +1210,7 @@ grant usage on schema public to anon, authenticated;
 revoke all on table
   public.profiles, public.addresses, public.categories, public.collections,
   public.products, public.product_images, public.product_variants,
-  public.carts, public.cart_items, public.wishlist_items, public.coupons,
+  public.carts, public.cart_items, public.coupons,
   public.coupon_redemptions, public.orders, public.order_items,
   public.order_tracking_events, public.reviews, public.store_settings,
   public.contact_messages, public.newsletter_subscribers
@@ -1243,7 +1231,7 @@ grant update (full_name, phone, avatar_url, preferred_language, updated_at)
   on public.profiles to authenticated;
 
 grant select, insert, update, delete on table
-  public.addresses, public.carts, public.cart_items, public.wishlist_items
+  public.addresses, public.carts, public.cart_items
 to authenticated;
 
 grant select, update on table public.orders to authenticated;
@@ -1311,7 +1299,7 @@ begin
   foreach required_table in array array[
     'profiles', 'addresses', 'categories', 'collections', 'products',
     'product_images', 'product_variants', 'carts', 'cart_items',
-    'wishlist_items', 'coupons', 'coupon_redemptions', 'orders',
+    'coupons', 'coupon_redemptions', 'orders',
     'order_items', 'order_tracking_events', 'reviews', 'store_settings',
     'contact_messages', 'newsletter_subscribers'
   ]

@@ -7,7 +7,6 @@ import { Eye, ShoppingBag } from "lucide-react";
 import type { Product } from "@/types";
 import { useAddToCart } from "@/hooks/useAddToCart";
 import { PriceDisplay } from "./PriceDisplay";
-import { WishlistButton } from "./WishlistButton";
 import { resolveCategoryLabel } from "@/lib/utils";
 import { ONE_SIZE, hasSelectableSizes, sortSizes } from "@/lib/product-size";
 import { requiresVariantChoice } from "@/lib/product-variants";
@@ -30,7 +29,7 @@ interface ProductCardProps {
  *
  * One component, rendered by ProductGrid and ProductCarousel, which between
  * them cover the homepage rails, the category listings, search, related
- * products, recently viewed and the wishlist. There is deliberately no second
+ * products and recently viewed. There is deliberately no second
  * implementation — a card that looks different on the homepage than in search
  * is how a catalogue stops feeling like one shop.
  *
@@ -50,10 +49,9 @@ interface ProductCardProps {
  * at 4:5 it measured 58% and the card looked like a text block with a picture
  * on top. The skeleton uses the same ratio, so nothing shifts on load.
  *
- * The two actions are separated on purpose. The wishlist sits beside the title
- * as a light, reversible "keep this"; the bag sits at the bottom right in Deep
- * Wine as the one committing action on the card. Both are real buttons that
- * stop the event, so neither can fire the link they are nested inside.
+ * The bag sits at the bottom right in Deep Wine as the one committing action on
+ * the card. It is a real button that stops the event, so it cannot fire the
+ * link it is nested inside.
  *
  * EQUAL HEIGHTS
  * -------------
@@ -192,7 +190,7 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
         that reservation was meant to provide, so all it added was the hole.
       */}
       <div className="flex flex-1 flex-col px-1.5 pb-0.5 pt-2.5 sm:px-2">
-        <div className="flex items-start justify-between gap-2">
+        <div className="flex items-start gap-2">
           <div className="min-w-0 flex-1">
             <Link
               href={`/product/${product.slug}`}
@@ -220,8 +218,6 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
               {resolveCategoryLabel(product)}
             </p>
           </div>
-
-          <WishlistButton product={product} variant="card" className="-mt-0.5" />
         </div>
 
         {(showSizes || product.colours.length > 1) && (

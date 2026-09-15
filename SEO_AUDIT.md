@@ -127,7 +127,7 @@ new ones and carry the query string across.
 | 5 category pages | any category URL with a filter/sort/page param |
 | `/collection`, each visible collection | collections outside their schedule |
 | every active product | missing product / collection (`noindex, nofollow`) |
-| `/new-arrivals` | `/account`, `/checkout`, `/bag`, `/wishlist` |
+| `/new-arrivals` | `/account`, `/checkout`, `/bag` |
 | `/about`, `/contact`, `/faq`, `/size-guide` | `/login`, `/register`, password reset |
 | `/delivery-information`, `/exchange-policy` | `/admin` (robots + header + metadata) |
 | `/privacy-policy`, `/terms-and-conditions` | `/track-order`, `/unsubscribe`, `/maintenance`, `/api` |
@@ -189,7 +189,7 @@ Honest list of what this pass did **not** do.
 5. ~~A listing-page hydration bug~~ — **fixed**. Every `loading.tsx` was
    removed: the Suspense boundary one creates was streamed and painted but never
    hydrated on this Next 16 / React 19 combination, leaving filters, sorting,
-   add-to-cart and the wishlist inert on every catalogue route. See
+   and add-to-cart inert on every catalogue route. See
    `tests/route-hydration.test.ts` for the proof and the guard.
 
 ---

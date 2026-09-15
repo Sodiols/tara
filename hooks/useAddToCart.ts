@@ -41,8 +41,8 @@ export function useIsDesktopViewport(): boolean {
 /**
  * Adds an item to the cart, the same way everywhere.
  *
- * Every entry point — the product page, the product card, quick view, the
- * wishlist — goes through this, so the confirmation, the toast duration and
+ * Every entry point — the product page, the product card, quick view —
+ * goes through this, so the confirmation, the toast duration and
  * the drawer behaviour cannot drift apart between them.
  *
  * WHAT IT DOES

@@ -389,7 +389,7 @@ grant execute on function public.collection_is_visible(uuid) to anon, authentica
 Accepted keys (all optional):
 
   slug            text     -- one exact product slug (used by the product page)
-  slugs           [text]   -- several exact slugs (wishlist, recently viewed)
+  slugs           [text]   -- several exact slugs (recently viewed)
   categorySlug    text     -- exact category slug
   collectionSlug  text     -- exact collection slug (visibility is checked)
   query           text     -- matches name, product code or an exact tag

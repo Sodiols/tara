@@ -4,11 +4,9 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
-import { Menu, Search, User, Heart, ShoppingBag } from "lucide-react";
+import { Menu, Search, User, ShoppingBag } from "lucide-react";
 import { DesktopNavigation } from "./DesktopNavigation";
 import { useCartStore } from "@/store/cartStore";
-import { useWishlistStore } from "@/store/wishlistStore";
-import { useHasMounted } from "@/hooks/useHasMounted";
 import { Container } from "./Container";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import type { StoreIdentity } from "@/lib/supabase/queries/settings";
@@ -42,13 +40,10 @@ const serverSessionCookie = () => null;
 export function Header({ identity }: { identity: StoreIdentity }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
-  const hasMounted = useHasMounted();
   const cartCountRaw = useCartStore((s) => s.itemCount());
   const cartHasHydrated = useCartStore((s) => s.hasHydrated);
   const openBag = useCartStore((s) => s.openBag);
-  const wishlistCountRaw = useWishlistStore((s) => s.items.length);
   const cartCount = cartHasHydrated ? cartCountRaw : 0;
-  const wishlistCount = hasMounted ? wishlistCountRaw : 0;
   const [sdkAuthState, setAuthState] = useState<
     "loading" | "authenticated" | "anonymous"
   >(() => (isSupabaseConfigured() ? "loading" : "anonymous"));
@@ -116,8 +111,8 @@ export function Header({ identity }: { identity: StoreIdentity }) {
         */}
         {/*
           BELOW sm the columns are auto / 1fr / auto, not 1fr / auto / 1fr.
-          A phone header now carries four icons — search, account, wishlist,
-          bag — and four icons beside a hamburger cannot share a bar with a
+          A phone header now carries three icons — search, account, bag —
+          and those icons beside a hamburger cannot share a bar with a
           logo held at the exact centre until roughly 430px: the equal side
           columns are too narrow for the icon group, which then overflows into
           the logo. So on a phone the logo centres in the space between the
@@ -158,7 +153,7 @@ export function Header({ identity }: { identity: StoreIdentity }) {
             The links and the icons travel together as the right-hand group. The
             outer gap only separates those two clusters — the icons keep their
             own tight spacing in the inner box, so moving the nav here does not
-            push the cart away from the wishlist.
+            push the cart away from the other icons.
           */}
           <div className="flex min-w-0 shrink-0 items-center justify-end gap-6 xl:gap-10">
             <DesktopNavigation />
@@ -189,18 +184,6 @@ export function Header({ identity }: { identity: StoreIdentity }) {
                   <User size={20} />
                 </Link>
               )}
-              <Link
-                href="/wishlist"
-                aria-label={"Wishlist"}
-                className="relative inline-flex p-1.5 sm:p-2 text-ink hover:text-wine transition-colors"
-              >
-                <Heart size={20} />
-                {wishlistCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 bg-wine text-white text-[10px] leading-none rounded-full w-4 h-4 flex items-center justify-center">
-                    {wishlistCount}
-                  </span>
-                )}
-              </Link>
               <button
                 onClick={openBag}
                 aria-label={"Shopping Bag"}

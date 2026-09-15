@@ -2,13 +2,12 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import Link from "next/link";
-import { Heart, KeyRound, LogOut, MapPin, Package, Truck, User } from "lucide-react";
+import { KeyRound, LogOut, MapPin, Package, Truck, User } from "lucide-react";
 import type { Database } from "@/types/database";
 import { updateProfileAction } from "@/lib/supabase/actions/profile";
 import { logoutAction } from "@/lib/supabase/actions/auth";
 import { useToastStore } from "@/store/toastStore";
 import { useCartStore } from "@/store/cartStore";
-import { useWishlistStore } from "@/store/wishlistStore";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { Container } from "@/components/layout/Container";
 import { Input } from "@/components/ui/Input";
@@ -22,7 +21,6 @@ export function AccountClient({ profile }: { profile: Profile }) {
   const [name, setName] = useState(profile.full_name);
   const [phone, setPhone] = useState(profile.phone);
   const clearBag = useCartStore((state) => state.clearBag);
-  const clearWishlist = useWishlistStore((state) => state.replaceItems);
 
   function submit(event: FormEvent) {
     event.preventDefault();
@@ -45,10 +43,9 @@ export function AccountClient({ profile }: { profile: Profile }) {
             <Link href="/account/profile" className="flex h-12 items-center gap-3 bg-beige px-4 text-sm text-ink"><User size={16} />{"Profile"}</Link>
             <Link href="/account/orders" className="flex h-12 items-center gap-3 px-4 text-sm text-muted hover:bg-beige/50 hover:text-ink"><Package size={16} />{"Order History"}</Link>
             <Link href="/track-order" className="flex h-12 items-center gap-3 px-4 text-sm text-muted hover:bg-beige/50 hover:text-ink"><Truck size={16} />{"Track Order"}</Link>
-            <Link href="/account/wishlist" className="flex h-12 items-center gap-3 px-4 text-sm text-muted hover:bg-beige/50 hover:text-ink"><Heart size={16} />{"Wishlist"}</Link>
             <Link href="/account/addresses" className="flex h-12 items-center gap-3 px-4 text-sm text-muted hover:bg-beige/50 hover:text-ink"><MapPin size={16} />{"Addresses"}</Link>
             <Link href="/account/security" className="flex h-12 items-center gap-3 px-4 text-sm text-muted hover:bg-beige/50 hover:text-ink"><KeyRound size={16} />{"Change Password"}</Link>
-            <form action={logoutAction} onSubmit={() => { clearBag(); clearWishlist([]); }}>
+            <form action={logoutAction} onSubmit={clearBag}>
               <button className="flex h-12 w-full items-center gap-3 px-4 text-sm text-muted hover:bg-beige/50 hover:text-wine"><LogOut size={16} />{"Logout"}</button>
             </form>
           </nav>

@@ -9,6 +9,7 @@ import { ProductDetailClient } from "@/components/product/ProductDetailClient";
 import { siteConfig } from "@/data/site";
 import { categoryHref, humanizeSlug } from "@/lib/utils";
 import { jsonLdScriptProps } from "@/lib/json-ld";
+import { PRODUCT_PLACEHOLDER_IMAGE } from "@/lib/images";
 import {
   NOINDEX_NOFOLLOW,
   SCHEMA_IDS,
@@ -68,7 +69,9 @@ export async function generateMetadata({ params }: ProductPageProps): Promise<Me
     absoluteTitle: hasCustomTitle,
     description: metaDescription(product.seoDescription, product.description),
     path: `/product/${product.slug}`,
-    images: product.images,
+    // The placeholder is not a photograph of the product, so a shared link
+    // gets the branded default image instead.
+    images: product.images.filter((image) => image !== PRODUCT_PLACEHOLDER_IMAGE),
   });
 }
 
@@ -97,7 +100,9 @@ export default async function ProductPage({ params }: ProductPageProps) {
     url: productUrl,
     name: product.name,
     description: product.description,
-    image: product.media.map((item) => item.url),
+    image: product.media
+      .map((item) => item.url)
+      .filter((url) => url !== PRODUCT_PLACEHOLDER_IMAGE),
     sku: product.productCode,
     brand: { "@type": "Brand", name: siteConfig.name },
     ...(product.categoryName ? { category: product.categoryName } : {}),

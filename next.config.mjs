@@ -119,7 +119,7 @@ const nextConfig = {
       {
         // Nothing under these paths should ever be cached by a shared cache or
         // indexed: they render one specific customer's or staff member's data.
-        source: "/(admin|account|checkout|bag|wishlist)/:path*",
+        source: "/(admin|account|checkout|bag)/:path*",
         headers: [
           { key: "Cache-Control", value: "private, no-store, max-age=0" },
           { key: "X-Robots-Tag", value: "noindex, nofollow" },

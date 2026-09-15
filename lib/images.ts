@@ -1,3 +1,6 @@
+/** Shown wherever a product has no photograph yet, so no <Image> gets src="". */
+export const PRODUCT_PLACEHOLDER_IMAGE = "/images/product-placeholder.svg";
+
 export function img(id: string, width = 900, height = 1125): string {
   return `https://images.unsplash.com/photo-${id}?w=${width}&h=${height}&fit=crop&q=80&auto=format`;
 }

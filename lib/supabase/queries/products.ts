@@ -15,6 +15,7 @@ import { createPublicServerClient } from "../public-server";
 import { isSupabaseConfigured } from "../env";
 import { logger, logFailure } from "@/lib/logger";
 import { describeMissingMigration } from "../errors";
+import { PRODUCT_PLACEHOLDER_IMAGE } from "@/lib/images";
 
 /**
  * Logs a catalogue failure, distinguishing "the migration has not been applied"
@@ -226,7 +227,12 @@ function toProduct(raw: unknown, reviews: Review[] = []): Product | null {
   if (!id || !slug) return null;
 
   const previousPrice = row.previousPrice == null ? undefined : asNumber(row.previousPrice);
-  const productImages = asStringArray(row.images);
+  // Blank URLs are dropped and a product with no photograph gets the
+  // placeholder, so every card, quick view and bag line has a real src.
+  const uploadedImages = asStringArray(row.images)
+    .map((url) => url.trim())
+    .filter(Boolean);
+  const productImages = uploadedImages.length ? uploadedImages : [PRODUCT_PLACEHOLDER_IMAGE];
 
   return {
     id,
@@ -705,7 +711,7 @@ export async function getProductVariants(productId: string): Promise<ProductVari
 /**
  * Several products by slug, in one query.
  *
- * The wishlist rail and the recently-viewed rail each hold a list of slugs. The
+ * The recently-viewed rail holds a list of slugs. The
  * catalogue API used to resolve them with one getProductBySlug() per slug, and
  * each of those hydrated images, variants, reviews, category and collection —
  * so a twelve-slug request became dozens of database round trips for a strip of

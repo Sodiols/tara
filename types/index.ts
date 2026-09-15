@@ -157,12 +157,3 @@ export interface CartItem {
    */
   variantId?: string;
 }
-
-export interface WishlistItem {
-  productId: string;
-  slug: string;
-  name: string;
-  image: string;
-  price: number;
-  previousPrice?: number;
-}

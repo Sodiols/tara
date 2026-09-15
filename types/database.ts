@@ -186,12 +186,6 @@ export interface Database {
           quantity: number;
         }
       >;
-      wishlist_items: Table<{
-        id: string;
-        user_id: string;
-        product_id: string;
-        created_at: string;
-      }>;
       orders: Table<
         Timestamps & {
           id: string;

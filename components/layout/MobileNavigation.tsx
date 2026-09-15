@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { X, User, Heart, Headset, KeyRound, LogOut, MapPin, Package, Truck } from "lucide-react";
+import { X, User, Headset, KeyRound, LogOut, MapPin, Package, Truck } from "lucide-react";
 import { navItems } from "./DesktopNavigation";
 import { MobileCollectionAccordion } from "./MobileCollectionAccordion";
 import type { StoreIdentity } from "@/lib/supabase/queries/settings";
@@ -9,7 +9,6 @@ import { createPortal } from "react-dom";
 import { useId, useRef } from "react";
 import { logoutAction } from "@/lib/supabase/actions/auth";
 import { useCartStore } from "@/store/cartStore";
-import { useWishlistStore } from "@/store/wishlistStore";
 import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
 
 interface MobileNavigationProps {
@@ -25,7 +24,6 @@ export function MobileNavigation({ isOpen, onClose, identity, authenticated }: M
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const titleId = useId();
   const clearBag = useCartStore((s) => s.clearBag);
-  const clearWishlist = useWishlistStore((s) => s.replaceItems);
 
   // The drawer covers the page but the page stays rendered and focusable
   // behind it, so without a trap Tab walked straight out of the navigation and
@@ -118,13 +116,6 @@ export function MobileNavigation({ isOpen, onClose, identity, authenticated }: M
             </>
           )}
           <Link
-            href="/wishlist"
-            onClick={onClose}
-            className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
-          >
-            <Heart size={17} /> {"Wishlist"}
-          </Link>
-          <Link
             href="/contact"
             onClick={onClose}
             className="flex items-center gap-3 h-12 px-5 text-sm text-ink hover:bg-beige/60 transition-colors"
@@ -144,7 +135,6 @@ export function MobileNavigation({ isOpen, onClose, identity, authenticated }: M
               action={logoutAction}
               onSubmit={() => {
                 clearBag();
-                clearWishlist([]);
                 onClose();
               }}
             >

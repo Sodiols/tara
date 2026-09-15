@@ -3,7 +3,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  Heart,
   KeyRound,
   LogOut,
   MapPin,
@@ -13,7 +12,6 @@ import {
   User,
 } from "lucide-react";
 import { useCartStore } from "@/store/cartStore";
-import { useWishlistStore } from "@/store/wishlistStore";
 import { logoutAction } from "@/lib/supabase/actions/auth";
 
 interface AccountMenuProps {
@@ -27,7 +25,6 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
   const panelId = useId();
   const openBag = useCartStore((s) => s.openBag);
   const clearBag = useCartStore((s) => s.clearBag);
-  const clearWishlist = useWishlistStore((s) => s.replaceItems);
 
   const close = () => setOpen(false);
 
@@ -95,9 +92,6 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
             <Link href="/account/profile" onClick={close} className={linkClass}>
               <User size={16} /> {"Profile"}
             </Link>
-            <Link href="/account/wishlist" onClick={close} className={linkClass}>
-              <Heart size={16} /> {"Wishlist"}
-            </Link>
             <button
               type="button"
               onClick={() => {
@@ -123,10 +117,7 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
             <div className="my-1 border-t border-border" role="presentation" />
             <form
               action={logoutAction}
-              onSubmit={() => {
-                clearBag();
-                clearWishlist([]);
-              }}
+              onSubmit={clearBag}
             >
               <button type="submit" className={`${linkClass} w-full text-left text-wine hover:text-wine`}>
                 <LogOut size={16} /> {"Logout"}

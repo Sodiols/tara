@@ -15,7 +15,6 @@ import { PriceDisplay } from "./PriceDisplay";
 import { SizeSelector } from "./SizeSelector";
 import { ColourSelector } from "./ColourSelector";
 import { QuantitySelector } from "./QuantitySelector";
-import { WishlistButton } from "./WishlistButton";
 import { AccordionItem } from "./ProductAccordion";
 import { ReviewsSection } from "./ReviewsSection";
 import { RelatedProductsSection } from "./RelatedProductsSection";
@@ -254,10 +253,6 @@ export function ProductDetailClient({
               >
                 {"Buy Now"}
               </Button>
-            </div>
-            <div className="flex items-center gap-3">
-              <WishlistButton product={product} variant="detail" />
-              <span className="text-xs text-muted">{"Wishlist"}</span>
             </div>
           </div>
 

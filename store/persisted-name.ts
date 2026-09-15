@@ -1,11 +1,11 @@
 /**
- * The bag and the wishlist are persisted to localStorage on the shopper's own
- * device, so a release cannot assume the stored shape matches the current one.
+ * The bag is persisted to localStorage on the shopper's own device, so a
+ * release cannot assume the stored shape matches the current one.
  *
  * Before the store went English-only, `name` was saved as `{ en, bn }`. Anyone
- * who filled their bag or wishlist on the old build still carries that object
- * around. Rendering it directly would print "[object Object]" in the bag
- * drawer, the wishlist grid and the checkout summary — so both stores run this
+ * who filled their bag on the old build still carries that object around.
+ * Rendering it directly would print "[object Object]" in the bag drawer and
+ * the checkout summary — so the store runs this
  * through a versioned zustand `migrate` on first load after the upgrade.
  */
 export function flattenName(name: unknown): string {

@@ -490,7 +490,7 @@ begin
           and entity_id in (select id from public.reviews where product_id = p_id);
 
       -- Cascades: images, variants (and their cart lines and stock movements),
-      -- wishlist entries, reviews. None of it is referenced by an order, which
+      -- reviews. None of it is referenced by an order, which
       -- was checked above.
       delete from public.products where id = p_id;
 

@@ -46,7 +46,7 @@ one — see [docs/TESTING.md](docs/TESTING.md).
   key only; the service-role key is not used anywhere in this repository
 - **Tailwind CSS**
 - **Zod** for input validation on both sides of every boundary
-- **Zustand** for the guest cart and wishlist, persisted to localStorage
+- **Zustand** for the guest cart, persisted to localStorage
 
 ## The rules this codebase holds to
 

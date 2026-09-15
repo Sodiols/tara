@@ -4,14 +4,11 @@ import { useEffect, useRef } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { persistCartAction, syncCartAction } from "@/lib/supabase/actions/cart";
-import { syncWishlistAction } from "@/lib/supabase/actions/wishlist";
 import { useCartStore } from "@/store/cartStore";
-import { useWishlistStore } from "@/store/wishlistStore";
 
 export function AuthDataSync() {
   const syncedUser = useRef<string | undefined>(undefined);
   const replaceCart = useCartStore((state) => state.replaceItems);
-  const replaceWishlist = useWishlistStore((state) => state.replaceItems);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) return;
@@ -28,18 +25,13 @@ export function AuthDataSync() {
           unsubscribeCart?.();
           unsubscribeCart = undefined;
           replaceCart([]);
-          replaceWishlist([]);
         }
         return;
       }
       if (syncedUser.current === data.user.id) return;
       syncedUser.current = data.user.id;
-      const [cart, wishlist] = await Promise.all([
-        syncCartAction(useCartStore.getState().items),
-        syncWishlistAction(useWishlistStore.getState().items),
-      ]);
+      const cart = await syncCartAction(useCartStore.getState().items);
       if (cart.ok) replaceCart(cart.items);
-      if (wishlist.ok) replaceWishlist(wishlist.items);
 
       previousItems = useCartStore.getState().items;
       unsubscribeCart?.();
@@ -57,6 +49,6 @@ export function AuthDataSync() {
       unsubscribeCart?.();
       if (persistTimer) clearTimeout(persistTimer);
     };
-  }, [replaceCart, replaceWishlist]);
+  }, [replaceCart]);
   return null;
 }

@@ -3,8 +3,8 @@ import { getProductsBySlugs, searchProducts } from "@/lib/supabase/queries/produ
 import { guardPublicAction, consumeDurableLimit } from "@/lib/rate-limit";
 
 /**
- * Public catalogue lookup, used by the search overlay, the wishlist rail and
- * the recently-viewed rail.
+ * Public catalogue lookup, used by the search overlay and the recently-viewed
+ * rail.
  *
  * Everything it returns is already public, so the risk here is not disclosure
  * but load. Both branches are now a single database round trip: `slugs` used to

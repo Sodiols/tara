@@ -21,7 +21,6 @@ export default function robots(): MetadataRoute.Robots {
           "/account/",
           "/checkout",
           "/bag",
-          "/wishlist",
           "/login",
           "/register",
           "/forgot-password",

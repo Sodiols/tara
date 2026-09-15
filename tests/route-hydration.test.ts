@@ -13,8 +13,8 @@ import path from "node:path";
  * painted but never hydrated: the boundary comment ends up `$~` instead of `$`,
  * and every client component inside it stays inert.
  *
- * On the catalogue routes that meant the filters, the sort dropdown, add to
- * cart and the wishlist did nothing at all — the page looked perfect and no
+ * On the catalogue routes that meant the filters, the sort dropdown and add
+ * to cart did nothing at all — the page looked perfect and no
  * error was logged anywhere. Products and copy were still in the server HTML,
  * so it was invisible to crawlers and to any check that reads the markup.
  *
