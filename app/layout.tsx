@@ -31,9 +31,9 @@ export const metadata: Metadata = {
   metadataBase: new URL(siteConfig.url),
   icons: {
     icon: {
-      url: "/logo/favicon.png",
+      url: "/logo/logo-off-white.png",
       type: "image/png",
-      sizes: "512x512",
+      sizes: "1914x490",
     },
   },
   title: {
