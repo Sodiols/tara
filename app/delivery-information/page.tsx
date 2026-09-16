@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { buildMetadata } from "@/lib/seo";
 import { DeliveryInformationClient } from "@/components/policies/DeliveryInformationClient";
-import { getDeliverySettings } from "@/lib/supabase/queries/settings";
+import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 
 export const metadata: Metadata = buildMetadata({
   title: "Delivery Information",
@@ -11,6 +11,8 @@ export const metadata: Metadata = buildMetadata({
 });
 
 export default async function DeliveryInformationPage() {
-  const delivery = await getDeliverySettings();
-  return <DeliveryInformationClient delivery={delivery} />;
+  const settings = await getPublicStoreSettings();
+  return (
+    <DeliveryInformationClient delivery={settings.delivery} policies={settings.policies} />
+  );
 }

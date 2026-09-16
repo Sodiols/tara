@@ -6,6 +6,7 @@ import Image from "next/image";
 import { usePathname } from "next/navigation";
 import {
   Archive,
+  BarChart3,
   Boxes,
   ClipboardList,
   FileClock,
@@ -16,6 +17,7 @@ import {
   Mail,
   Menu,
   Package,
+  Megaphone,
   Percent,
   Send,
   Settings,
@@ -48,6 +50,12 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: "/admin", label: "Dashboard", icon: Gauge },
       { href: "/admin/analytics", label: "Analytics", icon: LayoutGrid, permission: "analytics.view" },
+      {
+        href: "/admin/marketing",
+        label: "Marketing analytics",
+        icon: BarChart3,
+        permission: "analytics.view",
+      },
     ],
   },
   {
@@ -59,6 +67,12 @@ const NAV_GROUPS: NavGroup[] = [
       { href: "/admin/categories", label: "Categories", icon: FolderTree, permission: "catalogue.manage" },
       { href: "/admin/collections", label: "Collections", icon: Store, permission: "catalogue.manage" },
       { href: "/admin/coupons", label: "Coupons", icon: Percent, permission: "coupons.manage" },
+      {
+        href: "/admin/launch-offer",
+        label: "Launch offer",
+        icon: Megaphone,
+        permission: "catalogue.manage",
+      },
     ],
   },
   {

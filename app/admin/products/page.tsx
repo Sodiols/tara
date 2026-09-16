@@ -155,6 +155,12 @@ export default async function AdminProductsPage({
                   const lowCount = variants.filter(
                     (v) => v.stock_quantity <= v.low_stock_threshold,
                   ).length;
+                  // The one completeness signal worth a whole column of the
+                  // list: a product with no photograph renders a neutral
+                  // placeholder on the storefront and will not sell. The rest
+                  // of the checklist lives in the editor, where it can be
+                  // acted on.
+                  const imageCount = product.product_images?.length ?? 0;
 
                   return (
                     <tr key={product.id} className="transition-colors hover:bg-taraIvory/40">
@@ -168,6 +174,11 @@ export default async function AdminProductsPage({
                         <span className="mt-0.5 block font-sans text-xs text-muted">
                           {product.product_code} · /{product.slug}
                         </span>
+                        {imageCount === 0 && (
+                          <span className="mt-1 inline-flex items-center rounded-control border border-[#8A6A1F]/40 bg-[#8A6A1F]/10 px-1.5 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-[#8A6A1F]">
+                            Needs photographs
+                          </span>
+                        )}
                       </Td>
                       <Td>{product.categories?.name_en ?? "—"}</Td>
                       <Td align="right">

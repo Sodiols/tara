@@ -38,7 +38,23 @@ SENTRY_ENVIRONMENT                 # server label for reports
 NEXT_PUBLIC_SENTRY_ENVIRONMENT     # the same label for browser reports; set both alike
 NEXT_PUBLIC_APP_VERSION
 LOG_LEVEL                          # defaults to info in production
+NEXT_PUBLIC_GA4_MEASUREMENT_ID     # G-XXXXXXXXXX — turns Google Analytics 4 on
+NEXT_PUBLIC_META_PIXEL_ID          # 15-16 digits — turns the Meta pixel on
+NEXT_PUBLIC_TIKTOK_PIXEL_ID        # turns the TikTok pixel on
 ```
+
+The three measurement tags are independent and all three are **off** unless an
+id is set. A tag that is not configured loads no script, sends no request, and
+is not named in the Content Security Policy — see `lib/analytics/config.ts`,
+which is the one place their presence is decided, and which the policy in
+`lib/supabase/proxy.ts` reads so the header and the page can never disagree.
+The ids are validated by shape, so a placeholder left in an environment file
+does not load a tag that then fails silently.
+
+None of the three is required. TARA's own first-party analytics
+(/admin/marketing) works without them and is what the marketing dashboard is
+built on; the tags exist so the same events also reach the ad platforms that
+need them for optimisation.
 
 Every variable, what it does and where it comes from is documented in
 `.env.local.example`.

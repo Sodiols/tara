@@ -147,8 +147,17 @@ style cannot execute — and removing it breaks rendering. It is the one
 concession in the policy and it is documented rather than quietly present.
 
 `img-src` allows the Supabase storage origin and `images.unsplash.com` (the
-editorial photography on the homepage and about page). `connect-src` allows the
+editorial photography on the homepage and about page). `media-src` allows the
+same Supabase origin, for the optional product video. `connect-src` allows the
 Supabase REST and realtime origins. Everything else is `'self'` or `'none'`.
+
+The one dynamic part is the measurement tags. GA4, the Meta pixel and the TikTok
+pixel each add their own script, connect and image origins **only when an id is
+configured for them** — `lib/analytics/config.ts` decides that once, and both
+the policy and the component that renders the tags read it, so a shop with no
+Meta pixel neither loads facebook.net nor announces it in a header. Without the
+`connect-src` entries a tag loads and then silently reports nothing, which is
+the failure mode worth knowing about.
 
 ## Structured data
 
@@ -172,6 +181,30 @@ asks for, EXIF not carried through, cached for a year because the URL contains
 the source, width and quality. That is why there is no `sharp` in the
 dependencies: the one thing server-side processing would add over this is
 stripping metadata from the *stored original*, which is not served to anyone.
+
+## Analytics measures the shop, and never costs it anything
+
+The storefront's own analytics follows the same rules as everything else here,
+and two of its own:
+
+**Nothing a customer can feel.** `track()` pushes onto an array and returns.
+Events are batched and flushed on a timer, when the batch fills, or when the
+page is being hidden — `sendBeacon` on the way out, a `keepalive` fetch
+otherwise. Nothing is ever awaited by anything a customer is waiting for, and
+nothing in `lib/analytics/` throws: blocked storage, a blocked endpoint, a
+failed request and a missing `crypto.randomUUID` are all handled by doing less.
+
+**A browser may report what it saw, never what it is owed.** Every event except
+one is an observation. `purchase` is a claim about money, so it is not in the
+list a browser may send: the confirmation screen presents the order number and
+that order's tracking token, and the database looks the order up. Revenue is
+then read from the order on every report, which is why cancelling an order
+removes its revenue from the dashboard with no second place to remember.
+
+The ingest endpoint is the only door, it is rate limited in both layers, and
+`anon` holds no grant on any analytics table. The tables cannot be read at all
+without `analytics.view`. See [MARKETING.md](MARKETING.md) for the attribution
+model and what is deliberately not stored.
 
 ## Adding a feature
 

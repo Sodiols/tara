@@ -29,6 +29,7 @@ import {
   MAX_IMAGES_PER_PRODUCT,
 } from "@/lib/product-images";
 import { inspectImageFile } from "@/lib/image-validation";
+import { MEDIA_ROLES } from "@/lib/product-trust";
 import { logFailure, logger } from "@/lib/logger";
 import { isMissingExecuteGrant } from "../errors";
 import { dispatchNotificationAsAdmin, dispatchOrderNotificationsAsStaff } from "@/lib/email/dispatch";
@@ -188,6 +189,7 @@ function productPayload(
     is_best_seller: input.isBestSeller,
     seo_title: input.seoTitle,
     seo_description: input.seoDescription,
+    video_url: input.videoUrl,
     archived_at: status === "archived" ? new Date().toISOString() : null,
   };
 }
@@ -1093,6 +1095,47 @@ export async function applyProductImageOrderAction(
 /** Alt text for one stored image. Kept out of the upload path so adding images
  *  stays a two-click job; a description can be written whenever there is time
  *  for it. */
+/**
+ * Says what one photograph shows — a front view, the fabric close up, the
+ * trouser piece.
+ *
+ * Optional everywhere and null on every photograph uploaded before roles
+ * existed. It drives the completeness panel above the images and gives a
+ * photograph with no alt text a short true description on the storefront; it
+ * changes nothing about which images are shown or in what order.
+ */
+export async function setProductImageRoleAction(
+  imageId: string,
+  productId: string,
+  role: string | null,
+): Promise<ActionResult> {
+  await requirePermission("catalogue.manage");
+
+  const parsed = z
+    .object({
+      imageId: z.string().uuid(),
+      productId: z.string().uuid(),
+      // The same list as the column's check constraint, which refuses anything
+      // else regardless of what reaches it.
+      role: z.enum(MEDIA_ROLES).nullable(),
+    })
+    .safeParse({ imageId, productId, role: role || null });
+  if (!parsed.success) return fail("That image no longer exists.");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("product_images")
+    .update({ media_role: parsed.data.role })
+    .eq("id", parsed.data.imageId)
+    .eq("product_id", parsed.data.productId);
+
+  if (error) return logAndFail("image_role", error, "Could not save what this image shows.");
+
+  updateTag("catalogue");
+  revalidatePath(`/admin/products/${parsed.data.productId}`);
+  return { ok: true, message: "Saved." };
+}
+
 export async function updateProductImageAltAction(
   imageId: string,
   productId: string,
@@ -1572,6 +1615,9 @@ export async function saveSettingsAction(formData: FormData): Promise<ActionResu
     cod_enabled: checkbox(formData, "cod_enabled"),
     maintenance_mode: checkbox(formData, "maintenance_mode"),
     order_notification_email: text(formData, "order_notification_email"),
+    delivery_estimate_inside: text(formData, "delivery_estimate_inside"),
+    delivery_estimate_outside: text(formData, "delivery_estimate_outside"),
+    exchange_window_days: text(formData, "exchange_window_days"),
   });
   if (!parsed.success) return fail(firstIssue(parsed.error));
 

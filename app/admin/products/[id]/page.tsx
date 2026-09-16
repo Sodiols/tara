@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getProductEditorData } from "@/lib/supabase/queries/admin";
+import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
+import { productTrustReport } from "@/lib/product-trust";
 import { formatDateTime } from "@/lib/format";
 import { PageHeader, Badge } from "@/components/admin/ui";
 import { ProductStatusBadge } from "@/components/admin/status";
@@ -9,6 +11,7 @@ import { ProductVariants } from "@/components/admin/ProductVariants";
 import { ProductImageLibrary } from "@/components/admin/ProductImageManager";
 import { ProductColourLibrary } from "@/components/admin/ProductColourLibrary";
 import { ProductCreatedBanner } from "@/components/admin/ProductCreatedBanner";
+import { ProductTrustPanel } from "@/components/admin/ProductTrustPanel";
 
 /**
  * The product editor.
@@ -28,7 +31,13 @@ export default async function EditProductPage({
 }) {
   const { id } = await params;
   const { created } = await searchParams;
-  const data = await getProductEditorData(id);
+  // The shop's own settings are part of the answer: two of the checks are about
+  // whether the shop has stated its delivery estimate and exchange window at
+  // all, which every product page shows.
+  const [data, settings] = await Promise.all([
+    getProductEditorData(id),
+    getPublicStoreSettings(),
+  ]);
   if (!data) notFound();
 
   const { product, categories, collections, variants, images, colours } = data;
@@ -42,6 +51,35 @@ export default async function EditProductPage({
     }
     return counts;
   }, {});
+
+  const trust = productTrustReport({
+    description: product.description_en,
+    fabric: product.fabric_en,
+    careInstructions: product.care_instructions_en,
+    status: product.status,
+    images: images.map((image) => ({
+      isPrimary: image.is_primary,
+      role: image.media_role,
+      altText: image.alt_en,
+    })),
+    variants: variants.map((variant) => ({
+      size: variant.size,
+      colourName: variant.colour_en,
+      stock: variant.stock_quantity,
+      isActive: variant.is_active,
+    })),
+    colourCount: colours.length,
+    videoUrl: product.video_url,
+    shop: {
+      deliveryStated: Boolean(
+        settings.policies.deliveryEstimateInside.trim() &&
+          settings.policies.deliveryEstimateOutside.trim(),
+      ),
+      exchangeStated: settings.policies.exchangeWindowDays > 0,
+    },
+  });
+
+  const trustPanel = <ProductTrustPanel report={trust} />;
 
   const productForm = (
     <ProductForm product={product} categories={categories} collections={collections} />
@@ -118,12 +156,14 @@ export default async function EditProductPage({
         {justCreated ? (
           <>
             {variantsPanel}
+            {trustPanel}
             {productForm}
             {coloursPanel}
             {imagesPanel}
           </>
         ) : (
           <>
+            {trustPanel}
             {productForm}
             {coloursPanel}
             {imagesPanel}

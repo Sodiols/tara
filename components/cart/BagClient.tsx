@@ -11,6 +11,10 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { formatPrice } from "@/lib/utils";
 import { Container } from "@/components/layout/Container";
 import { previewCouponAction } from "@/lib/supabase/actions/checkout";
+import { useCartViewTracking, useRemoveFromCart } from "@/hooks/useAddToCart";
+import { useLaunchOffer } from "@/components/offer/LaunchOfferProvider";
+import { LaunchOfferNote } from "@/components/offer/LaunchOfferNote";
+import { applyOfferToTotals, quoteOffer } from "@/lib/launch-offer";
 import { formatSizeLabel } from "@/lib/product-size";
 import {
   freeDeliveryHeadline,
@@ -23,7 +27,8 @@ interface BagClientProps {
 }
 
 export function BagClient({ deliverySettings }: BagClientProps) {
-  const { items, removeItem, updateQuantity, subtotal } = useCartStore();
+  const { items, updateQuantity, subtotal } = useCartStore();
+  const removeFromCart = useRemoveFromCart();
   const hasHydrated = useCartStore((state) => state.hasHydrated);
   const [coupon, setCoupon] = useState("");
   const [couponMessage, setCouponMessage] = useState("");
@@ -36,9 +41,35 @@ export function BagClient({ deliverySettings }: BagClientProps) {
   // single flat fee here, as this page used to, was wrong for everyone outside
   // Sylhet and wrong again for everyone inside it who had passed the threshold.
   const deliveryQuote = quoteDeliveryForZone(subtotalValue, "inside_sylhet", deliverySettings);
-  const deliveryFee = subtotalValue === 0 ? 0 : deliveryQuote.fee;
-  const total = Math.max(0, subtotalValue + deliveryFee - couponDiscount);
+  const baseDeliveryFee = subtotalValue === 0 ? 0 : deliveryQuote.fee;
+
+  /*
+   * The launch offer, priced the same way the database will price it.
+   *
+   * `quoteOffer` mirrors `launch_offer_benefit()` branch for branch, and
+   * `place_order()` recalculates it from the offer row regardless — so this is
+   * what the customer will be charged, not a guess at it. An offer that cannot
+   * honestly be quoted before checkout (first order, gift) returns null here
+   * and is announced in words by the note below instead.
+   */
+  const launchOffer = useLaunchOffer();
+  const offerQuote = quoteOffer(
+    launchOffer,
+    subtotalValue,
+    items.map((item) => item.productId),
+  );
+  const { deliveryFee, offerDiscount, total } = applyOfferToTotals({
+    subtotal: subtotalValue,
+    deliveryFee: baseDeliveryFee,
+    couponDiscount,
+    quote: offerQuote,
+  });
   const deliveryHeadline = freeDeliveryHeadline(deliverySettings);
+
+  // Only once the bag has been read back from the browser: before that this
+  // page cannot tell an empty bag from one it has not loaded yet, and counting
+  // the empty state as a cart view would report a bag nobody looked at.
+  useCartViewTracking(hasHydrated, subtotalValue, items.length);
 
   const handleApplyCoupon = async () => {
     if (!coupon.trim()) {
@@ -134,7 +165,7 @@ export function BagClient({ deliverySettings }: BagClientProps) {
                     </div>
                     <div className="flex items-center gap-4">
                       <button
-                        onClick={() => removeItem(item.productId, item.size, item.colour)}
+                        onClick={() => removeFromCart(item)}
                         className="text-xs text-muted hover:text-wine underline underline-offset-2"
                       >
                         {"Remove"}
@@ -153,6 +184,7 @@ export function BagClient({ deliverySettings }: BagClientProps) {
 
           <div className="bg-beige/50 rounded-panel border border-border p-6 h-fit flex flex-col gap-4">
             <h2 className="font-serif text-xl text-ink mb-1">{"Shopping Bag"}</h2>
+            <LaunchOfferNote />
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">{"Subtotal"}</span>
               <span className="text-ink">{formatPrice(subtotalValue)}</span>
@@ -167,6 +199,12 @@ export function BagClient({ deliverySettings }: BagClientProps) {
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted">{"Coupon Code"}</span>
                 <span className="text-wine">-{formatPrice(couponDiscount)}</span>
+              </div>
+            )}
+            {offerDiscount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted">{offerQuote?.label}</span>
+                <span className="text-wine">-{formatPrice(offerDiscount)}</span>
               </div>
             )}
             <p className="text-xs text-muted -mt-2">

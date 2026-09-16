@@ -58,6 +58,8 @@ export interface ReadyMadeDetails {
   fitInformation: string;
 }
 
+import type { ProductMediaRole } from "./database";
+
 /** One product photograph, with the metadata the storefront needs for SEO. */
 export interface ProductImageMedia {
   url: string;
@@ -73,6 +75,21 @@ export interface ProductImageMedia {
    * colour's name, and nothing assumes a position in the array means anything.
    */
   colourId: string | null;
+  /**
+   * What the photograph shows — a front view, the fabric close up, the trouser
+   * piece — when staff have said (migration 0026). Null on everything uploaded
+   * before roles existed.
+   *
+   * The storefront uses it for one thing: a description for a photograph nobody
+   * has written alt text for, so a gallery announces "back view" rather than
+   * the product's name five times. The back office uses it to tell a complete
+   * listing from an incomplete one.
+   *
+   * Optional rather than nullable so that the fallbacks which build media
+   * entries out of a bare URL array — a database without migration 0019, a
+   * test fixture — keep compiling unchanged.
+   */
+  role?: ProductMediaRole | null;
 }
 
 export interface Product {
@@ -107,6 +124,11 @@ export interface Product {
   colours: ColourOption[];
   sizes: string[];
   fabric: string;
+  /**
+   * One optional short product video, as an absolute URL. Undefined for every
+   * product until somebody adds one.
+   */
+  videoUrl?: string;
   stock: number;
   tags: string[];
   collection: string;

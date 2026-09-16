@@ -221,6 +221,24 @@ export function ProductFields({
               className={adminTextareaClass}
             />
           </Field>
+          <Field
+            label="Product video"
+            htmlFor="videoUrl"
+            error={errorFor("videoUrl")}
+            className="sm:col-span-2"
+            hint="Optional. A full https:// link to a short clip — upload it to the product images bucket and paste the file's URL."
+          >
+            <input
+              id="videoUrl"
+              name="videoUrl"
+              type="url"
+              inputMode="url"
+              maxLength={500}
+              placeholder="https://…/video.mp4"
+              defaultValue={product?.video_url ?? ""}
+              className={adminInputClass}
+            />
+          </Field>
         </div>
       </Panel>
 

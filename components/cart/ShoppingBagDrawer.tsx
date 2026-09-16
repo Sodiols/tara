@@ -11,6 +11,8 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { lockBodyScroll } from "@/lib/scroll-lock";
 import { formatSizeLabel } from "@/lib/product-size";
+import { useCartViewTracking, useRemoveFromCart } from "@/hooks/useAddToCart";
+import { LaunchOfferNote } from "@/components/offer/LaunchOfferNote";
 
 /**
  * The delivery line is generated from the live store settings rather than
@@ -18,7 +20,10 @@ import { formatSizeLabel } from "@/lib/product-size";
  * administrator has since changed.
  */
 export function ShoppingBagDrawer({ announcement }: { announcement: string | null }) {
-  const { items, isOpen, closeBag, removeItem, updateQuantity, subtotal } = useCartStore();
+  const { items, isOpen, closeBag, updateQuantity, subtotal } = useCartStore();
+  const removeFromCart = useRemoveFromCart();
+
+  useCartViewTracking(isOpen, subtotal(), items.length);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -87,7 +92,7 @@ export function ShoppingBagDrawer({ announcement }: { announcement: string | nul
                       <span className="text-sm text-ink">{formatPrice(item.price * item.quantity)}</span>
                     </div>
                     <button
-                      onClick={() => removeItem(item.productId, item.size, item.colour)}
+                      onClick={() => removeFromCart(item)}
                       className="text-xs text-muted hover:text-wine underline underline-offset-2 self-start mt-1"
                     >
                       {"Remove"}
@@ -97,6 +102,9 @@ export function ShoppingBagDrawer({ announcement }: { announcement: string | nul
               ))}
             </div>
             <div className="border-t border-border px-5 py-4 flex flex-col gap-3">
+              {/* The offer in one line. The saving itself is shown on the bag
+                  page and at checkout, where the whole total is. */}
+              <LaunchOfferNote />
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted">{"Subtotal"}</span>
                 <span className="text-ink font-medium">{formatPrice(subtotal())}</span>

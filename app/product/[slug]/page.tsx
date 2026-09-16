@@ -6,6 +6,7 @@ import {
   getRelatedProducts,
 } from "@/lib/supabase/queries/products";
 import { ProductDetailClient } from "@/components/product/ProductDetailClient";
+import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
 import { siteConfig } from "@/data/site";
 import { categoryHref, humanizeSlug } from "@/lib/utils";
 import { jsonLdScriptProps } from "@/lib/json-ld";
@@ -80,10 +81,12 @@ export default async function ProductPage({ params }: ProductPageProps) {
   const product = await getProductBySlug(slug);
   if (!product) notFound();
 
-  // The two are independent of each other, so they overlap rather than queue.
-  const [variants, relatedProducts] = await Promise.all([
+  // All three are independent of each other, so they overlap rather than queue.
+  // The settings read is the layout's cached one, so it costs nothing here.
+  const [variants, relatedProducts, settings] = await Promise.all([
     getProductVariants(product.id),
     getRelatedProducts(product),
+    getPublicStoreSettings(),
   ]);
 
   const productUrl = absoluteUrl(`/product/${product.slug}`);
@@ -179,6 +182,8 @@ export default async function ProductPage({ params }: ProductPageProps) {
         product={product}
         variants={variants}
         relatedProducts={relatedProducts}
+        delivery={settings.delivery}
+        policies={settings.policies}
       />
     </>
   );

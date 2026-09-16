@@ -28,8 +28,10 @@ import {
   deleteProductImageAction,
   moveProductImageAction,
   setPrimaryImageAction,
+  setProductImageRoleAction,
   updateProductImageAltAction,
 } from "@/lib/supabase/actions/admin";
+import { MEDIA_ROLES, MEDIA_ROLE_LABELS } from "@/lib/product-trust";
 import type { Tables } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { useToastStore } from "@/store/toastStore";
@@ -547,6 +549,65 @@ function ImageColourField({
 }
 
 /**
+ * What one photograph shows.
+ *
+ * Optional, and "Not said" is a real answer rather than an unfinished one — a
+ * size chart or a flat-lay is not a view of the garment. What it buys is the
+ * completeness panel above being able to say "there is no photograph of the
+ * back", which is the single most common reason a customer does not order
+ * clothing they cannot touch.
+ */
+function ImageRoleField({
+  image,
+  productId,
+  index,
+}: {
+  image: ProductImage;
+  productId: string;
+  index: number;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(image.media_role ?? "");
+  const [saving, setSaving] = useState(false);
+  const addToast = useToastStore((state) => state.addToast);
+
+  const save = async (next: string) => {
+    const previous = value;
+    setValue(next);
+    setSaving(true);
+    const result = await setProductImageRoleAction(image.id, productId, next || null);
+    setSaving(false);
+    if (!result.ok) {
+      // Put the control back: the photograph did not change, and a dropdown
+      // showing the failed choice is a lie about the data.
+      setValue(previous);
+      addToast(result.message, "error");
+      return;
+    }
+    router.refresh();
+  };
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="sr-only">What image {index + 1} shows</span>
+      <select
+        value={value}
+        disabled={saving}
+        onChange={(event) => void save(event.target.value)}
+        className={cn(adminSelectClass, "h-9 text-xs")}
+      >
+        <option value="">What it shows — not said</option>
+        {MEDIA_ROLES.map((role) => (
+          <option key={role} value={role}>
+            {MEDIA_ROLE_LABELS[role]}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/**
  * Image management for a product that already exists.
  *
  * The images the product HAS come first, and the uploader stays behind a button
@@ -707,6 +768,7 @@ export function ProductImageLibrary({
                     index={index}
                   />
                 )}
+                <ImageRoleField image={image} productId={productId} index={index} />
                 <AltTextField image={image} productId={productId} index={index} />
               </div>
             </li>

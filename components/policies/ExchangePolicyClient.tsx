@@ -1,14 +1,23 @@
-"use client";
-
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 
-export function ExchangePolicyClient() {
+/**
+ * The exchange policy.
+ *
+ * The window is a store setting rather than a number typed into this file: it
+ * is stated here, on the homepage and on every product page, and three copies
+ * of "7 days" is three places to forget when it becomes 14.
+ *
+ * No longer a client component — it has no state and never had any.
+ */
+export function ExchangePolicyClient({ exchangeWindowDays }: { exchangeWindowDays: number }) {
+  const window =
+    exchangeWindowDays === 1 ? "1 day" : `${exchangeWindowDays} days`;
 
   const content =
     {
           intro: "We want you to be completely satisfied with your purchase, which is why TARA offers a simple exchange policy.",
           sections: [
-            { title: "Exchange Window", text: "You can request an exchange within 7 days of the delivery date." },
+            { title: "Exchange Window", text: `You can request an exchange within ${window} of the delivery date.` },
             { title: "Conditions", text: "The item must be unused, unwashed, and have its original tags attached. Gifted items are also eligible for exchange." },
             { title: "How to Exchange", text: "Contact our customer support team with your order number, and we will guide you through every step of the exchange process." },
             { title: "Refunds", text: "At this time, we offer exchanges or store credit rather than direct refunds." },

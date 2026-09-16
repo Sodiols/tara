@@ -9,6 +9,8 @@ import { ClientRuntime } from "@/components/layout/ClientRuntime";
 import { siteConfig } from "@/data/site";
 import { SupabaseConfigurationNotice } from "@/components/SupabaseConfigurationNotice";
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
+import { getActiveLaunchOffer } from "@/lib/supabase/queries/launch-offer";
+import { LaunchOfferProvider } from "@/components/offer/LaunchOfferProvider";
 import { jsonLdScriptProps } from "@/lib/json-ld";
 import { freeDeliveryHeadline } from "@/lib/delivery";
 import { SCHEMA_IDS, defaultSocialImages, postalAddress, websiteSchema } from "@/lib/seo";
@@ -108,7 +110,12 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // Admin and maintenance surfaces have their own shell, so they should not
   // wait for storefront settings they never render. Public routes share this
   // one cached read between the structured data, header, footer and page.
-  const settings = chromeless ? null : await getPublicStoreSettings();
+  // The offer is read alongside the settings and only for the storefront. One
+  // cached read serves the announcement, every product card's badge, the bag
+  // and the checkout — see components/offer/LaunchOfferProvider.tsx.
+  const [settings, launchOffer] = chromeless
+    ? [null, null]
+    : await Promise.all([getPublicStoreSettings(), getActiveLaunchOffer()]);
   const announcement = settings ? freeDeliveryHeadline(settings.delivery) : null;
 
   const organizationSchema = settings ? {
@@ -173,11 +180,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             Skip to main content
           </a>
         ) : null}
-        {settings ? <AnnouncementBar message={announcement} /> : null}
-        {settings ? <Header identity={settings} /> : null}
-        {chromeless ? children : <main id="main-content">{children}</main>}
-        {settings ? <Footer identity={settings} /> : null}
-        <ClientRuntime storefront={!chromeless} announcement={announcement} />
+        <LaunchOfferProvider offer={launchOffer}>
+          {settings ? <AnnouncementBar message={announcement} /> : null}
+          {settings ? <Header identity={settings} /> : null}
+          {chromeless ? children : <main id="main-content">{children}</main>}
+          {settings ? <Footer identity={settings} /> : null}
+          <ClientRuntime storefront={!chromeless} announcement={announcement} />
+        </LaunchOfferProvider>
       </body>
     </html>
   );

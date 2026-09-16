@@ -7,8 +7,14 @@ import { BestSellersSection } from "@/components/home/BestSellersSection";
 import { BrandStorySection } from "@/components/home/BrandStorySection";
 import { SocialGallery } from "@/components/home/SocialGallery";
 import { ServiceBenefits } from "@/components/home/ServiceBenefits";
-import { getBestSellers, getNewArrivals } from "@/lib/supabase/queries/products";
+import { LaunchCampaignSection } from "@/components/home/LaunchCampaignSection";
+import {
+  getBestSellers,
+  getNewArrivals,
+  getProductsBySlugs,
+} from "@/lib/supabase/queries/products";
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
+import { getActiveLaunchOffer } from "@/lib/supabase/queries/launch-offer";
 import { siteConfig } from "@/data/site";
 import { buildMetadata } from "@/lib/seo";
 
@@ -63,6 +69,26 @@ export const metadata: Metadata = buildMetadata({
  * late moves nothing that is already on screen. CLS stays at 0.
  */
 
+/**
+ * The launch campaign, when there is one.
+ *
+ * Its own Suspense boundary with a null fallback, and it reserves no height:
+ * for the whole life of the shop so far there has been no offer, and holding
+ * open a gap for a section that usually does not exist would be a permanent
+ * cost for an occasional campaign. It streams in above the best sellers.
+ */
+async function LaunchCampaign() {
+  const offer = await getActiveLaunchOffer();
+  if (!offer || offer.heroSlugs.length === 0) return null;
+
+  // Roughly three, which is what the first campaign is built around. The cap
+  // keeps a mistakenly starred catalogue from becoming the whole homepage.
+  const products = await getProductsBySlugs(offer.heroSlugs.slice(0, 6));
+  if (products.length === 0) return null;
+
+  return <LaunchCampaignSection offer={offer} products={products} />;
+}
+
 async function BestSellers() {
   const products = await getBestSellers(8);
   return <BestSellersSection products={products} />;
@@ -92,7 +118,7 @@ async function Benefits() {
   const settings = await getPublicStoreSettings();
   return (
     <div className="defer-render [--defer-render-size:255px] md:[--defer-render-size:180px] lg:[--defer-render-size:140px]">
-      <ServiceBenefits delivery={settings.delivery} />
+      <ServiceBenefits delivery={settings.delivery} policies={settings.policies} />
     </div>
   );
 }
@@ -110,6 +136,10 @@ export default function HomePage() {
           height at phone, tablet and desktop widths, so the scrollbar holds still
           as sections render. */}
       <HeroSection />
+
+      <Suspense fallback={null}>
+        <LaunchCampaign />
+      </Suspense>
 
       <Suspense fallback={<Reserved className="h-[1060px] bg-white md:h-[900px] lg:h-[1120px]" />}>
         <BestSellers />

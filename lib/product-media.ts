@@ -1,4 +1,5 @@
 import type { Product, ProductImageMedia } from "@/types";
+import { mediaRoleAlt } from "./product-trust";
 
 /**
  * Alt text for product photographs.
@@ -16,7 +17,10 @@ import type { Product, ProductImageMedia } from "@/types";
  *   2. Otherwise the product name, for the FIRST image only. That image stands
  *      for the product in listings and social previews, so it needs a real
  *      description rather than none.
- *   3. Otherwise empty. A gallery thumbnail with no alt of its own is
+ *   3. Otherwise the photograph's role, when staff have set one (migration
+ *      0026): "back view", "fabric close up". Short, true, and far better than
+ *      silence for somebody deciding whether to open the third thumbnail.
+ *   4. Otherwise empty. A gallery thumbnail with no alt of its own is
  *      decorative — the product has already been named — and repeating the
  *      name is worse than silence for anyone listening to the page.
  *
@@ -32,7 +36,10 @@ export function imageAlt(
 ): string {
   const stored = media?.alt?.trim();
   if (stored) return stored;
-  return index === 0 ? productName : "";
+  if (index === 0) return productName;
+
+  const role = mediaRoleAlt(media?.role);
+  return role ? `${productName}, ${role}` : "";
 }
 
 /**

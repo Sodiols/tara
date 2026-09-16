@@ -1,6 +1,6 @@
 "use client";
 
-import { useOptimistic, useState, useTransition } from "react";
+import { useEffect, useOptimistic, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { SlidersHorizontal } from "lucide-react";
 import type { Product } from "@/types";
@@ -10,6 +10,7 @@ import { MobileFilterDrawer } from "./MobileFilterDrawer";
 import { ProductGrid } from "./ProductGrid";
 import { Button } from "@/components/ui/Button";
 import { Container } from "@/components/layout/Container";
+import { track } from "@/lib/analytics/client";
 import {
   CATALOGUE_SORTS,
   MAX_REVEALED_PAGES,
@@ -76,6 +77,23 @@ export function ProductListingClient({
 }: ProductListingClientProps) {
   const router = useRouter();
   const pathname = usePathname();
+
+  /*
+   * One category view per listing arrived at.
+   *
+   * Keyed on the path rather than on a boolean, because this component stays
+   * mounted when a shopper moves between two listings — and deliberately NOT
+   * on the filters, because narrowing to "XL, in stock" is the same visit to
+   * the same listing, not a second one.
+   */
+  const viewedPath = useRef<string | null>(null);
+  useEffect(() => {
+    if (viewedPath.current === pathname) return;
+    viewedPath.current = pathname;
+    track({ name: "category_view", path: pathname, meta: { list: title, total } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
+
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
   const [optimisticFilters, setOptimisticFilters] = useOptimistic(filters);

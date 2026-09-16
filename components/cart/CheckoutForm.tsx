@@ -19,6 +19,12 @@ import {
   type DeliverySettings,
 } from "@/lib/delivery";
 import { placeCartOrderAction, previewCouponAction } from "@/lib/supabase/actions/checkout";
+import { recordPurchaseAction } from "@/lib/supabase/actions/analytics";
+import { useLaunchOffer } from "@/components/offer/LaunchOfferProvider";
+import { LaunchOfferNote } from "@/components/offer/LaunchOfferNote";
+import { applyOfferToTotals, quoteOffer } from "@/lib/launch-offer";
+import { currentIdentifiers, track } from "@/lib/analytics/client";
+import { trackPurchasePixels } from "@/lib/analytics/pixels";
 import type { CartItem } from "@/types";
 import { formatSizeLabel } from "@/lib/product-size";
 import type { getCheckoutPrefill } from "@/lib/supabase/queries/account";
@@ -198,7 +204,52 @@ export function CheckoutForm({
 
   const subtotalValue = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
   const deliveryQuote = quoteDeliveryForZone(subtotalValue, deliveryZone, deliverySettings);
-  const total = Math.max(0, subtotalValue + deliveryQuote.fee - couponDiscount);
+
+  /*
+   * The launch offer.
+   *
+   * Priced by `quoteOffer`, which mirrors `launch_offer_benefit()` in SQL — and
+   * `place_order()` recomputes the whole thing from the offer row when the
+   * order is placed, so nothing here can be sent, edited or replayed into a
+   * larger discount. What this does is make sure the customer sees the same
+   * total the database is about to charge them.
+   */
+  const launchOffer = useLaunchOffer();
+  const offerQuote = quoteOffer(
+    launchOffer,
+    subtotalValue,
+    items.map((item) => item.productId),
+  );
+  const offered = applyOfferToTotals({
+    subtotal: subtotalValue,
+    deliveryFee: deliveryQuote.fee,
+    couponDiscount,
+    quote: offerQuote,
+  });
+  const offerDiscount = offered.offerDiscount;
+  const deliveryPayable = offered.deliveryFee;
+  const total = offered.total;
+
+  /*
+   * Checkout started — once, when there is actually something to buy.
+   *
+   * Guarded by a ref rather than by the dependency list: the value changes as
+   * the customer picks a delivery area or applies a coupon, and a checkout
+   * start is a thing that happens once, not every time the total moves. The
+   * empty bag and the closed-for-orders screens never reach here, so neither
+   * is counted as a checkout.
+   */
+  const checkoutStarted = useRef(false);
+  useEffect(() => {
+    if (checkoutStarted.current || orderNumber || !codEnabled || items.length === 0) return;
+    checkoutStarted.current = true;
+    track({
+      name: "begin_checkout",
+      value: Number(subtotalValue.toFixed(2)),
+      meta: { mode, items: items.length },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length, codEnabled, orderNumber]);
 
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) {
@@ -299,6 +350,52 @@ export function CheckoutForm({
     return true;
   };
 
+  /**
+   * The conversion, recorded once.
+   *
+   * THREE THINGS KEEP IT FROM BEING COUNTED TWICE
+   *
+   *   1. A unique index in the database on the order id. That is the actual
+   *      guarantee — it holds across devices, across retries, and across
+   *      anything a browser might do.
+   *   2. `reportedOrders` here, so a re-render cannot report the same order
+   *      again in this screen's lifetime.
+   *   3. The order number as the third-party tags' own deduplication key, so a
+   *      report reaching Meta or GA4 from anywhere else is folded into this one.
+   *
+   * Nothing is awaited. The customer is looking at their order number; a
+   * measurement must not stand between them and it.
+   *
+   * The server is told only the order number and its tracking token. What the
+   * order was worth is read from the order itself — see recordPurchaseAction.
+   */
+  const reportedOrders = useRef(new Set<string>());
+  const recordPurchase = (orderRef: string, token: string, orderValue: number) => {
+    if (reportedOrders.current.has(orderRef)) return;
+    reportedOrders.current.add(orderRef);
+
+    const identity = currentIdentifiers();
+    if (identity) {
+      void recordPurchaseAction({
+        visitorId: identity.visitorId,
+        sessionId: identity.sessionId,
+        orderNumber: orderRef,
+        trackingToken: token,
+      });
+    }
+
+    trackPurchasePixels({
+      orderNumber: orderRef,
+      total: orderValue,
+      items: items.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
+        price: item.price,
+        name: item.name,
+      })),
+    });
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     // Guards a second submit slipping through between the click and React
@@ -312,6 +409,15 @@ export function CheckoutForm({
 
     setSubmitting(true);
     setSubmitError("");
+
+    // The step, and nothing about the customer. No name, no phone number, no
+    // address and no email ever reaches analytics — the point of this event is
+    // to tell "nobody reached the button" from "the button did not work".
+    track({
+      name: "checkout_step",
+      value: Number(total.toFixed(2)),
+      meta: { step: "submitted", mode, items: items.length },
+    });
 
     const result = await placeCartOrderAction(
       {
@@ -334,6 +440,7 @@ export function CheckoutForm({
 
     if (!result.ok || !result.data) {
       setSubmitting(false);
+      track({ name: "checkout_step", meta: { step: "failed", mode } });
       // The server re-validates everything. If it rejects a field the checks
       // above let through, point at that field exactly as a client error would.
       if (!result.ok && result.fieldErrors) {
@@ -358,6 +465,8 @@ export function CheckoutForm({
       );
       return;
     }
+
+    recordPurchase(result.data.orderNumber, result.data.trackingToken, result.data.total);
 
     setOrderNumber(result.data.orderNumber);
     setTrackingToken(result.data.trackingToken);
@@ -661,6 +770,7 @@ export function CheckoutForm({
         {/* ------------------------------------------------- Order summary -- */}
         <div className="flex h-fit flex-col gap-4 rounded-panel border border-border bg-beige/50 p-6 lg:sticky lg:top-[120px]">
           <h2 className="mb-1 font-serif text-xl text-ink">{"Order Summary"}</h2>
+          <LaunchOfferNote />
           <div className="flex max-h-64 flex-col gap-4 overflow-y-auto">
             {items.map((item) => (
               <div key={`${item.productId}-${item.size}-${item.colour}`} className="flex gap-3">
@@ -743,13 +853,21 @@ export function CheckoutForm({
             <div className="flex items-center justify-between text-sm">
               <span className="text-muted">{"Delivery"}</span>
               <span className="text-ink" aria-live="polite" data-testid="delivery-charge">
-                {deliveryQuote.isFree ? "FREE" : formatPrice(deliveryQuote.fee)}
+                {deliveryPayable === 0 ? "FREE" : formatPrice(deliveryPayable)}
               </span>
             </div>
             {couponDiscount > 0 && (
               <div className="flex items-center justify-between text-sm">
                 <span className="text-muted">{"Coupon Code"}</span>
                 <span className="text-wine">-{formatPrice(couponDiscount)}</span>
+              </div>
+            )}
+            {offerDiscount > 0 && (
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-muted">{offerQuote?.label}</span>
+                <span className="text-wine" data-testid="launch-offer-discount">
+                  -{formatPrice(offerDiscount)}
+                </span>
               </div>
             )}
             <div className="mt-1 flex items-center justify-between border-t border-border pt-3 text-base">

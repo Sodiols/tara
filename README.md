@@ -19,6 +19,7 @@ npm run dev
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Going to production, and the checks to run before and after |
 | [docs/TESTING.md](docs/TESTING.md) | The four test suites and what each one needs |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | The rules the code follows and why |
+| [docs/MARKETING.md](docs/MARKETING.md) | First-party analytics, attribution, and how to build tracked links |
 | [.env.local.example](.env.local.example) | Every environment variable, marked required or optional |
 
 ## Commands

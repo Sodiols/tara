@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import type { ComponentType } from "react";
 import { useCartStore } from "@/store/cartStore";
 import { useToastStore } from "@/store/toastStore";
+import { AnalyticsTracker } from "@/components/analytics/AnalyticsTracker";
+import { MarketingTags } from "@/components/analytics/MarketingTags";
 
 type DrawerComponent = ComponentType<{ announcement: string | null }>;
 type EmptyComponent = ComponentType;
@@ -16,6 +18,11 @@ type EmptyComponent = ComponentType;
  * synchronization also competed with the LCP image immediately after
  * hydration. Keeping this tiny coordinator eager preserves every behavior while
  * moving the larger modules out of the critical loading path.
+ *
+ * Analytics is mounted here too, and on the storefront only. Both pieces are
+ * cheap: the tracker renders nothing and queues an event per page, and the
+ * marketing tags render nothing at all unless a tracking id is configured. The
+ * back office is deliberately not measured — staff working are not traffic.
  */
 export function ClientRuntime({
   storefront,
@@ -84,6 +91,8 @@ export function ClientRuntime({
 
   return (
     <>
+      {storefront ? <AnalyticsTracker /> : null}
+      {storefront ? <MarketingTags /> : null}
       {storefront && AuthSync ? <AuthSync /> : null}
       {storefront && Drawer ? <Drawer announcement={announcement} /> : null}
       {Toasts ? <Toasts /> : null}

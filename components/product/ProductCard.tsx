@@ -17,6 +17,7 @@ import {
   sizeChoices,
 } from "@/lib/product-variants";
 import { primaryImageAlt } from "@/lib/product-media";
+import { LaunchOfferBadge } from "@/components/offer/LaunchOfferNote";
 import { MAX_LINE_QUANTITY } from "@/store/cartStore";
 import { cn } from "@/lib/utils";
 
@@ -294,6 +295,8 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
               {"New"}
             </span>
           )}
+          {/* Nothing unless a launch offer is live AND this product is in it. */}
+          {!soldOut && <LaunchOfferBadge productId={product.id} />}
         </div>
 
         {/*

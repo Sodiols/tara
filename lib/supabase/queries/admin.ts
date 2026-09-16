@@ -322,9 +322,13 @@ export async function getAdminProducts(filters: ProductFilters) {
 
   let query = supabase
     .from("products")
-    .select("*, categories(name_en), product_variants(id,stock_quantity,low_stock_threshold)", {
-      count: "exact",
-    });
+    // The image ids are selected, not counted, because PostgREST has no count
+    // aggregate here — one row per photograph is a handful of uuids per product
+    // and it is what lets the list flag a listing with no photography at all.
+    .select(
+      "*, categories(name_en), product_variants(id,stock_quantity,low_stock_threshold), product_images(id)",
+      { count: "exact" },
+    );
 
   // Archived products live in Archive & Trash, not in the product list.
   if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
@@ -346,6 +350,7 @@ export async function getAdminProducts(filters: ProductFilters) {
   type Row = Tables<"products"> & {
     categories: { name_en: string } | null;
     product_variants: { id: string; stock_quantity: number; low_stock_threshold: number }[];
+    product_images: { id: string }[];
   };
 
   return {

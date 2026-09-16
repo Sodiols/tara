@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Facebook, MessageCircle, Link as LinkIcon, Star } from "lucide-react";
 import type { Product, ProductVariant } from "@/types";
@@ -8,9 +8,11 @@ import { useToastStore } from "@/store/toastStore";
 import { useBuyNowStore } from "@/store/buyNowStore";
 import { useAddToCart } from "@/hooks/useAddToCart";
 import { useRecentlyViewedStore } from "@/store/recentlyViewedStore";
+import { track } from "@/lib/analytics/client";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { ProductGallery } from "./ProductGallery";
 import { imageAlt } from "@/lib/product-media";
+import { LaunchOfferNote } from "@/components/offer/LaunchOfferNote";
 import { colourIdForName } from "@/lib/product-colour-images";
 import { PriceDisplay } from "./PriceDisplay";
 import { SizeSelector } from "./SizeSelector";
@@ -39,6 +41,8 @@ import {
   type Selection,
 } from "@/lib/product-variants";
 import { MAX_LINE_QUANTITY } from "@/store/cartStore";
+import type { DeliverySettings } from "@/lib/delivery";
+import type { PolicySettings } from "@/lib/supabase/queries/settings";
 
 interface ProductDetailClientProps {
   product: Product;
@@ -48,12 +52,23 @@ interface ProductDetailClientProps {
    */
   variants: ProductVariant[];
   relatedProducts: Product[];
+  /**
+   * The shop's live delivery rule and its stated timelines and exchange window,
+   * read once on the server and passed in the same way the header and footer
+   * receive them. The Delivery and Exchange accordions are generated from
+   * these, so the product page cannot promise something the policy pages and
+   * the checkout do not.
+   */
+  delivery: DeliverySettings;
+  policies: PolicySettings;
 }
 
 export function ProductDetailClient({
   product,
   variants,
   relatedProducts,
+  delivery,
+  policies,
 }: ProductDetailClientProps) {
   const router = useRouter();
   const addToCart = useAddToCart();
@@ -185,6 +200,33 @@ export function ProductDetailClient({
   }, [product.slug, addRecentlyViewed]);
 
   /*
+   * One product view per product, per arrival on this page.
+   *
+   * The ref is keyed on the product rather than being a plain boolean, because
+   * App Router keeps this component mounted when a customer moves from one
+   * product to another — without it the second product would never be counted.
+   * It also makes the effect idempotent under React's development-mode double
+   * invocation, so the add-to-cart rate is not halved while somebody works on
+   * the page.
+   *
+   * The price recorded is the one on screen: the selected variant's, which is
+   * what the customer is deciding about.
+   */
+  const viewedProductId = useRef<string | null>(null);
+  useEffect(() => {
+    if (viewedProductId.current === product.id) return;
+    viewedProductId.current = product.id;
+    track({
+      name: "product_view",
+      productId: product.id,
+      value: effectivePrice,
+      meta: { productName: product.name, category: product.category },
+    });
+    // The price is read once, at arrival. Changing colour is its own event.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [product.id]);
+
+  /*
    * Clamped on read rather than corrected in an effect.
    *
    * A shopper who asked for 5 of one size and then switched to a size with 2
@@ -209,10 +251,14 @@ export function ProductDetailClient({
     if (nextColourId !== selectedColourId) setActiveIndex(firstIndexForColour(nextColourId));
   };
 
-  const chooseSize = (next: string) =>
+  const chooseSize = (next: string) => {
     applySelection(resolveSelection(variants, { ...selection, size: next }, "size"));
-  const chooseColour = (next: string) =>
+    track({ name: "product_size_selected", productId: product.id, size: next });
+  };
+  const chooseColour = (next: string) => {
     applySelection(resolveSelection(variants, { ...selection, colour: next }, "colour"));
+    track({ name: "product_colour_selected", productId: product.id, colour: next });
+  };
 
   /**
    * A thumbnail click.
@@ -223,6 +269,13 @@ export function ProductDetailClient({
    */
   const chooseImage = (index: number) => {
     setActiveIndex(index);
+    // How far into the gallery a customer goes is the closest thing an online
+    // shop has to picking a garment up and turning it over.
+    track({
+      name: "product_image_interaction",
+      productId: product.id,
+      meta: { index, total: galleryMedia.length },
+    });
     const colourId = galleryMedia[index]?.colourId ?? null;
     if (!colourId || colourId === selectedColourId) return;
 
@@ -286,12 +339,42 @@ export function ProductDetailClient({
       />
 
       <div className="grid grid-cols-1 gap-10 mt-6 min-w-0 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,0.85fr)] min-[900px]:items-start min-[900px]:gap-8 min-[1100px]:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)] min-[1100px]:gap-14">
-        <ProductGallery
-          images={galleryImages}
-          alts={galleryAlts}
-          activeIndex={activeIndex}
-          onActiveIndexChange={chooseImage}
-        />
+        <div className="min-w-0">
+          <ProductGallery
+            images={galleryImages}
+            alts={galleryAlts}
+            activeIndex={activeIndex}
+            onActiveIndexChange={chooseImage}
+          />
+
+          {/*
+            The optional product video, under the gallery rather than inside it:
+            a video in the thumbnail rail would have to pretend to be a
+            photograph, and the rail's job is to show the colourways.
+
+            `preload="none"` so a page that has one costs nothing until somebody
+            presses play — the file is several hundred kilobytes and the
+            photographs are what the page is for. No autoplay, no loop and no
+            muted-autoplay trick: this is a garment, not an advertisement.
+          */}
+          {product.videoUrl && (
+            <figure className="mt-4">
+              <video
+                src={product.videoUrl}
+                controls
+                preload="none"
+                playsInline
+                poster={galleryImages[0]}
+                className="w-full rounded-panel border border-border bg-taraIvory"
+              >
+                Your browser cannot play this video.
+              </video>
+              <figcaption className="mt-1.5 font-sans text-xs text-muted">
+                {product.name} — product video
+              </figcaption>
+            </figure>
+          )}
+        </div>
 
         <div className="min-w-0 min-[900px]:sticky min-[900px]:top-[120px] min-[900px]:self-start">
           <h1 className="font-serif font-normal text-3xl sm:text-4xl lg:text-[2.75rem] leading-[1.05] text-ink mb-3 text-balance">
@@ -365,6 +448,18 @@ export function ProductDetailClient({
               </Button>
             </div>
           </div>
+
+          {/*
+            The launch offer, when one is live and this product is in it.
+
+            This is the only thing that goes here. A block repeating the
+            delivery estimate, the exchange window and the sizes used to sit in
+            this spot, and every line of it was already on the page: the two
+            policies are in the accordion below, the sizes are the selector
+            above, and the size guide is beside it. Saying all of it twice made
+            the page longer without making it more convincing.
+          */}
+          <LaunchOfferNote productId={product.id} className="mb-6" />
 
           <div className="flex items-center gap-3 mb-6">
             <span className="font-sans font-medium text-xs uppercase tracking-[0.05em] text-muted">
@@ -468,12 +563,22 @@ export function ProductDetailClient({
               <p>{product.careInstructions}</p>
             </AccordionItem>
 
+            {/*
+              Both sentences used to be written here, which meant the product
+              page could promise one thing and /delivery-information another.
+              They come from store settings now — the same rows the assurance
+              panel above and both policy pages read.
+            */}
             <AccordionItem title={"Delivery Information"}>
-              <p>{"Delivered within 2-4 business days in Sylhet and 4-7 business days nationwide."}</p>
+              <p>
+                {`Delivered within ${policies.deliveryEstimateInside} in ${delivery.freeDeliveryDivision} and ${policies.deliveryEstimateOutside} elsewhere in Bangladesh.`}
+              </p>
             </AccordionItem>
 
             <AccordionItem title={"Exchange Information"}>
-              <p>{"Easy exchange within 7 days of delivery. Item must be unused with original tags."}</p>
+              <p>
+                {`Easy exchange within ${policies.exchangeWindowDays} days of delivery. Item must be unused with original tags.`}
+              </p>
             </AccordionItem>
           </div>
         </div>

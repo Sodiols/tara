@@ -33,8 +33,31 @@ export interface StoreIdentity {
   tiktokUrl: string;
 }
 
+/**
+ * The promises the shop makes about delivery and exchange.
+ *
+ * These sentences were written into four components — the delivery policy page,
+ * the exchange policy page, the homepage benefits and the product accordion —
+ * which is three copies too many: the shop could promise 2-4 days on one page
+ * and 3-5 on another with nothing to notice. They are one row each in
+ * `store_settings` now, seeded in migration 0026 with exactly the wording the
+ * site already showed, and editable in /admin/settings.
+ *
+ * Nothing here is invented. If TARA changes its exchange window, it changes in
+ * one place and every page that mentions it follows.
+ */
+export interface PolicySettings {
+  /** e.g. "2-4 business days", inside the free-delivery division. */
+  deliveryEstimateInside: string;
+  /** e.g. "4-7 business days", everywhere else in Bangladesh. */
+  deliveryEstimateOutside: string;
+  /** Days a customer has to ask for an exchange after delivery. */
+  exchangeWindowDays: number;
+}
+
 export interface PublicStoreSettings extends StoreIdentity {
   delivery: DeliverySettings;
+  policies: PolicySettings;
   codEnabled: boolean;
   maintenanceMode: boolean;
 }
@@ -59,6 +82,13 @@ const DEFAULTS: PublicStoreSettings = {
   instagramUrl: siteConfig.instagram,
   tiktokUrl: siteConfig.tiktok,
   delivery: DEFAULT_DELIVERY_SETTINGS,
+  // The wording the storefront has always used, so a database without migration
+  // 0026 renders exactly what it rendered before.
+  policies: {
+    deliveryEstimateInside: "2-4 business days",
+    deliveryEstimateOutside: "4-7 business days",
+    exchangeWindowDays: 7,
+  },
   codEnabled: true,
   maintenanceMode: false,
 };
@@ -123,10 +153,23 @@ const readPublicStoreSettings = unstable_cache(async (): Promise<PublicStoreSett
         resolveDivision(asString("free_delivery_division", "")) ??
         DEFAULT_DELIVERY_SETTINGS.freeDeliveryDivision,
     },
+    policies: {
+      deliveryEstimateInside: asString(
+        "delivery_estimate_inside",
+        DEFAULTS.policies.deliveryEstimateInside,
+      ),
+      deliveryEstimateOutside: asString(
+        "delivery_estimate_outside",
+        DEFAULTS.policies.deliveryEstimateOutside,
+      ),
+      exchangeWindowDays: Math.round(
+        asNumber("exchange_window_days", DEFAULTS.policies.exchangeWindowDays),
+      ),
+    },
     codEnabled: asBoolean("cod_enabled", DEFAULTS.codEnabled),
     maintenanceMode: asBoolean("maintenance_mode", DEFAULTS.maintenanceMode),
   };
-}, ["public-store-settings-v1"], {
+}, ["public-store-settings-v2"], {
   revalidate: 60,
   tags: ["store-settings"],
 });
@@ -137,6 +180,11 @@ export const getPublicStoreSettings = cache(readPublicStoreSettings);
 
 export async function getDeliverySettings(): Promise<DeliverySettings> {
   return (await getPublicStoreSettings()).delivery;
+}
+
+/** The delivery estimate and exchange window, for the pages that state them. */
+export async function getPolicySettings(): Promise<PolicySettings> {
+  return (await getPublicStoreSettings()).policies;
 }
 
 /** The identity block, for the footer, contact page and structured data. */
