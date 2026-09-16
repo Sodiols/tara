@@ -14,26 +14,38 @@ interface ProductGalleryProps {
    * repeating it on every thumbnail is noise for a screen reader.
    */
   alts: string[];
+  /** Which photograph is showing. Owned by the page — see the note below. */
+  activeIndex: number;
+  onActiveIndexChange: (index: number) => void;
 }
 
-export function ProductGallery({ images, alts }: ProductGalleryProps) {
-  const [activeIndex, setActiveIndex] = useState(0);
+/**
+ * The product gallery.
+ *
+ * WHY THE ACTIVE IMAGE LIVES IN THE PAGE
+ * --------------------------------------
+ * The rail shows every photograph the product has, across all of its colours,
+ * so a customer can see the Maroon and the Olive without hunting for the
+ * swatch first. That means a thumbnail click is not only a gallery event: if
+ * the photograph belongs to another colourway, the page has to move the colour
+ * selection with it, or the page would show a Maroon photograph while Black is
+ * selected — and the bag, the price and the variant would all still be Black.
+ *
+ * Holding the index here and telling the page about clicks would give two
+ * sources of truth for the same question. The page owns it instead; this
+ * component draws it.
+ */
+export function ProductGallery({
+  images,
+  alts,
+  activeIndex,
+  onActiveIndexChange,
+}: ProductGalleryProps) {
   const [zoomOpen, setZoomOpen] = useState(false);
 
-  /*
-   * RESETTING TO THE FIRST PHOTOGRAPH WHEN THE COLOUR CHANGES
-   * ---------------------------------------------------------
-   * Not done here. The product page gives this component a `key` of the
-   * selected colour, so choosing Maroon while looking at the fourth Black
-   * photograph mounts a fresh gallery: `activeIndex` starts at 0 and the zoom
-   * overlay starts closed, with no effect to run, no stale frame painted, and
-   * no state to keep in step. Remounting IS the reset.
-   *
-   * `safeIndex` is the belt to that braces: it keeps the index inside the array
-   * even if a caller swaps the images without changing the key, so a shorter
-   * list can never be addressed past its end.
-   */
-  const safeIndex = activeIndex < images.length ? activeIndex : 0;
+  // Keeps the index inside the array even if the caller swaps the images for a
+  // shorter list, so a stale index can never address past the end.
+  const safeIndex = activeIndex >= 0 && activeIndex < images.length ? activeIndex : 0;
 
   // A product with no photographs at all still has to render a page.
   if (images.length === 0) {
@@ -76,7 +88,7 @@ export function ProductGallery({ images, alts }: ProductGalleryProps) {
         {images.map((image, i) => (
           <button
             key={image + i}
-            onClick={() => setActiveIndex(i)}
+            onClick={() => onActiveIndexChange(i)}
             aria-label={`View image ${i + 1}`}
             aria-current={safeIndex === i}
             className={`relative w-16 aspect-[4/5] shrink-0 overflow-hidden border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink min-[900px]:w-full ${

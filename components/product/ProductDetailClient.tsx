@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Facebook, MessageCircle, Link as LinkIcon, Star } from "lucide-react";
 import type { Product, ProductVariant } from "@/types";
@@ -11,7 +11,7 @@ import { useRecentlyViewedStore } from "@/store/recentlyViewedStore";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { ProductGallery } from "./ProductGallery";
 import { imageAlt } from "@/lib/product-media";
-import { colourIdForName, mediaForColour } from "@/lib/product-colour-images";
+import { colourIdForName } from "@/lib/product-colour-images";
 import { PriceDisplay } from "./PriceDisplay";
 import { SizeSelector } from "./SizeSelector";
 import { ColourSelector } from "./ColourSelector";
@@ -36,6 +36,7 @@ import {
   resolveSelection,
   sizeChoices,
   unavailableReason,
+  type Selection,
 } from "@/lib/product-variants";
 import { MAX_LINE_QUANTITY } from "@/store/cartStore";
 
@@ -87,13 +88,12 @@ export function ProductDetailClient({
   );
 
   /*
-   * The gallery is derived from the selection, not held beside it.
-   *
-   * There is exactly one source of truth for which colour is being looked at —
-   * `selection`, which resolveSelection() keeps on a combination that really
-   * exists. A second piece of state for "the gallery's colour" could disagree
-   * with it, and the disagreement is precisely the bug this feature exists to
-   * remove: the customer looking at Black photographs while Maroon is selected.
+   * The colour being looked at has exactly one source of truth: `selection`,
+   * which resolveSelection() keeps on a combination that really exists. The
+   * gallery position is moved BY it and can move it in turn — see
+   * applySelection and chooseImage below — so the two can never disagree, which
+   * is the bug this feature exists to remove: looking at Black photographs
+   * while Maroon is selected.
    *
    * Everything below is client-side arithmetic over data the page already has.
    * Changing colour does not fetch anything.
@@ -102,9 +102,30 @@ export function ProductDetailClient({
     () => colourIdForName(variants, selection.colour),
     [variants, selection.colour],
   );
+
+  /*
+   * THE RAIL SHOWS EVERYTHING; THE SELECTION DECIDES WHERE IT OPENS
+   * ---------------------------------------------------------------
+   * Every photograph the product has is in the gallery, whichever colour it
+   * belongs to, so a three-colour product shows all three colourways in the
+   * rail instead of hiding two of them behind a swatch.
+   *
+   * What keeps that honest is that the image and the colour move together:
+   * picking a swatch jumps to that colour's first photograph, and clicking a
+   * photograph that belongs to another colour selects that colour. The
+   * customer can never be looking at Maroon while Black is in the bag.
+   */
   const galleryMedia = useMemo(
-    () => mediaForColour(product.media, selectedColourId),
-    [product.media, selectedColourId],
+    () => (product.media.length > 0
+      ? product.media
+      : product.images.map((url, index) => ({
+          url,
+          alt: null,
+          isPrimary: index === 0,
+          sortOrder: index,
+          colourId: null,
+        }))),
+    [product.media, product.images],
   );
   const galleryImages = useMemo(
     () => galleryMedia.map((image) => image.url),
@@ -114,6 +135,31 @@ export function ProductDetailClient({
     () => galleryMedia.map((image, index) => imageAlt(image, product.name, index)),
     [galleryMedia, product.name],
   );
+
+  /** Where a colour's own photographs begin, or 0 when it has none of its own. */
+  const firstIndexForColour = useCallback(
+    (colourId: string | null) => {
+      if (!colourId) return 0;
+      const index = galleryMedia.findIndex((image) => image.colourId === colourId);
+      return index === -1 ? 0 : index;
+    },
+    [galleryMedia],
+  );
+
+  /*
+   * Opens on the selected colour's first photograph, not on the product's.
+   *
+   * `defaultSelection` may land on Maroon because Black is sold out, and the
+   * page would otherwise open showing a Black photograph with Maroon selected.
+   */
+  const [activeIndex, setActiveIndex] = useState(() => {
+    const colourId = colourIdForName(variants, defaultSelection(variants).colour);
+    if (!colourId) return 0;
+    const index = (product.media.length > 0 ? product.media : []).findIndex(
+      (image) => image.colourId === colourId,
+    );
+    return index === -1 ? 0 : index;
+  });
 
   /*
    * Everything about the purchase comes from the selected variant, not the
@@ -149,20 +195,52 @@ export function ProductDetailClient({
    */
   const quantity = Math.min(Math.max(1, requestedQuantity), Math.max(1, maxQuantity));
 
+  /**
+   * Applies a resolved selection and moves the gallery with it.
+   *
+   * `resolveSelection` may change the colour as well as the size — picking a
+   * size that the current colour does not come in moves both — so the gallery
+   * is pointed at whatever colour comes back rather than at the one that was
+   * asked for.
+   */
+  const applySelection = (next: Selection) => {
+    setSelection(next);
+    const nextColourId = colourIdForName(variants, next.colour);
+    if (nextColourId !== selectedColourId) setActiveIndex(firstIndexForColour(nextColourId));
+  };
+
   const chooseSize = (next: string) =>
-    setSelection((current) => resolveSelection(variants, { ...current, size: next }, "size"));
+    applySelection(resolveSelection(variants, { ...selection, size: next }, "size"));
   const chooseColour = (next: string) =>
-    setSelection((current) => resolveSelection(variants, { ...current, colour: next }, "colour"));
+    applySelection(resolveSelection(variants, { ...selection, colour: next }, "colour"));
+
+  /**
+   * A thumbnail click.
+   *
+   * Always shows the photograph. If it belongs to a colourway other than the
+   * one selected, the selection follows it, so the swatch, the price, the stock
+   * and the variant the bag receives all describe what is on screen.
+   */
+  const chooseImage = (index: number) => {
+    setActiveIndex(index);
+    const colourId = galleryMedia[index]?.colourId ?? null;
+    if (!colourId || colourId === selectedColourId) return;
+
+    const match = variants.find((variant) => variant.colour?.id === colourId);
+    if (match?.colour) {
+      setSelection(resolveSelection(variants, { ...selection, colour: match.colour.name }, "colour"));
+    }
+  };
 
   const buildCartItem = () => ({
     productId: product.id,
     slug: product.slug,
     name: product.name,
-    // The photograph of the colour being bought, so the bag, the checkout
-    // summary and Buy Now show the dress the customer chose rather than
-    // whichever colourway happens to hold the product's main image.
-    // place_order() independently picks the same image for the order line.
-    image: galleryImages[0] ?? product.images[0],
+    // The photograph on screen, which is the one the customer is buying: the
+    // gallery and the colour selection are kept in step, so this is always a
+    // picture of the chosen colourway. place_order() independently picks that
+    // colour's image for the order line.
+    image: galleryImages[activeIndex] ?? galleryImages[0] ?? product.images[0],
     // The variant's effective price, so the bag shows what checkout will charge.
     // place_order() still recomputes it; this is display truth, not authority.
     price: effectivePrice,
@@ -208,16 +286,11 @@ export function ProductDetailClient({
       />
 
       <div className="grid grid-cols-1 gap-10 mt-6 min-w-0 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,0.85fr)] min-[900px]:items-start min-[900px]:gap-8 min-[1100px]:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)] min-[1100px]:gap-14">
-        {/*
-          Keyed on the colour: a colour change mounts a fresh gallery, which is
-          what puts it back on the first photograph and closes any open zoom.
-          "general" covers a product with no colour axis, whose key then never
-          changes and whose gallery therefore never resets.
-        */}
         <ProductGallery
-          key={selectedColourId ?? "general"}
           images={galleryImages}
           alts={galleryAlts}
+          activeIndex={activeIndex}
+          onActiveIndexChange={chooseImage}
         />
 
         <div className="min-w-0 min-[900px]:sticky min-[900px]:top-[120px] min-[900px]:self-start">
