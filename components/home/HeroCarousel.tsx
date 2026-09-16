@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { cn } from "@/lib/utils";
 import { HERO_INITIAL_INDEX, heroCategories } from "@/data/hero-categories";
 import { HeroCategoryCard } from "./HeroCategoryCard";
@@ -30,6 +30,22 @@ import { HeroCategoryCard } from "./HeroCategoryCard";
  * back — the cards themselves never learn about the gesture.
  */
 
+/**
+ * Has the page finished loading?
+ *
+ * Read as an external store rather than mirrored into state from an effect, so
+ * the first render already knows the answer on a warm navigation and nothing
+ * re-renders to discover it. The server always answers "not yet", which is what
+ * keeps the markup identical on both sides.
+ */
+const subscribeToLoad = (onChange: () => void) => {
+  if (document.readyState === "complete") return () => {};
+  window.addEventListener("load", onChange, { once: true });
+  return () => window.removeEventListener("load", onChange);
+};
+const readPageLoaded = () => document.readyState === "complete";
+const serverPageLoaded = () => false;
+
 const AUTOPLAY_MS = 4000;
 /** After a manual change, the shopper is in charge; autoplay waits this long. */
 const RESUME_AFTER_INTERACTION_MS = 7000;
@@ -50,6 +66,22 @@ export function HeroCarousel() {
   const [isPageVisible, setIsPageVisible] = useState(true);
   const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
   const [autoplayDelay, setAutoplayDelay] = useState(AUTOPLAY_MS);
+  /*
+   * Autoplay waits for the page to finish loading.
+   *
+   * The first rotation used to fire four seconds after the carousel mounted,
+   * which on a phone is in the middle of the load: the four side photographs
+   * are often still arriving, and rotating them re-composites the largest
+   * element on the screen while the browser is still painting it for the first
+   * time. Nothing was gained — nobody is reading a carousel they have not seen
+   * yet — and it cost main-thread time exactly where there is least of it.
+   *
+   * It now starts once `load` has fired (or immediately, if the page was
+   * already loaded when this mounted). Every other behaviour is untouched: the
+   * interval, the pause on hover, drag, hidden tab and reduced motion, and the
+   * seven-second courtesy pause after a manual change.
+   */
+  const pageLoaded = useSyncExternalStore(subscribeToLoad, readPageLoaded, serverPageLoaded);
 
   const count = heroCategories.length;
 
@@ -98,7 +130,8 @@ export function HeroCarousel() {
     [activeIndex, goTo],
   );
 
-  const isPaused = isDragging || isHovered || !isPageVisible || prefersReducedMotion;
+  const isPaused =
+    isDragging || isHovered || !isPageVisible || prefersReducedMotion || !pageLoaded;
 
   // A timeout restarted on every index change rather than a repeating interval:
   // a manual change re-arms it from that moment, so the shopper never gets a

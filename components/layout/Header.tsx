@@ -139,7 +139,18 @@ export function Header({ identity }: { identity: StoreIdentity }) {
               alt={"TARA"}
               width={250}
               height={64}
-              priority
+              /*
+               * Eager, not `priority`.
+               *
+               * `priority` emitted a preload link that sat ABOVE the hero's in
+               * the document, so a 5 KB wordmark was discovered before the
+               * 57 KB photograph that is the LCP element and shared the first
+               * round trips with it. Eager keeps the logo in the first wave of
+               * requests — it is still painted with the header, with no flicker
+               * — while `low` leaves the hero alone at the front of the queue.
+               */
+              loading="eager"
+              fetchPriority="low"
               quality={90}
               // 20px at every width. It was 24px from lg, which put the
               // wordmark at 30% of an 80px bar and made it read heavier than

@@ -137,6 +137,7 @@ function contentSecurityPolicy(nonce: string, isDev: boolean): string {
  * would turn a transient database blip into an outage.
  */
 let maintenanceCache: { value: boolean; expiresAt: number } | null = null;
+let maintenanceRefresh: Promise<void> | null = null;
 const MAINTENANCE_TTL_MS = 30_000;
 
 /**
@@ -242,9 +243,59 @@ async function isPublicCollectionRoute(pathname: string): Promise<boolean> {
 async function isMaintenanceMode(): Promise<boolean> {
   if (!isSupabaseConfigured()) return false;
 
-  const now = Date.now();
-  if (maintenanceCache && maintenanceCache.expiresAt > now) return maintenanceCache.value;
+  if (maintenanceCache && maintenanceCache.expiresAt > Date.now()) {
+    return maintenanceCache.value;
+  }
 
+  /*
+   * Stale while revalidating.
+   *
+   * The read itself is one small REST call, but it sat in front of the HTML for
+   * every request that found the cache expired — a round trip to Supabase added
+   * to the document's time to first byte, once per instance every thirty
+   * seconds, to answer a question whose answer changes about twice a year.
+   *
+   * An expired entry is now served immediately and refreshed in the background,
+   * so only the very first request an instance ever serves waits for the
+   * network. The staleness window is unchanged in the direction that matters:
+   * turning maintenance mode ON still takes effect within one TTL, and turning
+   * it OFF likewise. A single in-flight promise is shared, so a burst of
+   * traffic triggers one refresh rather than one per request.
+   */
+  if (maintenanceCache) {
+    if (!maintenanceRefresh) {
+      maintenanceRefresh = readMaintenanceFlag()
+        .then((value) => {
+          maintenanceCache = { value, expiresAt: Date.now() + MAINTENANCE_TTL_MS };
+        })
+        .catch(() => {
+          // A failed refresh must not close the shop, and must not pin a stale
+          // value forever either: the entry keeps its old value and is retried
+          // on the next request.
+          maintenanceCache = {
+            value: maintenanceCache?.value ?? false,
+            expiresAt: Date.now() + MAINTENANCE_TTL_MS,
+          };
+        })
+        .finally(() => {
+          maintenanceRefresh = null;
+        });
+    }
+    return maintenanceCache.value;
+  }
+
+  // Nothing cached yet: this instance has to wait for the answer once.
+  const value = await readMaintenanceFlag();
+  maintenanceCache = { value, expiresAt: Date.now() + MAINTENANCE_TTL_MS };
+  return value;
+}
+
+/**
+ * The read itself. Resolves false on any failure, because closing the shop
+ * because a settings read timed out would turn a transient database blip into
+ * an outage.
+ */
+async function readMaintenanceFlag(): Promise<boolean> {
   try {
     const response = await fetch(
       `${supabaseEnv.url}/rest/v1/store_settings?key=eq.maintenance_mode&select=value`,
@@ -260,11 +311,8 @@ async function isMaintenanceMode(): Promise<boolean> {
     if (!response.ok) throw new Error(`status ${response.status}`);
 
     const rows = (await response.json()) as { value: unknown }[];
-    const value = rows[0]?.value === true;
-    maintenanceCache = { value, expiresAt: now + MAINTENANCE_TTL_MS };
-    return value;
+    return rows[0]?.value === true;
   } catch {
-    maintenanceCache = { value: false, expiresAt: now + MAINTENANCE_TTL_MS };
     return false;
   }
 }

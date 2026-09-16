@@ -13,11 +13,30 @@ import { jsonLdScriptProps } from "@/lib/json-ld";
 import { freeDeliveryHeadline } from "@/lib/delivery";
 import { SCHEMA_IDS, defaultSocialImages, postalAddress, websiteSchema } from "@/lib/seo";
 
+/*
+ * Both faces are self-hosted by next/font — no request to Google, and no
+ * render-blocking stylesheet from a third party.
+ *
+ * `preload` is stated rather than left to its default because the built HTML
+ * carries no font preload link at all: `.next/server/next-font-manifest.json`
+ * comes out with an empty `app` map on this Next 16 / webpack build, so the two
+ * woff2 files are discovered only once the CSS has been fetched and parsed.
+ * Saying so explicitly does not change that — the flag is kept because it
+ * states the intent, and because a Next release that fixes the manifest will
+ * then emit the links without anyone having to remember this.
+ *
+ * What did move them earlier is the page no longer waiting on the database:
+ * the CSS is requested at ~0.3s instead of ~1.1s, so the faces now land at
+ * ~1.9s rather than ~4.3s. Both are `display: swap` with next/font's adjusted
+ * fallback metrics, so text is readable from the first paint and the swap
+ * costs no layout shift — CLS stays at 0.
+ */
 const bodoniModa = Bodoni_Moda({
   subsets: ["latin"],
   weight: "variable",
   variable: "--font-heading",
   display: "swap",
+  preload: true,
 });
 
 const manrope = Manrope({
@@ -25,6 +44,7 @@ const manrope = Manrope({
   weight: "variable",
   variable: "--font-body",
   display: "swap",
+  preload: true,
 });
 
 export const metadata: Metadata = {

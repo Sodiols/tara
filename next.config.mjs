@@ -131,6 +131,27 @@ const nextConfig = {
         source: "/api/health",
         headers: [{ key: "Cache-Control", value: "no-store" }],
       },
+      {
+        /*
+         * Brand and hero artwork, served straight out of /public.
+         *
+         * Next gives everything in /public `public, max-age=0`, so a returning
+         * shopper revalidated the logo and every hero photograph on each visit
+         * — a round trip each to be told nothing had changed.
+         *
+         * Not `immutable`, because these filenames are not content-hashed: a
+         * replaced photograph keeps its name. Thirty days of browser cache with
+         * a day of stale-while-revalidate means repeat visits paint from disk
+         * while any replacement is picked up in the background.
+         */
+        source: "/:dir(images|logo|og)/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=2592000, stale-while-revalidate=86400",
+          },
+        ],
+      },
     ];
   },
 };

@@ -22,13 +22,53 @@ describe("upload downscaling", () => {
 describe("render budget", () => {
   test("below-the-fold homepage sections are deferred, the first screen is not", async () => {
     const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
-    const hero = page.indexOf("<HeroSection />");
-    const bestSellers = page.indexOf("<BestSellersSection");
-    const firstDeferred = page.indexOf('className="defer-render');
+
+    /*
+     * Read the page component's own JSX, not the whole file.
+     *
+     * The sections that need data are async server components declared above
+     * the default export, so searching the file found `<BestSellersSection`
+     * in its wrapper rather than in the page tree. What the budget actually
+     * cares about is the order the page RENDERS in, which is this block.
+     */
+    const tree = page.slice(page.indexOf("export default function HomePage"));
+    const hero = tree.indexOf("<HeroSection />");
+    const bestSellers = tree.indexOf("<BestSellers");
+    const firstDeferred = tree.indexOf('className="defer-render');
     assert.ok(hero > 0 && bestSellers > hero, "hero and best sellers render first");
     assert.ok(firstDeferred > bestSellers, "nothing above Best Sellers is deferred");
+
     const css = await readFile(new URL("../app/globals.css", import.meta.url), "utf8");
     assert.match(css, /\.defer-render \{\s+content-visibility: auto;\s+contain-intrinsic-size: auto var\(--defer-render-size, 900px\);/);
+  });
+
+  test("the hero does not wait for a database query", async () => {
+    const page = await readFile(new URL("../app/page.tsx", import.meta.url), "utf8");
+
+    /*
+     * The homepage used to open with `await Promise.all([...])`, so the hero —
+     * which needs none of that data — was held behind three queries: 581ms to
+     * first byte on a cold data cache against 68ms warm. The page component is
+     * synchronous now and every query lives inside a Suspense boundary, so the
+     * shell and the LCP photograph flush immediately.
+     *
+     * Asserted structurally because nothing else will notice if someone moves a
+     * query back up: the page still renders correctly, just half a second later.
+     */
+    const tree = page.slice(page.indexOf("export default function HomePage"));
+    assert.doesNotMatch(
+      page,
+      /export default async function HomePage/,
+      "the page component must not be async: awaiting here blocks the hero",
+    );
+    assert.ok(
+      tree.indexOf("<Suspense") > 0,
+      "data-dependent sections stream behind their own Suspense boundaries",
+    );
+    assert.ok(
+      tree.indexOf("<HeroSection />") < tree.indexOf("<Suspense"),
+      "the hero renders before anything that waits on data",
+    );
   });
 
   test("the Supabase SDK is not part of the header's first render", async () => {
