@@ -225,12 +225,16 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
 
   return (
     /*
-     * White card, generous outer radius, one hairline border and a shadow soft
-     * enough to read as depth rather than as decoration. The photograph is the
-     * dominant element and everything under it is a quiet two-column block.
+     * White card, generous outer radius, no border at all.
+     *
+     * Depth is two very light shadows rather than one dark one: a wide, soft
+     * fall that lifts the card off an ivory section, and a 2px contact shadow
+     * that keeps the bottom edge defined on white. Both are well under 20%
+     * opacity, so the card reads as raised rather than outlined — which is the
+     * whole point of dropping the border.
      */
     <article
-      className="group flex h-full flex-col overflow-hidden rounded-[22px] border border-taraTaupe/25 bg-taraWhite shadow-[0_2px_14px_-10px_rgb(23_23_23/0.25)]"
+      className="group flex h-full flex-col overflow-hidden rounded-[22px] bg-taraWhite shadow-[0_6px_22px_-12px_rgb(23_23_23/0.16),0_2px_6px_-4px_rgb(23_23_23/0.06)]"
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >
