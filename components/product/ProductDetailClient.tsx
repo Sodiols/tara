@@ -217,8 +217,6 @@ export function ProductDetailClient({
             </span>
           </div>
 
-          <p className="font-sans font-normal text-sm text-muted leading-relaxed mb-6">{product.description}</p>
-
           <div className="flex flex-col gap-5 mb-6">
             {showColours && (
               <ColourSelector
