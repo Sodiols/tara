@@ -151,6 +151,22 @@ export interface Database {
           archived_at: string | null;
         }
       >;
+      /**
+       * One colourway of one product (migration 0025).
+       *
+       * The row images and variants point at, so "this product's Black" is a
+       * thing with an id rather than a string repeated on every size.
+       */
+      product_colours: Table<
+        Timestamps & {
+          id: string;
+          product_id: string;
+          name_en: string;
+          colour_hex: string;
+          sort_order: number;
+          is_active: boolean;
+        }
+      >;
       product_images: Table<{
         id: string;
         product_id: string;
@@ -159,6 +175,8 @@ export interface Database {
         alt_en: string;
         sort_order: number;
         is_primary: boolean;
+        /** Null for a general product photograph that is not tied to a colour. */
+        product_colour_id: string | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -170,6 +188,13 @@ export interface Database {
           size: string;
           colour_en: string;
           colour_hex: string;
+          /**
+           * The colourway this variant belongs to. Null for a product with no
+           * colour axis, and for rows created before 0025 whose colour text
+           * could not be matched. `colour_en`/`colour_hex` are kept in step
+           * with it by a database trigger.
+           */
+          product_colour_id: string | null;
           price_override: number | null;
           stock_quantity: number;
           reserved_quantity: number;

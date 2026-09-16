@@ -18,6 +18,15 @@ export interface UploadableImage {
   imageId: string | null;
 }
 
+/**
+ * Which product colour a file belongs to, if any.
+ *
+ * A function rather than a field on the item, because the colour ids do not
+ * exist until the colours have been created — which happens after the files
+ * were picked and immediately before this runs.
+ */
+export type ColourIdResolver<T> = (item: T) => string | null;
+
 export interface UploadRun {
   results: Map<string, UploadOutcome>;
   uploaded: number;
@@ -37,13 +46,15 @@ export interface UploadRun {
  * Files that already have an image id are not re-sent, so retrying after a
  * partial failure uploads only what failed.
  */
-export async function uploadPendingImages({
+export async function uploadPendingImages<T extends UploadableImage>({
   productId,
   items,
+  colourIdFor,
   onProgress,
 }: {
   productId: string;
-  items: readonly UploadableImage[];
+  items: readonly T[];
+  colourIdFor?: ColourIdResolver<T>;
   onProgress?: (message: string) => void;
 }): Promise<UploadRun> {
   const outstanding = outstandingUploads(items);
@@ -56,6 +67,10 @@ export async function uploadPendingImages({
     upload: async (item) => {
       const formData = new FormData();
       formData.set("productId", productId);
+      // Omitted entirely for a product with one gallery, which is what makes
+      // the image a general one — the same row shape every existing product has.
+      const colourId = colourIdFor?.(item);
+      if (colourId) formData.set("productColourId", colourId);
       // A camera original is shrunk to what the site can actually display
       // before it leaves the browser; see lib/client-image-resize.ts.
       formData.set("file", await prepareImageForUpload(item.file));

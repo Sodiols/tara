@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { useAddToCart } from "@/hooks/useAddToCart";
 import { requiresVariantChoice } from "@/lib/product-variants";
 import { ONE_SIZE } from "@/lib/product-size";
+import { primaryImageForColour } from "@/lib/product-colour-images";
 import { MAX_LINE_QUANTITY } from "@/store/cartStore";
 import type { Product } from "@/types";
 
@@ -52,7 +53,13 @@ export function QuickViewModal({ product, onClose }: QuickViewModalProps) {
         productId: product.id,
         slug: product.slug,
         name: product.name,
-        image: product.images[0],
+        // One combination means one colour, and its own photograph if it has
+      // one — the same image the product page would put in the bag.
+      image: primaryImageForColour(
+        product.media,
+        product.colours[0]?.id,
+        product.images[0],
+      ),
         price: product.price,
         size: product.sizes[0] ?? ONE_SIZE,
         colour: product.colours[0]?.name ?? "",

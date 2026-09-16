@@ -190,11 +190,16 @@ function asMedia(value: unknown, images: string[]): ProductImageMedia[] {
       const url = asString(item.url).trim();
       if (!url) return [];
       const alt = asString(item.alt).trim();
+      // `colourId` arrives only from a database that has migration 0025. On an
+      // older one it is absent, which reads as null — a general image — and the
+      // gallery behaves exactly as it did before colours existed.
+      const colourId = asString(item.colourId).trim();
       return [{
         url,
         alt: alt || null,
         isPrimary: item.isPrimary === true,
         sortOrder: asNumber(item.sortOrder, index),
+        colourId: colourId || null,
       }];
     });
     if (parsed.length > 0) return parsed;
@@ -204,6 +209,7 @@ function asMedia(value: unknown, images: string[]): ProductImageMedia[] {
     alt: null,
     isPrimary: index === 0,
     sortOrder: index,
+    colourId: null,
   }));
 }
 
@@ -211,10 +217,11 @@ function asColours(value: unknown): ColourOption[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((entry) => {
     if (!entry || typeof entry !== "object") return [];
-    const colour = entry as { name?: unknown; hex?: unknown };
+    const colour = entry as { name?: unknown; hex?: unknown; id?: unknown };
     const name = asString(colour.name).trim();
     if (!name) return [];
-    return [{ name, hex: asString(colour.hex, "#000000") }];
+    const id = asString(colour.id).trim();
+    return [{ name, hex: asString(colour.hex, "#000000"), ...(id ? { id } : {}) }];
   });
 }
 
@@ -673,7 +680,9 @@ export async function getProductVariants(productId: string): Promise<ProductVari
   const supabase = createPublicServerClient();
   const { data, error } = await supabase
     .from("product_variants")
-    .select("id,size,colour_en,colour_hex,stock_quantity,price_override,is_active")
+    .select(
+      "id,size,colour_en,colour_hex,product_colour_id,stock_quantity,price_override,is_active",
+    )
     .eq("product_id", productId)
     .eq("is_active", true);
 
@@ -699,7 +708,14 @@ export async function getProductVariants(productId: string): Promise<ProductVari
       id: row.id,
       size: normaliseSizeValue(asString(row.size)),
       colour: colourName
-        ? { name: colourName, hex: asString(row.colour_hex, "#000000") }
+        ? {
+            name: colourName,
+            hex: asString(row.colour_hex, "#000000"),
+            // Null on a product whose variants predate migration 0025. The
+            // image grouping treats a colour with no id as "use the general
+            // photographs", which is what those products have.
+            ...(row.product_colour_id ? { id: row.product_colour_id } : {}),
+          }
         : null,
       stock,
       price: row.price_override == null ? basePrice : asNumber(row.price_override),

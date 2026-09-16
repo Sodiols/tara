@@ -274,7 +274,7 @@ describe("structured data", () => {
 
 describe("image alt text reaches the storefront", () => {
   const media = (alt: string | null, isPrimary = false) => ({
-    url: "https://example.com/a.jpg", alt, isPrimary, sortOrder: 0,
+    url: "https://example.com/a.jpg", alt, isPrimary, sortOrder: 0, colourId: null,
   });
 
   test("stored alt text wins over the product name", () => {

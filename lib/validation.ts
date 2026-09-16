@@ -363,6 +363,65 @@ export function missingForActiveProduct(product: {
   return missing;
 }
 
+/**
+ * One colourway of a product — a row of `public.product_colours`.
+ *
+ * The name is trimmed here so that "Black" and " Black " cannot both be sent;
+ * the database's case-folded unique index is what finally refuses "black" as a
+ * second colour, and the action turns that into a sentence about duplicates
+ * rather than a raw constraint error.
+ */
+export const adminProductColourSchema = z.object({
+  id: z.string().uuid().optional(),
+  productId: z.string().uuid(),
+  nameEn: z.string().trim().min(1, "Give this colour a name.").max(60),
+  colourHex: z
+    .string()
+    .trim()
+    .regex(/^#[0-9A-Fa-f]{6}$/, "Use a six-digit hex colour, for example #702D42."),
+  sortOrder: z.coerce.number().int().min(0).max(999).default(0),
+  isActive: z.boolean().default(true),
+});
+
+export type AdminProductColour = z.infer<typeof adminProductColourSchema>;
+
+/**
+ * The colours posted together by the create screen, before the product exists.
+ *
+ * Duplicate detection happens here as well as in the database, because at this
+ * point the administrator is looking at a form with both fields on it and the
+ * useful message names the colour rather than the constraint.
+ */
+export const adminProductColourDraftSchema = z
+  .array(
+    z.object({
+      key: z.string().min(1).max(120),
+      nameEn: z.string().trim().min(1, "Give every colour a name.").max(60),
+      colourHex: z
+        .string()
+        .trim()
+        .regex(/^#[0-9A-Fa-f]{6}$/, "Use a six-digit hex colour, for example #702D42."),
+    }),
+  )
+  .min(1, "Add at least one colour, or turn colour options off.")
+  .max(24, "A product can hold at most 24 colours.")
+  .superRefine((colours, ctx) => {
+    const seen = new Map<string, number>();
+    colours.forEach((colour, index) => {
+      const key = colour.nameEn.trim().toLowerCase();
+      const first = seen.get(key);
+      if (first !== undefined) {
+        ctx.addIssue({
+          code: "custom",
+          path: [index, "nameEn"],
+          message: `"${colour.nameEn.trim()}" is already colour ${first + 1}. Give each colour a different name.`,
+        });
+        return;
+      }
+      seen.set(key, index);
+    });
+  });
+
 export const adminVariantSchema = z.object({
   id: z.string().uuid().optional(),
   productId: z.string().uuid(),

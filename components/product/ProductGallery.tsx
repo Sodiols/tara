@@ -20,13 +20,43 @@ export function ProductGallery({ images, alts }: ProductGalleryProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [zoomOpen, setZoomOpen] = useState(false);
 
+  /*
+   * RESETTING TO THE FIRST PHOTOGRAPH WHEN THE COLOUR CHANGES
+   * ---------------------------------------------------------
+   * Not done here. The product page gives this component a `key` of the
+   * selected colour, so choosing Maroon while looking at the fourth Black
+   * photograph mounts a fresh gallery: `activeIndex` starts at 0 and the zoom
+   * overlay starts closed, with no effect to run, no stale frame painted, and
+   * no state to keep in step. Remounting IS the reset.
+   *
+   * `safeIndex` is the belt to that braces: it keeps the index inside the array
+   * even if a caller swaps the images without changing the key, so a shorter
+   * list can never be addressed past its end.
+   */
+  const safeIndex = activeIndex < images.length ? activeIndex : 0;
+
+  // A product with no photographs at all still has to render a page.
+  if (images.length === 0) {
+    return (
+      <div className="flex min-w-0 flex-col gap-3">
+        <div
+          role="img"
+          aria-label="No photograph available for this product"
+          className="flex aspect-[4/5] w-full items-center justify-center bg-beige text-center font-sans text-xs uppercase tracking-[0.12em] text-muted"
+        >
+          {"No image available"}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-3 min-w-0 min-[900px]:grid min-[900px]:grid-cols-[76px_minmax(0,1fr)] min-[900px]:items-start min-[900px]:gap-4">
       {/* Main image: first on mobile, second column on tablet/desktop */}
       <div className="order-1 relative w-full min-w-0 aspect-[4/5] overflow-hidden bg-beige group min-[900px]:order-2">
         <Image
-          src={images[activeIndex]}
-          alt={alts[activeIndex] ?? ""}
+          src={images[safeIndex]}
+          alt={alts[safeIndex] ?? ""}
           fill
           priority
           sizes="(min-width: 900px) 50vw, 100vw"
@@ -48,9 +78,9 @@ export function ProductGallery({ images, alts }: ProductGalleryProps) {
             key={image + i}
             onClick={() => setActiveIndex(i)}
             aria-label={`View image ${i + 1}`}
-            aria-current={activeIndex === i}
+            aria-current={safeIndex === i}
             className={`relative w-16 aspect-[4/5] shrink-0 overflow-hidden border transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink min-[900px]:w-full ${
-              activeIndex === i ? "border-wine" : "border-border hover:border-wine/50"
+              safeIndex === i ? "border-wine" : "border-border hover:border-wine/50"
             }`}
           >
             <Image src={image} alt="" fill sizes="80px" className="object-cover" />
@@ -71,8 +101,8 @@ export function ProductGallery({ images, alts }: ProductGalleryProps) {
             </button>
             <div className="relative w-full max-w-3xl aspect-[4/5]">
               <Image
-                src={images[activeIndex]}
-                alt={alts[activeIndex] ?? ""}
+                src={images[safeIndex]}
+                alt={alts[safeIndex] ?? ""}
                 fill
                 sizes="800px"
                 className="object-contain"

@@ -24,6 +24,7 @@ import {
   type UploadOutcome,
 } from "@/lib/product-image-workflow";
 import {
+  assignImageColourAction,
   deleteProductImageAction,
   moveProductImageAction,
   setPrimaryImageAction,
@@ -33,7 +34,7 @@ import type { Tables } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { useToastStore } from "@/store/toastStore";
 import { ActionButton } from "./AdminForm";
-import { Panel, PanelHeader, adminInputClass } from "./ui";
+import { Panel, PanelHeader, adminInputClass, adminSelectClass } from "./ui";
 import { uploadPendingImages } from "./upload-pending-images";
 
 /**
@@ -434,6 +435,9 @@ export function PendingImageGrid({
 
 type ProductImage = Tables<"product_images">;
 
+/** Just enough of a colour row to label and choose one. */
+export type ProductColourOption = Pick<Tables<"product_colours">, "id" | "name_en">;
+
 /**
  * Alt text for one stored image, saved on blur.
  *
@@ -481,6 +485,68 @@ function AltTextField({
 }
 
 /**
+ * Which colourway one stored photograph shows.
+ *
+ * The control that makes existing products upgradable: their images predate
+ * colours entirely and arrive here as "General", and assigning them is a
+ * dropdown rather than a delete-and-re-upload of photography that is already
+ * correct. "General" is a real choice, not an empty state — an image with no
+ * colour is shown for every colourway, which is what a size chart or a fabric
+ * close-up should do.
+ */
+function ImageColourField({
+  image,
+  productId,
+  colours,
+  index,
+}: {
+  image: ProductImage;
+  productId: string;
+  colours: ProductColourOption[];
+  index: number;
+}) {
+  const router = useRouter();
+  const [value, setValue] = useState(image.product_colour_id ?? "");
+  const [saving, setSaving] = useState(false);
+  const addToast = useToastStore((state) => state.addToast);
+
+  const save = async (next: string) => {
+    const previous = value;
+    setValue(next);
+    setSaving(true);
+    const result = await assignImageColourAction(image.id, productId, next || null);
+    setSaving(false);
+    if (!result.ok) {
+      // Put the control back where it was: the photograph did not move, and a
+      // dropdown left showing the failed choice is a lie about the data.
+      setValue(previous);
+      addToast(result.message, "error");
+      return;
+    }
+    router.refresh();
+  };
+
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="sr-only">Colour for image {index + 1}</span>
+      <select
+        value={value}
+        disabled={saving}
+        onChange={(event) => void save(event.target.value)}
+        className={cn(adminSelectClass, "h-9 text-xs")}
+      >
+        <option value="">General (every colour)</option>
+        {colours.map((colour) => (
+          <option key={colour.id} value={colour.id}>
+            {colour.name_en}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/**
  * Image management for a product that already exists.
  *
  * The images the product HAS come first, and the uploader stays behind a button
@@ -491,14 +557,20 @@ function AltTextField({
 export function ProductImageLibrary({
   productId,
   images,
+  colours = [],
 }: {
   productId: string;
   images: ProductImage[];
+  /** The product's colourways. Empty for a product that does not use them. */
+  colours?: ProductColourOption[];
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState("");
+  // Which colour the next batch belongs to. "" means general product images,
+  // which is what every upload was before colours existed.
+  const [uploadColourId, setUploadColourId] = useState("");
   const addToast = useToastStore((state) => state.addToast);
   const remaining = Math.max(0, MAX_IMAGES_PER_PRODUCT - images.length);
   const pending = usePendingImages(remaining);
@@ -509,6 +581,7 @@ export function ProductImageLibrary({
     const outcome = await uploadPendingImages({
       productId,
       items: pending.items,
+      colourIdFor: () => uploadColourId || null,
       onProgress: setProgress,
     });
     pending.applyResults(outcome.results);
@@ -626,6 +699,14 @@ export function ProductImageLibrary({
                     <span className="sr-only">Delete image {index + 1}</span>
                   </ActionButton>
                 </div>
+                {colours.length > 0 && (
+                  <ImageColourField
+                    image={image}
+                    productId={productId}
+                    colours={colours}
+                    index={index}
+                  />
+                )}
                 <AltTextField image={image} productId={productId} index={index} />
               </div>
             </li>
@@ -642,6 +723,29 @@ export function ProductImageLibrary({
             </p>
           ) : (
             <div className="flex flex-col gap-4">
+              {colours.length > 0 && (
+                <label className="flex max-w-sm flex-col gap-1.5">
+                  <span className="font-sans text-xs font-semibold uppercase tracking-wider text-muted">
+                    These photographs show
+                  </span>
+                  <select
+                    value={uploadColourId}
+                    disabled={uploading}
+                    onChange={(event) => setUploadColourId(event.target.value)}
+                    className={adminSelectClass}
+                  >
+                    <option value="">General (every colour)</option>
+                    {colours.map((colour) => (
+                      <option key={colour.id} value={colour.id}>
+                        {colour.name_en}
+                      </option>
+                    ))}
+                  </select>
+                  <span className="font-sans text-xs text-muted">
+                    Each image can be moved to another colour afterwards.
+                  </span>
+                </label>
+              )}
               <PendingImageGrid
                 pending={pending}
                 limit={remaining}

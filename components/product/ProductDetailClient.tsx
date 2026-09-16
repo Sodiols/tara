@@ -11,6 +11,7 @@ import { useRecentlyViewedStore } from "@/store/recentlyViewedStore";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { ProductGallery } from "./ProductGallery";
 import { imageAlt } from "@/lib/product-media";
+import { colourIdForName, mediaForColour } from "@/lib/product-colour-images";
 import { PriceDisplay } from "./PriceDisplay";
 import { SizeSelector } from "./SizeSelector";
 import { ColourSelector } from "./ColourSelector";
@@ -86,6 +87,35 @@ export function ProductDetailClient({
   );
 
   /*
+   * The gallery is derived from the selection, not held beside it.
+   *
+   * There is exactly one source of truth for which colour is being looked at —
+   * `selection`, which resolveSelection() keeps on a combination that really
+   * exists. A second piece of state for "the gallery's colour" could disagree
+   * with it, and the disagreement is precisely the bug this feature exists to
+   * remove: the customer looking at Black photographs while Maroon is selected.
+   *
+   * Everything below is client-side arithmetic over data the page already has.
+   * Changing colour does not fetch anything.
+   */
+  const selectedColourId = useMemo(
+    () => colourIdForName(variants, selection.colour),
+    [variants, selection.colour],
+  );
+  const galleryMedia = useMemo(
+    () => mediaForColour(product.media, selectedColourId),
+    [product.media, selectedColourId],
+  );
+  const galleryImages = useMemo(
+    () => galleryMedia.map((image) => image.url),
+    [galleryMedia],
+  );
+  const galleryAlts = useMemo(
+    () => galleryMedia.map((image, index) => imageAlt(image, product.name, index)),
+    [galleryMedia, product.name],
+  );
+
+  /*
    * Everything about the purchase comes from the selected variant, not the
    * product.
    *
@@ -128,7 +158,11 @@ export function ProductDetailClient({
     productId: product.id,
     slug: product.slug,
     name: product.name,
-    image: product.images[0],
+    // The photograph of the colour being bought, so the bag, the checkout
+    // summary and Buy Now show the dress the customer chose rather than
+    // whichever colourway happens to hold the product's main image.
+    // place_order() independently picks the same image for the order line.
+    image: galleryImages[0] ?? product.images[0],
     // The variant's effective price, so the bag shows what checkout will charge.
     // place_order() still recomputes it; this is display truth, not authority.
     price: effectivePrice,
@@ -174,11 +208,16 @@ export function ProductDetailClient({
       />
 
       <div className="grid grid-cols-1 gap-10 mt-6 min-w-0 min-[900px]:grid-cols-[minmax(0,1fr)_minmax(340px,0.85fr)] min-[900px]:items-start min-[900px]:gap-8 min-[1100px]:grid-cols-[minmax(0,1.1fr)_minmax(380px,0.9fr)] min-[1100px]:gap-14">
+        {/*
+          Keyed on the colour: a colour change mounts a fresh gallery, which is
+          what puts it back on the first photograph and closes any open zoom.
+          "general" covers a product with no colour axis, whose key then never
+          changes and whose gallery therefore never resets.
+        */}
         <ProductGallery
-          images={product.images}
-          alts={product.images.map((_, index) =>
-            imageAlt(product.media[index], product.name, index),
-          )}
+          key={selectedColourId ?? "general"}
+          images={galleryImages}
+          alts={galleryAlts}
         />
 
         <div className="min-w-0 min-[900px]:sticky min-[900px]:top-[120px] min-[900px]:self-start">

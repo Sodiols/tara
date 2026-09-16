@@ -21,6 +21,15 @@ export type CategorySlug = string;
 export interface ColourOption {
   name: string;
   hex: string;
+  /**
+   * `product_colours.id` — the stable identity a photograph is attached to.
+   *
+   * Optional because a product whose variants predate migration 0025 (or whose
+   * colour text never matched a colour row) still has a colour axis with no id.
+   * Image grouping falls back to the general photographs for those, so the
+   * gallery is never empty; nothing keys off the NAME.
+   */
+  id?: string;
 }
 
 export interface Review {
@@ -56,6 +65,14 @@ export interface ProductImageMedia {
   alt: string | null;
   isPrimary: boolean;
   sortOrder: number;
+  /**
+   * `product_colours.id` when this photograph belongs to one colourway, null
+   * when it is a general product image shown for every colour.
+   *
+   * This is the ONLY link between an image and a colour. Nothing matches on the
+   * colour's name, and nothing assumes a position in the array means anything.
+   */
+  colourId: string | null;
 }
 
 export interface Product {

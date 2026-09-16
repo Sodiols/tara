@@ -359,7 +359,7 @@ export async function getAdminProducts(filters: ProductFilters) {
 export async function getProductEditorData(productId: string) {
   await requirePermission("catalogue.manage");
   const supabase = await createClient();
-  const [product, categories, collections, variants, images] = await Promise.all([
+  const [product, categories, collections, variants, images, colours] = await Promise.all([
     supabase.from("products").select("*").eq("id", productId).maybeSingle(),
     supabase.from("categories").select("id,name_en").order("sort_order"),
     supabase.from("collections").select("id,name_en").order("sort_order"),
@@ -370,6 +370,14 @@ export async function getProductEditorData(productId: string) {
       .order("size")
       .order("colour_en"),
     supabase.from("product_images").select("*").eq("product_id", productId).order("sort_order"),
+    // Ordered the way the admin panel and the storefront both show them, so a
+    // colour does not move between the two screens.
+    supabase
+      .from("product_colours")
+      .select("*")
+      .eq("product_id", productId)
+      .order("sort_order")
+      .order("name_en"),
   ]);
 
   if (!product.data) return null;
@@ -379,6 +387,7 @@ export async function getProductEditorData(productId: string) {
     collections: collections.data ?? [],
     variants: variants.data ?? [],
     images: images.data ?? [],
+    colours: colours.data ?? [],
   };
 }
 

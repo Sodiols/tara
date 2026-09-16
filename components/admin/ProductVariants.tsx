@@ -16,11 +16,13 @@ import {
   Td,
   Th,
   adminInputClass,
+  adminSelectClass,
 } from "./ui";
 import { StockBadge } from "./status";
 import { InventoryAdjuster } from "./InventoryAdjuster";
 
 type Variant = Tables<"product_variants">;
+type ProductColour = Tables<"product_colours">;
 
 /**
  * Variants for one product.
@@ -37,18 +39,33 @@ type Variant = Tables<"product_variants">;
  * exposing a quantity input that would bypass the trail. Opening stock is the
  * one exception, and only because a variant that does not exist yet has no
  * history to keep.
+ *
+ * COLOUR COMES FROM THE PRODUCT COLOUR, NOT FROM TYPING
+ * ----------------------------------------------------
+ * Once a product has colours defined, the colour field is a selector over them.
+ * Typing "Black" and picking a hex for the third time was how a product ended
+ * up with Black, black and a slightly different Black — three colours to the
+ * database, three galleries, one to the customer. The chosen colour is sent as
+ * an id and the server reads the name and hex from the row it names, so the
+ * text on the variant cannot disagree with the swatch on the storefront.
+ *
+ * A product with no colours yet keeps the original free-text fields, so nothing
+ * about the existing catalogue has to change before it can be edited.
  */
 export function ProductVariants({
   productId,
   productCode,
   productName,
   variants,
+  colours = [],
   autoOpen = false,
 }: {
   productId: string;
   productCode: string;
   productName: string;
   variants: Variant[];
+  /** The product's colourways. Empty means the free-text colour fields. */
+  colours?: ProductColour[];
   /** Opens the form straight away, used right after the product was created. */
   autoOpen?: boolean;
 }) {
@@ -160,6 +177,7 @@ export function ProductVariants({
             key={editing?.id ?? "new"}
             productId={productId}
             productCode={productCode}
+            colours={colours}
             editing={editing}
             onDone={() => {
               setShowForm(false);
@@ -175,16 +193,37 @@ export function ProductVariants({
 function VariantForm({
   productId,
   productCode,
+  colours,
   editing,
   onDone,
 }: {
   productId: string;
   productCode: string;
+  colours: ProductColour[];
   editing: Variant | null;
   onDone: () => void;
 }) {
   const [size, setSize] = useState(editing?.size ?? "");
-  const [colour, setColour] = useState(editing?.colour_en ?? "");
+  const usesColourRows = colours.length > 0;
+
+  // The selected colour row, when the product has any. Seeded from the
+  // variant's own colour id, falling back to matching its stored name so a
+  // variant created before the colours existed still opens on the right one.
+  const [colourId, setColourId] = useState(() => {
+    if (!usesColourRows) return "";
+    if (editing?.product_colour_id) return editing.product_colour_id;
+    const byName = colours.find(
+      (entry) =>
+        entry.name_en.trim().toLowerCase() === (editing?.colour_en ?? "").trim().toLowerCase(),
+    );
+    return byName?.id ?? colours[0]?.id ?? "";
+  });
+  const [typedColour, setTypedColour] = useState(editing?.colour_en ?? "");
+
+  // What the SKU suggestion spells, whichever input is in use.
+  const colour = usesColourRows
+    ? colours.find((entry) => entry.id === colourId)?.name_en ?? ""
+    : typedColour;
   const [typedSku, setTypedSku] = useState(editing?.sku ?? "");
   // Once the staff member types a SKU themselves, the suggestion stops writing
   // over it. Manual entry always wins; this only fills in the blank, and it is
@@ -215,27 +254,71 @@ function VariantForm({
             className={adminInputClass}
           />
         </Field>
-        <Field label="Colour" htmlFor="variant-colour-en" required>
-          <div className="flex gap-2">
+        {usesColourRows ? (
+          <Field
+            label="Colour"
+            htmlFor="variant-colour-id"
+            required
+            hint="Defined in Colours, above."
+          >
+            <div className="flex items-center gap-2">
+              <span
+                aria-hidden="true"
+                className="inline-block h-9 w-9 shrink-0 rounded-control border border-border"
+                style={{
+                  backgroundColor:
+                    colours.find((entry) => entry.id === colourId)?.colour_hex ?? "#FFFFFF",
+                }}
+              />
+              <select
+                id="variant-colour-id"
+                name="productColourId"
+                required
+                value={colourId}
+                onChange={(event) => setColourId(event.target.value)}
+                className={adminSelectClass}
+              >
+                {colours.map((entry) => (
+                  <option key={entry.id} value={entry.id}>
+                    {entry.name_en}
+                    {entry.is_active ? "" : " (hidden)"}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {/* The server re-reads the name and hex from the chosen row; these
+                carry the current values so a database without migration 0025
+                still receives the fields its schema requires. */}
+            <input type="hidden" name="colourEn" value={colour} />
             <input
-              id="variant-colour-en"
-              name="colourEn"
-              required
-              maxLength={60}
-              value={colour}
-              onChange={(event) => setColour(event.target.value)}
-              className={adminInputClass}
-            />
-            <input
+              type="hidden"
               name="colourHex"
-              type="color"
-              required
-              aria-label="Colour swatch"
-              defaultValue={editing?.colour_hex ?? "#702D42"}
-              className="h-11 w-14 shrink-0 cursor-pointer rounded-control border border-border bg-taraWhite px-1"
+              value={colours.find((entry) => entry.id === colourId)?.colour_hex ?? "#702D42"}
             />
-          </div>
-        </Field>
+          </Field>
+        ) : (
+          <Field label="Colour" htmlFor="variant-colour-en" required>
+            <div className="flex gap-2">
+              <input
+                id="variant-colour-en"
+                name="colourEn"
+                required
+                maxLength={60}
+                value={typedColour}
+                onChange={(event) => setTypedColour(event.target.value)}
+                className={adminInputClass}
+              />
+              <input
+                name="colourHex"
+                type="color"
+                required
+                aria-label="Colour swatch"
+                defaultValue={editing?.colour_hex ?? "#702D42"}
+                className="h-11 w-14 shrink-0 cursor-pointer rounded-control border border-border bg-taraWhite px-1"
+              />
+            </div>
+          </Field>
+        )}
         {editing ? (
           <Field label="Stock" hint="Changed through Inventory, with a reason.">
             <p className="flex h-11 items-center rounded-control border border-border bg-taraIvory px-3 font-sans text-sm text-muted">

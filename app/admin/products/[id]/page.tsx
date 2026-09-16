@@ -7,6 +7,7 @@ import { ProductStatusBadge } from "@/components/admin/status";
 import { ProductForm } from "@/components/admin/ProductForm";
 import { ProductVariants } from "@/components/admin/ProductVariants";
 import { ProductImageLibrary } from "@/components/admin/ProductImageManager";
+import { ProductColourLibrary } from "@/components/admin/ProductColourLibrary";
 import { ProductCreatedBanner } from "@/components/admin/ProductCreatedBanner";
 
 /**
@@ -30,8 +31,17 @@ export default async function EditProductPage({
   const data = await getProductEditorData(id);
   if (!data) notFound();
 
-  const { product, categories, collections, variants, images } = data;
+  const { product, categories, collections, variants, images, colours } = data;
   const justCreated = created === "1";
+
+  // How many photographs each colour owns, counted once here rather than in the
+  // panel, so the colour list and the image grid cannot disagree.
+  const imageCounts = images.reduce<Record<string, number>>((counts, image) => {
+    if (image.product_colour_id) {
+      counts[image.product_colour_id] = (counts[image.product_colour_id] ?? 0) + 1;
+    }
+    return counts;
+  }, {});
 
   const productForm = (
     <ProductForm product={product} categories={categories} collections={collections} />
@@ -42,10 +52,23 @@ export default async function EditProductPage({
       productCode={product.product_code}
       productName={product.name_en}
       variants={variants}
+      colours={colours}
       autoOpen={justCreated}
     />
   );
-  const imagesPanel = <ProductImageLibrary productId={product.id} images={images} />;
+  // Colours sit directly above the images they group, and above variants, which
+  // is the order the work happens in: define the colourway, photograph it, then
+  // list the sizes it comes in.
+  const coloursPanel = (
+    <ProductColourLibrary
+      productId={product.id}
+      colours={colours}
+      imageCounts={imageCounts}
+    />
+  );
+  const imagesPanel = (
+    <ProductImageLibrary productId={product.id} images={images} colours={colours} />
+  );
 
   return (
     <>
@@ -96,11 +119,13 @@ export default async function EditProductPage({
           <>
             {variantsPanel}
             {productForm}
+            {coloursPanel}
             {imagesPanel}
           </>
         ) : (
           <>
             {productForm}
+            {coloursPanel}
             {imagesPanel}
             {variantsPanel}
           </>

@@ -7,6 +7,7 @@ import { Loader2 } from "lucide-react";
 import {
   applyProductImageOrderAction,
   createProductAction,
+  createProductColoursAction,
   saveProductAction,
   setProductStatusAction,
 } from "@/lib/supabase/actions/admin";
@@ -25,6 +26,12 @@ import {
   type PendingImage,
 } from "./ProductImageManager";
 import { uploadPendingImages } from "./upload-pending-images";
+import {
+  ColourImagesSection,
+  describeColourProblems,
+  useColourDrafts,
+  type ColourDraft,
+} from "./ProductColourImages";
 import { Panel, PanelHeader } from "./ui";
 
 type Option = { id: string; name_en: string };
@@ -54,11 +61,15 @@ type Phase = "idle" | "creating" | "uploading" | "finishing" | "done";
  *      than a product row and six uploads;
  *   2. create the row — ONCE. The returned id is held for the rest of the
  *      operation, so nothing after this point can create a second product;
- *   3. upload the files already in hand, one request at a time, in the order
- *      the administrator arranged them;
- *   4. apply that order and the chosen main image;
- *   5. publish, if `active` was asked for and the images all arrived;
- *   6. go to the editor.
+ *   3. create the colour rows, when the product is photographed per colourway.
+ *      They are re-used rather than duplicated on a retry, so pressing the
+ *      button twice cannot produce two Blacks;
+ *   4. upload the files already in hand, one request at a time, in the order
+ *      the administrator arranged them, each carrying the id of the colour it
+ *      was grouped under;
+ *   5. apply that order and the chosen main image;
+ *   6. publish, if `active` was asked for and the images all arrived;
+ *   7. go to the editor.
  *
  * Failures are survivable at every step. A server validation error keeps the
  * selected files. A failed upload keeps the product, keeps the images that did
@@ -76,6 +87,16 @@ export function ProductCreateForm({
   const formRef = useRef<HTMLFormElement>(null);
   const addToast = useToastStore((state) => state.addToast);
   const pending = usePendingImages();
+  // The two image workflows are mutually exclusive: a product either has one
+  // gallery or one gallery per colour. Both controllers exist so switching the
+  // toggle does not throw away files that were already picked.
+  const [colourMode, setColourMode] = useState(false);
+  const drafts = useColourDrafts();
+
+  // Created colour ids, keyed by the draft key the browser generated. Held for
+  // the whole operation for the same reason `created` is: a retry after a
+  // failed upload must attach the files to the colours that already exist.
+  const [colourIds, setColourIds] = useState<Record<string, string>>({});
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [progress, setProgress] = useState("");
@@ -95,7 +116,7 @@ export function ProductCreateForm({
   const leavingRef = useRef(false);
 
   const busy = phase !== "idle" && phase !== "done";
-  const touched = dirty || pending.items.length > 0;
+  const touched = dirty || pending.items.length > 0 || drafts.totalImages > 0;
 
   // An accidental back-navigation or tab close after twenty minutes of typing
   // is a bad afternoon. The prompt is only armed once something has actually
@@ -122,14 +143,31 @@ export function ProductCreateForm({
     (element as HTMLElement | null)?.focus?.();
   };
 
-  /** Steps 4 to 6: order, main image, status, redirect. */
+  /** Steps 5 to 7: order, main image, status, redirect. */
   const finish = useCallback(
-    async (product: CreatedProduct, images: PendingImage[]) => {
+    async (
+      product: CreatedProduct,
+      images: PendingImage[],
+      colourGroups?: ColourDraft[],
+    ) => {
       setPhase("finishing");
       setProgress("Finishing up…");
 
-      const storedIds = orderedImageIds(images);
-      const mainId = primaryImageId(images, pending.mainKey);
+      /*
+       * With colours, the stored order is colour by colour and, inside each
+       * colour, that colour's own first image first — the order they were
+       * uploaded in. The product's MAIN image (the one on cards, in search and
+       * in social previews) is the first image of the first colour: a global
+       * cover is a different concept from a colour's first photograph, and the
+       * editor can point it anywhere afterwards without disturbing the groups.
+       */
+      const uploaded = colourGroups
+        ? colourGroups.flatMap((colour) => colour.images)
+        : images;
+      const storedIds = orderedImageIds(uploaded);
+      const mainId = colourGroups
+        ? storedIds[0] ?? null
+        : primaryImageId(images, pending.mainKey);
 
       if (storedIds.length > 0) {
         const ordered = await applyProductImageOrderAction(product.id, storedIds, mainId);
@@ -180,12 +218,27 @@ export function ProductCreateForm({
         return;
       }
 
+      // Stage 0b — duplicate colour names and empty colour groups are caught
+      // here, where the administrator can see both fields, rather than as a
+      // unique-constraint error after the product row exists.
+      if (colourMode) {
+        const problem = describeColourProblems(drafts.colours);
+        if (problem) {
+          setFormError(problem);
+          addToast(problem, "error");
+          return;
+        }
+      }
+
       // Stage 1 — the product row, at most once for this screen.
       let product = created;
       if (!product) {
         setPhase("creating");
         setProgress("Creating product…");
-        formData.set("pendingImageCount", String(pending.items.length));
+        formData.set(
+          "pendingImageCount",
+          String(colourMode ? drafts.totalImages : pending.items.length),
+        );
 
         const result = await createProductAction(formData);
         if (!result.ok) {
@@ -223,6 +276,58 @@ export function ProductCreateForm({
         setErrors({});
       }
 
+      if (colourMode) {
+        // Stage 2 — the colour rows. Created before any file is sent, because
+        // an upload carries the colour id and cannot be re-pointed afterwards
+        // without a second write per image.
+        setProgress("Saving colours…");
+        const colourResult = await createProductColoursAction(
+          product.id,
+          drafts.definitions(),
+        );
+        if (!colourResult.ok) {
+          setFormError(colourResult.message);
+          addToast(colourResult.message, "error");
+          setPhase("idle");
+          setProgress("");
+          return;
+        }
+        const ids = { ...colourIds, ...(colourResult.data?.ids ?? {}) };
+        setColourIds(ids);
+
+        // Stage 3 — the files, each tagged with the colour it was grouped
+        // under. Anything already stored is skipped, so a retry uploads only
+        // what failed and never attaches a second copy to the colour.
+        const queued = drafts.allImages();
+        let groups = drafts.colours;
+
+        if (outstandingUploads(queued).length > 0) {
+          setPhase("uploading");
+          const outcome = await uploadPendingImages({
+            productId: product.id,
+            items: queued,
+            colourIdFor: (item) => ids[item.colourKey] ?? null,
+            onProgress: setProgress,
+          });
+          groups = drafts.applyResults(outcome.results);
+
+          if (outcome.failed > 0) {
+            const all = groups.flatMap((colour) => colour.images);
+            const stored = all.filter((item) => item.imageId).length;
+            setFailedCount(outcome.failed);
+            setFormError(describePartialUpload(stored, all.length));
+            addToast("Some images could not be uploaded.", "error");
+            setPhase("idle");
+            setProgress("");
+            return;
+          }
+        }
+
+        setFailedCount(0);
+        await finish(product, [], groups);
+        return;
+      }
+
       // Stage 2 — the files already in hand. Anything that uploaded on an
       // earlier attempt is skipped inside uploadPendingImages().
       const outstanding = outstandingUploads(pending.items);
@@ -253,7 +358,7 @@ export function ProductCreateForm({
     } finally {
       busyRef.current = false;
     }
-  }, [addToast, created, finish, pending]);
+  }, [addToast, colourIds, colourMode, created, drafts, finish, pending]);
 
   /** "Continue without this image" — the product and the images that did
    *  upload are already saved; this just stops trying. */
@@ -261,13 +366,15 @@ export function ProductCreateForm({
     if (busyRef.current || !created) return;
     busyRef.current = true;
     try {
-      await finish(created, pending.items);
+      await finish(created, pending.items, colourMode ? drafts.colours : undefined);
     } finally {
       busyRef.current = false;
     }
-  }, [created, finish, pending.items]);
+  }, [colourMode, created, drafts.colours, finish, pending.items]);
 
-  const storedCount = pending.items.filter((item) => item.imageId).length;
+  const storedCount = colourMode
+    ? drafts.colours.flatMap((colour) => colour.images).filter((item) => item.imageId).length
+    : pending.items.filter((item) => item.imageId).length;
 
   return (
     <form
@@ -285,15 +392,23 @@ export function ProductCreateForm({
         collections={collections}
         errors={errors}
         imagesSlot={
-          <Panel>
-            <PanelHeader
-              title="Product images"
-              description="The first image is the main one until you choose another."
-            />
-            <div className="px-5 py-5">
-              <PendingImageGrid pending={pending} disabled={busy} />
-            </div>
-          </Panel>
+          <ColourImagesSection
+            enabled={colourMode}
+            onEnabledChange={setColourMode}
+            drafts={drafts}
+            disabled={busy}
+            flatImagesSlot={
+              <Panel>
+                <PanelHeader
+                  title="Product images"
+                  description="The first image is the main one until you choose another."
+                />
+                <div className="px-5 py-5">
+                  <PendingImageGrid pending={pending} disabled={busy} />
+                </div>
+              </Panel>
+            }
+          />
         }
       />
 

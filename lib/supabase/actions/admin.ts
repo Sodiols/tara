@@ -11,6 +11,7 @@ import {
   adminCollectionSchema,
   adminCouponSchema,
   adminInventoryAdjustmentSchema,
+  adminProductColourSchema,
   adminProductSchema,
   adminRoleSchema,
   adminSettingsSchema,
@@ -205,6 +206,27 @@ async function productCodeTaken(
   if (excludeId) query = query.neq("id", excludeId);
   const { data } = await query.maybeSingle();
   return Boolean(data);
+}
+
+/**
+ * A unique-violation on the colour name index.
+ *
+ * 23505 is the Postgres unique_violation code; the index name is checked too,
+ * so a different constraint on the same table cannot be reported to a staff
+ * member as a duplicate colour.
+ */
+function isDuplicateColour(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === "23505" ||
+    (error.message ?? "").includes("product_colours_unique_name_idx")
+  );
+}
+
+/** Colours change what the storefront renders, so the catalogue cache goes. */
+function revalidateColours(productId: string) {
+  updateTag("catalogue");
+  revalidatePath(`/admin/products/${productId}`);
+  revalidatePath("/");
 }
 
 function revalidateProduct(slug: string) {
@@ -428,16 +450,54 @@ export async function duplicateProductAction(
     return logAndFail("product duplicate", error ?? { message: "no row" }, "Could not duplicate this product.");
   }
 
+  /*
+   * Colours are copied, never shared.
+   *
+   * A product_colours row belongs to exactly one product, so pointing the copy
+   * at the original colour ids would be refused by the ownership trigger — and
+   * if it were not, renaming Black on the copy would rename it on the original.
+   * The old id maps to the new one so the variants below land on the right
+   * colourway.
+   *
+   * Images are deliberately NOT duplicated, which is the behaviour this feature
+   * inherited: a duplicate starts as a draft with its own photography to
+   * upload. There is therefore nothing to re-point at the copied colours.
+   */
+  const colourIdMap = new Map<string, string>();
+  const { data: sourceColours } = await supabase
+    .from("product_colours")
+    .select("id,name_en,colour_hex,sort_order,is_active")
+    .eq("product_id", productId)
+    .order("sort_order");
+
+  for (const colour of sourceColours ?? []) {
+    const { data: copy } = await supabase
+      .from("product_colours")
+      .insert({
+        product_id: created.id,
+        name_en: colour.name_en,
+        colour_hex: colour.colour_hex,
+        sort_order: colour.sort_order,
+        is_active: colour.is_active,
+      })
+      .select("id")
+      .maybeSingle();
+    if (copy) colourIdMap.set(colour.id, copy.id);
+  }
+
   const { data: variants } = await supabase
     .from("product_variants")
-    .select("sku,size,colour_en,colour_hex,price_override,low_stock_threshold")
+    .select("sku,size,colour_en,colour_hex,product_colour_id,price_override,low_stock_threshold")
     .eq("product_id", productId);
 
   if (variants?.length) {
     await supabase.from("product_variants").insert(
-      variants.map((variant) => ({
+      variants.map(({ product_colour_id, ...variant }) => ({
         ...variant,
         product_id: created.id,
+        product_colour_id: product_colour_id
+          ? colourIdMap.get(product_colour_id) ?? null
+          : null,
         sku: `${variant.sku}-C${suffix.toUpperCase()}`,
         stock_quantity: 0,
         is_active: true,
@@ -451,19 +511,295 @@ export async function duplicateProductAction(
 }
 
 // ---------------------------------------------------------------------------
+// Product colours
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates or renames one colourway.
+ *
+ * The colour row is the thing photographs and variants point at, so it is
+ * deliberately small: a name, a swatch, an order, and whether it is still
+ * offered. Everything else about a colour — which images it owns, which sizes
+ * exist in it — is a relationship held by the other tables, which is what keeps
+ * this from becoming a second variant system.
+ *
+ * Renaming is safe. A database trigger rewrites colour_en and colour_hex on
+ * every variant pointing at this row, so the invoice, the inventory list and
+ * the catalogue filter never keep a name the admin panel has stopped using.
+ */
+export async function saveProductColourAction(formData: FormData): Promise<
+  ActionResult<{ id: string }>
+> {
+  await requirePermission("catalogue.manage");
+
+  const parsed = adminProductColourSchema.safeParse({
+    id: text(formData, "id") || undefined,
+    productId: text(formData, "productId"),
+    nameEn: text(formData, "nameEn"),
+    colourHex: text(formData, "colourHex"),
+    sortOrder: text(formData, "sortOrder") || "0",
+    isActive: formData.has("id") ? checkbox(formData, "isActive") : true,
+  });
+  if (!parsed.success) {
+    return fail(firstIssue(parsed.error), parsed.error.flatten().fieldErrors as FieldErrors);
+  }
+
+  const input = parsed.data;
+  const supabase = await createClient();
+  const payload = {
+    product_id: input.productId,
+    name_en: input.nameEn,
+    colour_hex: input.colourHex.toUpperCase(),
+    sort_order: input.sortOrder,
+    is_active: input.isActive,
+  };
+
+  const { data, error } = input.id
+    ? await supabase
+        .from("product_colours")
+        .update(payload)
+        .eq("id", input.id)
+        .eq("product_id", input.productId)
+        .select("id")
+        .maybeSingle()
+    : await supabase.from("product_colours").insert(payload).select("id").maybeSingle();
+
+  if (error) {
+    // The case-folded unique index is the authority on "already exists", so
+    // Black and black are refused here rather than quietly becoming two
+    // colours with two galleries.
+    if (isDuplicateColour(error)) {
+      return fail(`This product already has a colour called ${input.nameEn}.`, {
+        nameEn: ["That colour already exists on this product."],
+      });
+    }
+    return logAndFail("product colour save", error, "Could not save this colour.");
+  }
+  if (!data) return fail("That colour no longer exists.");
+
+  revalidateColours(input.productId);
+  return {
+    ok: true,
+    message: input.id ? "Colour updated." : "Colour added.",
+    data: { id: data.id },
+  };
+}
+
+/**
+ * Creates several colours at once, for the create screen.
+ *
+ * Returns the new ids keyed by the draft key the browser generated, which is
+ * how the uploads that follow know which colour each file belongs to.
+ *
+ * Re-entrant by design: a retry after a failed upload finds the colours that
+ * were already created and re-uses them by name, so pressing Create product a
+ * second time cannot produce a second Black.
+ */
+export async function createProductColoursAction(
+  productId: string,
+  colours: { key: string; nameEn: string; colourHex: string }[],
+): Promise<ActionResult<{ ids: Record<string, string> }>> {
+  await requirePermission("catalogue.manage");
+
+  const product = z.string().uuid().safeParse(productId);
+  if (!product.success) return fail("Unknown product.");
+  if (colours.length === 0) return { ok: true, data: { ids: {} } };
+
+  const supabase = await createClient();
+
+  const { data: existing } = await supabase
+    .from("product_colours")
+    .select("id,name_en")
+    .eq("product_id", product.data);
+  const byName = new Map(
+    (existing ?? []).map((colour) => [colour.name_en.trim().toLowerCase(), colour.id]),
+  );
+
+  const ids: Record<string, string> = {};
+  for (const [index, colour] of colours.entries()) {
+    const parsed = adminProductColourSchema.safeParse({
+      productId: product.data,
+      nameEn: colour.nameEn,
+      colourHex: colour.colourHex,
+      sortOrder: index,
+      isActive: true,
+    });
+    if (!parsed.success) return fail(firstIssue(parsed.error));
+
+    const known = byName.get(parsed.data.nameEn.toLowerCase());
+    if (known) {
+      ids[colour.key] = known;
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from("product_colours")
+      .insert({
+        product_id: product.data,
+        name_en: parsed.data.nameEn,
+        colour_hex: parsed.data.colourHex.toUpperCase(),
+        sort_order: index,
+        is_active: true,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (error || !data) {
+      if (error && isDuplicateColour(error)) {
+        return fail(`This product already has a colour called ${parsed.data.nameEn}.`);
+      }
+      return logAndFail(
+        "product colour create",
+        error ?? { message: "no row" },
+        "Could not save the colours.",
+      );
+    }
+    ids[colour.key] = data.id;
+    byName.set(parsed.data.nameEn.toLowerCase(), data.id);
+  }
+
+  revalidateColours(product.data);
+  return { ok: true, data: { ids } };
+}
+
+/**
+ * Removes a colour, or explains why it cannot be removed.
+ *
+ * A colour with purchasable variants is refused by a database trigger: those
+ * rows are what orders reference, and a colour that vanished from under them
+ * would leave the invoice and the catalogue filter describing something that no
+ * longer exists. The way to retire one of those is to make it inactive, which
+ * keeps the history and takes the swatch off the storefront.
+ *
+ * Photographs are not deleted with it. They lose their colour and become
+ * general product images, which is recoverable; deleting staff photography as a
+ * side effect of tidying a swatch is not.
+ */
+export async function deleteProductColourAction(
+  colourId: string,
+  productId: string,
+): Promise<ActionResult> {
+  await requirePermission("catalogue.manage");
+
+  const parsed = z
+    .object({ colourId: z.string().uuid(), productId: z.string().uuid() })
+    .safeParse({ colourId, productId });
+  if (!parsed.success) return fail("That colour no longer exists.");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("product_colours")
+    .delete()
+    .eq("id", parsed.data.colourId)
+    .eq("product_id", parsed.data.productId);
+
+  if (error) {
+    if (error.message.includes("colour_in_use")) {
+      return fail(
+        "This colour is used by variants customers can buy. Turn it off instead of deleting it, or remove those variants first.",
+      );
+    }
+    return logAndFail("product colour delete", error, "Could not delete this colour.");
+  }
+
+  revalidateColours(parsed.data.productId);
+  return {
+    ok: true,
+    message: "Colour deleted. Its photographs are now general product images.",
+  };
+}
+
+/**
+ * Moves one existing photograph into a colour, or back out to the general set.
+ *
+ * This is what makes the feature usable on the products that already exist:
+ * their images predate colours entirely, and the alternative to assigning them
+ * would be deleting and re-uploading photography that is already correct.
+ */
+export async function assignImageColourAction(
+  imageId: string,
+  productId: string,
+  colourId: string | null,
+): Promise<ActionResult> {
+  await requirePermission("catalogue.manage");
+
+  const parsed = z
+    .object({
+      imageId: z.string().uuid(),
+      productId: z.string().uuid(),
+      colourId: z.string().uuid().nullable(),
+    })
+    .safeParse({ imageId, productId, colourId });
+  if (!parsed.success) return fail("That image no longer exists.");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("product_images")
+    .update({ product_colour_id: parsed.data.colourId })
+    // Scoped to the product as well as to the image. A trigger already refuses
+    // a colour that belongs to another product; this refuses the pairing before
+    // it gets that far.
+    .eq("id", parsed.data.imageId)
+    .eq("product_id", parsed.data.productId);
+
+  if (error) {
+    if (error.message.includes("colour_belongs_to_another_product")) {
+      return fail("That colour belongs to a different product.");
+    }
+    return logAndFail("image colour assign", error, "Could not move this image.");
+  }
+
+  revalidateColours(parsed.data.productId);
+  return {
+    ok: true,
+    message: parsed.data.colourId
+      ? "Image moved."
+      : "Image is now a general product image.",
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Variants and inventory
 // ---------------------------------------------------------------------------
 
 export async function saveVariantAction(formData: FormData): Promise<ActionResult> {
   await requirePermission("catalogue.manage");
 
+  /*
+   * When the form sends a colour id, the database is the authority on what that
+   * colour is called and how it is drawn: the name and hex in the request are
+   * replaced with the stored ones before the schema sees them, and a trigger
+   * enforces the same thing again on write. A browser cannot rename Maroon by
+   * posting a different string alongside its id.
+   */
+  const supabase = await createClient();
+  const rawColourId = text(formData, "productColourId");
+  const colourId = rawColourId ? z.string().uuid().safeParse(rawColourId) : null;
+  if (colourId && !colourId.success) return fail("Unknown colour.");
+
+  let colourEn = text(formData, "colourEn");
+  let colourHex = text(formData, "colourHex");
+  if (colourId?.success) {
+    const { data: colour } = await supabase
+      .from("product_colours")
+      .select("name_en,colour_hex,product_id")
+      .eq("id", colourId.data)
+      .maybeSingle();
+    if (!colour) return fail("That colour no longer exists.");
+    if (colour.product_id !== text(formData, "productId")) {
+      return fail("That colour belongs to a different product.");
+    }
+    colourEn = colour.name_en;
+    colourHex = colour.colour_hex;
+  }
+
   const parsed = adminVariantSchema.safeParse({
     id: text(formData, "id") || undefined,
     productId: text(formData, "productId"),
     sku: text(formData, "sku"),
     size: text(formData, "size"),
-    colourEn: text(formData, "colourEn"),
-    colourHex: text(formData, "colourHex"),
+    colourEn,
+    colourHex,
     priceOverride: text(formData, "priceOverride"),
     lowStockThreshold: text(formData, "lowStockThreshold") || "3",
     isActive: formData.has("id") ? checkbox(formData, "isActive") : true,
@@ -474,7 +810,6 @@ export async function saveVariantAction(formData: FormData): Promise<ActionResul
     return fail(firstIssue(parsed.error), parsed.error.flatten().fieldErrors as FieldErrors);
   }
   const input = parsed.data;
-  const supabase = await createClient();
 
   let duplicateQuery = supabase.from("product_variants").select("id").eq("sku", input.sku);
   if (input.id) duplicateQuery = duplicateQuery.neq("id", input.id);
@@ -487,6 +822,7 @@ export async function saveVariantAction(formData: FormData): Promise<ActionResul
     size: input.size,
     colour_en: input.colourEn,
     colour_hex: input.colourHex.toUpperCase(),
+    product_colour_id: colourId?.success ? colourId.data : null,
     price_override: input.priceOverride,
     low_stock_threshold: input.lowStockThreshold,
     is_active: input.isActive,
@@ -564,6 +900,12 @@ async function storeProductImage(
   file: File,
   position: number,
   altEn = "",
+  /**
+   * The colourway this photograph shows, or null for a general product image.
+   * Validated against the product by a database trigger, so a forged id cannot
+   * attach an image to another product colour.
+   */
+  productColourId: string | null = null,
 ): Promise<{ ok: true; imageId: string } | { ok: false; reason: string }> {
   if (position >= MAX_IMAGES_PER_PRODUCT) {
     return {
@@ -603,6 +945,7 @@ async function storeProductImage(
       storage_path: path,
       alt_en: altEn,
       sort_order: position,
+      product_colour_id: productColourId,
       // Exactly one primary per product is enforced by a partial unique index.
       // The first image a product gets is it; anything else is a deliberate
       // choice, applied afterwards through set_product_primary_image().
@@ -614,6 +957,14 @@ async function storeProductImage(
   if (error || !inserted) {
     logFailure("admin.image_record_failed", error ?? { message: "no row" }, { productId });
     await supabase.storage.from("product-images").remove([path]);
+    // The object is removed before returning, so a rejected colour cannot leave
+    // a file in the bucket with no row pointing at it.
+    if (error?.message.includes("colour_belongs_to_another_product")) {
+      return { ok: false, reason: "That colour belongs to a different product." };
+    }
+    if (error?.message.includes("colour_not_found")) {
+      return { ok: false, reason: "That colour no longer exists. Reload and try again." };
+    }
     return { ok: false, reason: "The image could not be recorded. Try again." };
   }
 
@@ -658,12 +1009,19 @@ export async function uploadProductImageAction(
     return fail(`A product can hold at most ${MAX_IMAGES_PER_PRODUCT} images.`);
   }
 
+  // Optional: absent for a product with no colour axis, and for the editor
+  // uploader when the staff member is adding general photographs.
+  const rawColourId = text(formData, "productColourId");
+  const colourId = rawColourId ? z.string().uuid().safeParse(rawColourId) : null;
+  if (colourId && !colourId.success) return fail("Unknown colour.");
+
   const outcome = await storeProductImage(
     supabase,
     productId.data,
     file,
     position,
     text(formData, "altEn").slice(0, 160),
+    colourId?.data ?? null,
   );
   if (!outcome.ok) return fail(outcome.reason);
 

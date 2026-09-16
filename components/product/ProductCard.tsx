@@ -9,6 +9,7 @@ import { useAddToCart } from "@/hooks/useAddToCart";
 import { PriceDisplay } from "./PriceDisplay";
 import { resolveCategoryLabel } from "@/lib/utils";
 import { ONE_SIZE, hasSelectableSizes, sortSizes } from "@/lib/product-size";
+import { primaryImageForColour } from "@/lib/product-colour-images";
 import { requiresVariantChoice } from "@/lib/product-variants";
 import { primaryImageAlt } from "@/lib/product-media";
 
@@ -92,7 +93,13 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
       productId: product.id,
       slug: product.slug,
       name: product.name,
-      image: product.images[0],
+      // One combination means one colour, and its own photograph if it has
+      // one — the same image the product page would put in the bag.
+      image: primaryImageForColour(
+        product.media,
+        product.colours[0]?.id,
+        product.images[0],
+      ),
       price: product.price,
       size: product.sizes[0] ?? ONE_SIZE,
       colour: product.colours[0]?.name ?? "",
