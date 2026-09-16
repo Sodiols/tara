@@ -42,7 +42,9 @@ export function ServiceBenefits({ delivery }: { delivery: DeliverySettings }) {
   ];
 
   return (
-    <section className="border-t border-b border-border bg-cream">
+    // White, with its own rules top and bottom: the ivory gallery sits
+    // directly above, and two ivory blocks in a row lost the seam between them.
+    <section className="border-t border-b border-border bg-white">
       <Container className="py-10 lg:py-12">
         <div className="grid grid-cols-2 md:grid-cols-4 gap-y-8 gap-x-6 md:divide-x md:divide-border">
           {benefits.map((benefit) => (

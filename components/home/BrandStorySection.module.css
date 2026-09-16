@@ -1,5 +1,8 @@
 .section {
-  background: var(--tara-ivory);
+  /* White, not ivory: the collection editorial above and the social gallery
+     below are both ivory, so an ivory panel here made three sections read as
+     one uninterrupted block. */
+  background: var(--tara-white);
   color: var(--tara-black);
   padding-block: clamp(56px, 4.5vw, 72px);
   overflow: clip;
