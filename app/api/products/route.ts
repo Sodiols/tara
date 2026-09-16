@@ -1,10 +1,14 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { getProductsBySlugs, searchProducts } from "@/lib/supabase/queries/products";
+import {
+  getProductVariants,
+  getProductsBySlugs,
+  searchProducts,
+} from "@/lib/supabase/queries/products";
 import { guardPublicAction, consumeDurableLimit } from "@/lib/rate-limit";
 
 /**
- * Public catalogue lookup, used by the search overlay and the recently-viewed
- * rail.
+ * Public catalogue lookup, used by the search overlay, the recently-viewed rail
+ * and the product card's size and colour selectors.
  *
  * Everything it returns is already public, so the risk here is not disclosure
  * but load. Both branches are now a single database round trip: `slugs` used to
@@ -15,6 +19,9 @@ import { guardPublicAction, consumeDurableLimit } from "@/lib/rate-limit";
 
 /** Matches the shape produced by `slugify()`; anything else cannot be a slug. */
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const MAX_SLUGS = 12;
 
@@ -33,6 +40,33 @@ export async function GET(request: NextRequest) {
       headers: {
         "Cache-Control": "public, max-age=0, s-maxage=30, stale-while-revalidate=120",
       },
+    });
+  }
+
+  /*
+   * The purchasable matrix for ONE product, asked for on demand.
+   *
+   * A listing deliberately does not carry variants: `search_catalogue()`
+   * flattens them into distinct size and colour arrays, and attaching the real
+   * matrix to all 24 rows of every listing would pay for a selector almost
+   * nobody opens. But a product card that offers a size and a colour has to
+   * know which pairs exist, or it offers combinations that do not — the exact
+   * dead end lib/product-variants.ts was written to remove.
+   *
+   * So the card fetches this for the one product a customer actually engages
+   * with. Same data the product page reads, same RLS: active variants of active
+   * products only.
+   *
+   * Never cached. This is stock, and a card that offers the last one of a size
+   * an hour after it sold is the thing the product page already refuses to do.
+   */
+  const variantsFor = request.nextUrl.searchParams.get("variantsFor")?.trim();
+  if (variantsFor) {
+    if (!UUID_PATTERN.test(variantsFor)) {
+      return NextResponse.json({ error: "Unknown product." }, { status: 400 });
+    }
+    return NextResponse.json(await getProductVariants(variantsFor), {
+      headers: { "Cache-Control": "no-store" },
     });
   }
 
