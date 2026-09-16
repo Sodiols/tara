@@ -35,7 +35,26 @@ const variants: Record<Variant, string> = {
 };
 
 const baseButton =
-  "inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-control px-4 font-sans text-[13px] font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:border-border disabled:bg-taraIvory disabled:text-muted";
+  "inline-flex h-11 items-center justify-center gap-2 whitespace-nowrap rounded-control font-sans text-[13px] font-semibold uppercase tracking-wide transition-colors disabled:cursor-not-allowed disabled:border-border disabled:bg-taraIvory disabled:text-muted";
+
+/**
+ * The default horizontal padding, applied only when the caller has not asked
+ * for its own.
+ *
+ * `cn()` is a plain join, not tailwind-merge, so a caller passing `px-0` did
+ * not replace the base `px-4` — both classes landed on the element and the
+ * winner was whichever Tailwind emitted later in the stylesheet, which is
+ * `px-4`. The icon-only buttons in the product image manager are 36px wide
+ * with a 1px border, so 32px of padding left 2px of content box and their 15px
+ * icons were squeezed to a 2px sliver: the buttons looked empty.
+ *
+ * Checked with a regex rather than by adding tailwind-merge, because one
+ * property is what conflicts here and a dependency that rewrites every class
+ * string in the admin panel is a much larger change than the bug deserves.
+ */
+const PADDING_UTILITY = /(?:^|\s)!?(?:p|px|py|ps|pe|pl|pr)-/;
+const paddingFor = (className?: string) =>
+  className && PADDING_UTILITY.test(className) ? "" : "px-4";
 
 export function SubmitButton({
   children,
@@ -68,7 +87,7 @@ export function SubmitButton({
       onClick={(event) => {
         if (confirm && !window.confirm(confirm)) event.preventDefault();
       }}
-      className={cn(baseButton, variants[variant], className)}
+      className={cn(baseButton, variants[variant], paddingFor(className), className)}
     >
       {pending && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
       {children}
@@ -194,7 +213,7 @@ export function ActionButton({
           addToast(result.message ?? "Done.", result.ok ? "success" : "error");
         });
       }}
-      className={cn(baseButton, variants[variant], className)}
+      className={cn(baseButton, variants[variant], paddingFor(className), className)}
     >
       {pending && <Loader2 size={14} className="animate-spin" aria-hidden="true" />}
       {children}
