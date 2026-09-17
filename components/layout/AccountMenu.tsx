@@ -7,7 +7,6 @@ import {
   LogOut,
   MapPin,
   Package,
-  ShoppingBag,
   Truck,
   User,
 } from "lucide-react";
@@ -23,7 +22,6 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
   const wrapperRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
-  const openBag = useCartStore((s) => s.openBag);
   const clearBag = useCartStore((s) => s.clearBag);
 
   const close = () => setOpen(false);
@@ -77,8 +75,9 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
           <div
             id={panelId}
             role="menu"
-            // Scrolls rather than running off a short phone screen: nine rows
-            // are ~420px, taller than what is left below the bar on some.
+            // Scrolls rather than running off a short phone screen: the rows
+            // are ~47px each, which on some phones is taller than what is left
+            // below the bar.
             className="max-h-[calc(100dvh-6rem)] overflow-y-auto rounded-[6px] border border-border bg-white py-2 shadow-[0_12px_28px_-8px_rgba(23,23,23,0.16)]"
           >
             {fullName && (
@@ -92,16 +91,6 @@ export function AccountMenu({ fullName }: AccountMenuProps) {
             <Link href="/account/profile" onClick={close} className={linkClass}>
               <User size={16} /> {"Profile"}
             </Link>
-            <button
-              type="button"
-              onClick={() => {
-                close();
-                openBag();
-              }}
-              className={`${linkClass} w-full text-left`}
-            >
-              <ShoppingBag size={16} /> {"Shopping Bag"}
-            </button>
             <Link href="/account/orders" onClick={close} className={linkClass}>
               <Package size={16} /> {"Order History"}
             </Link>
