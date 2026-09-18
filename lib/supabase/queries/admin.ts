@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "../server";
 import { requirePermission, requireStaff } from "../auth";
-import { isAppRole } from "@/lib/permissions";
+import { isAppRole, type Permission } from "@/lib/permissions";
 import type {
   MessageStatus,
   OrderStatus,
@@ -119,6 +119,65 @@ export async function getAnalytics(days: number) {
     returnRate: number;
     codShare: number;
   };
+}
+
+// --- Navigation counts -----------------------------------------------------
+
+export interface AdminNavCounts {
+  pendingOrders: number;
+  unreadMessages: number;
+  pendingReviews: number;
+}
+
+/**
+ * The three numbers the sidebar shows beside Orders, Messages and Reviews.
+ *
+ * Head-only counts — no rows cross the wire — and only for the permissions the
+ * staff member holds, so a fulfilment account never asks about reviews and RLS
+ * is never asked to refuse a query the page did not need. Every count fails
+ * soft to zero: a badge that cannot be computed is not worth a broken sidebar.
+ */
+export async function getAdminNavCounts(
+  permissions: readonly Permission[],
+): Promise<AdminNavCounts> {
+  const supabase = await createClient();
+  const count = async (
+    enabled: boolean,
+    build: () => PromiseLike<{ count: number | null; error: unknown }>,
+  ) => {
+    if (!enabled) return 0;
+    try {
+      const { count: value, error } = await build();
+      return error ? 0 : (value ?? 0);
+    } catch {
+      return 0;
+    }
+  };
+
+  const [pendingOrders, unreadMessages, pendingReviews] = await Promise.all([
+    count(permissions.includes("orders.view"), () =>
+      supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending")
+        .is("archived_at", null),
+    ),
+    count(permissions.includes("messages.manage"), () =>
+      supabase
+        .from("contact_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "new"),
+    ),
+    count(permissions.includes("reviews.moderate"), () =>
+      supabase
+        .from("reviews")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "pending")
+        .is("archived_at", null),
+    ),
+  ]);
+
+  return { pendingOrders, unreadMessages, pendingReviews };
 }
 
 // --- Orders ----------------------------------------------------------------
@@ -322,9 +381,13 @@ export async function getAdminProducts(filters: ProductFilters) {
 
   let query = supabase
     .from("products")
-    .select("*, categories(name_en), product_variants(id,stock_quantity,low_stock_threshold)", {
-      count: "exact",
-    });
+    // The photographs are selected rather than counted: at most twelve small
+    // rows per product, and they give the list both its thumbnail and the
+    // "needs photographs" flag without a second query.
+    .select(
+      "*, categories(name_en), product_variants(id,stock_quantity,low_stock_threshold,is_active), product_images(id,image_url,is_primary,sort_order)",
+      { count: "exact" },
+    );
 
   // Archived products live in Archive & Trash, not in the product list.
   if (filters.status && filters.status !== "all") query = query.eq("status", filters.status);
@@ -345,7 +408,13 @@ export async function getAdminProducts(filters: ProductFilters) {
 
   type Row = Tables<"products"> & {
     categories: { name_en: string } | null;
-    product_variants: { id: string; stock_quantity: number; low_stock_threshold: number }[];
+    product_variants: {
+      id: string;
+      stock_quantity: number;
+      low_stock_threshold: number;
+      is_active: boolean;
+    }[];
+    product_images: { id: string; image_url: string; is_primary: boolean; sort_order: number }[];
   };
 
   return {

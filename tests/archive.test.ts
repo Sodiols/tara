@@ -241,7 +241,9 @@ describe("order deletion", () => {
     const page = await readFile(new URL("../app/admin/orders/page.tsx", import.meta.url), "utf8");
     assert.match(page, /const canDelete = staff\.permissions\.includes\("archive\.manage"\);/);
     const detail = await readFile(new URL("../app/admin/orders/[id]/page.tsx", import.meta.url), "utf8");
-    assert.match(detail, /\{canDelete && \(\s+<OrderDeletePanel/);
+    // The panel sits in its own "danger zone" section, apart from fulfilment,
+    // but that section is inside the same permission check.
+    assert.match(detail, /\{canDelete && \(\s+(?:<section[^>]*>\s+)?<OrderDeletePanel/);
     const table = await readFile(new URL("../components/admin/OrdersTable.tsx", import.meta.url), "utf8");
     assert.match(table, /\{canDelete && \(\s+<div/);
     const actions = await readFile(new URL("../lib/supabase/actions/archive.ts", import.meta.url), "utf8");

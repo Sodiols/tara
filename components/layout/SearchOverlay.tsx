@@ -10,6 +10,7 @@ import { formatPrice } from "@/lib/utils";
 import { useRouter } from "next/navigation";
 import { useDialogBehaviour } from "@/hooks/useDialogBehaviour";
 import { isStringList, readStoredJson, writeStoredJson } from "@/lib/browser-storage";
+import { track } from "@/lib/analytics/client";
 
 const RECENT_KEY = "tara-recent-searches";
 const suggestedKeywords = ["Unready", "Kurta", "Wine", "Festive", "Bag", "Earrings"];
@@ -84,6 +85,9 @@ export function SearchOverlay({ isOpen, onClose }: SearchOverlayProps) {
     e.preventDefault();
     if (!query.trim()) return;
     saveRecent(query.trim());
+    // What people search for and do not find is the clearest signal a shop
+    // gets about what it should be stocking or naming differently.
+    track({ name: "search", meta: { query: query.trim().slice(0, 100) } });
     router.push(`/search?q=${encodeURIComponent(query.trim())}`);
     onClose();
   };

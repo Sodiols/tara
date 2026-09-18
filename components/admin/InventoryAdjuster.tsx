@@ -4,7 +4,11 @@ import { useState } from "react";
 import { adjustInventoryAction } from "@/lib/supabase/actions/admin";
 import { INVENTORY_REASONS } from "@/lib/order-status";
 import { ActionForm, SubmitButton } from "./AdminForm";
-import { Field, adminInputClass } from "./ui";
+import {
+  Field,
+  adminButtonClass,
+  adminInputClass,
+} from "./ui";
 
 /**
  * Inline stock adjustment.
@@ -31,9 +35,10 @@ export function InventoryAdjuster({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="font-sans text-xs font-semibold uppercase tracking-wide text-taraWine underline-offset-4 hover:underline"
+        aria-label={`Adjust stock for ${label}`}
+        className={adminButtonClass("secondary", "sm")}
       >
-        Adjust
+        Adjust stock
       </button>
     );
   }
@@ -95,7 +100,7 @@ export function InventoryAdjuster({
         <button
           type="button"
           onClick={() => setOpen(false)}
-          className="inline-flex h-10 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-xs font-semibold uppercase tracking-wide text-muted transition-colors hover:text-taraWine"
+          className={adminButtonClass("secondary", "sm", "text-muted")}
         >
           Cancel
         </button>

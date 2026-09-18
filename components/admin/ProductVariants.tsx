@@ -15,6 +15,7 @@ import {
   TableWrap,
   Td,
   Th,
+  adminButtonClass,
   adminInputClass,
   adminSelectClass,
 } from "./ui";
@@ -58,7 +59,6 @@ export function ProductVariants({
   productName,
   variants,
   colours = [],
-  autoOpen = false,
 }: {
   productId: string;
   productCode: string;
@@ -66,11 +66,9 @@ export function ProductVariants({
   variants: Variant[];
   /** The product's colourways. Empty means the free-text colour fields. */
   colours?: ProductColour[];
-  /** Opens the form straight away, used right after the product was created. */
-  autoOpen?: boolean;
 }) {
   const [editing, setEditing] = useState<Variant | null>(null);
-  const [showForm, setShowForm] = useState(autoOpen && variants.length === 0);
+  const [showForm, setShowForm] = useState(false);
 
   const openNew = () => {
     setEditing(null);
@@ -86,7 +84,7 @@ export function ProductVariants({
           <button
             type="button"
             onClick={openNew}
-            className="inline-flex h-10 items-center rounded-control border border-taraWine bg-taraWine px-4 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
+            className={adminButtonClass("primary", "sm")}
           >
             Add variant
           </button>
@@ -408,7 +406,7 @@ function VariantForm({
         <button
           type="button"
           onClick={onDone}
-          className="inline-flex h-11 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-muted transition-colors hover:text-taraWine"
+          className={adminButtonClass("secondary", "md", "text-muted")}
         >
           Cancel
         </button>

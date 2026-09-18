@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { setStaffRoleAction } from "@/lib/supabase/actions/admin";
-import { ASSIGNABLE_ROLES, roleLabel, type AppRole } from "@/lib/permissions";
+import {
+  ASSIGNABLE_ROLES,
+  ROLE_DESCRIPTIONS,
+  roleLabel,
+  type AppRole,
+} from "@/lib/permissions";
 import { ActionForm, SubmitButton } from "./AdminForm";
 import { adminInputClass } from "./ui";
 
@@ -38,6 +43,7 @@ export function StaffRoleForm({
         value={role}
         onChange={(event) => setRole(event.target.value as AppRole)}
         className={`${adminInputClass} h-10 w-auto min-w-[150px]`}
+        title={ROLE_DESCRIPTIONS[role]}
       >
         {ASSIGNABLE_ROLES.map((option) => (
           <option key={option} value={option}>
@@ -49,13 +55,23 @@ export function StaffRoleForm({
         )}
       </select>
       <SubmitButton
-        variant="secondary"
+        variant={role === "admin" || role === "customer" ? "danger" : "secondary"}
         className="h-10 px-3 text-xs"
         disabled={!changed}
+        confirmTitle={
+          role === "admin"
+            ? `Make ${label} an administrator?`
+            : role === "customer"
+              ? `Remove back-office access for ${label}?`
+              : `Change ${label} to ${roleLabel(role)}?`
+        }
+        confirmLabel={role === "customer" ? "Remove access" : `Make ${roleLabel(role)}`}
         confirm={
           role === "admin"
-            ? `Make ${label} a full administrator? They will be able to change store settings, staff roles and every order.`
-            : `Change the role for ${label} to ${roleLabel(role)}?`
+            ? `${ROLE_DESCRIPTIONS.admin} This is the most trusted role in the shop.`
+            : role === "customer"
+              ? `They will lose access to the back office immediately. ${roleLabel(currentRole)} → Customer.`
+              : `${roleLabel(currentRole)} → ${roleLabel(role)}. ${ROLE_DESCRIPTIONS[role]}`
         }
       >
         Save

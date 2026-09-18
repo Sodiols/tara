@@ -2,6 +2,7 @@ import { Truck, Banknote, RotateCcw, Headset } from "lucide-react";
 import { Container } from "@/components/layout/Container";
 import { formatTaka } from "@/lib/format";
 import type { DeliverySettings } from "@/lib/delivery";
+import type { PolicySettings } from "@/lib/supabase/queries/settings";
 
 /**
  * The four promises under the homepage.
@@ -15,7 +16,13 @@ import type { DeliverySettings } from "@/lib/delivery";
  * which is a claim about a payment gateway TARA does not have. What the store
  * actually offers is stated instead.
  */
-export function ServiceBenefits({ delivery }: { delivery: DeliverySettings }) {
+export function ServiceBenefits({
+  delivery,
+  policies,
+}: {
+  delivery: DeliverySettings;
+  policies: PolicySettings;
+}) {
   const benefits = [
     {
       icon: Truck,
@@ -32,7 +39,9 @@ export function ServiceBenefits({ delivery }: { delivery: DeliverySettings }) {
     {
       icon: RotateCcw,
       title: "Easy Exchange",
-      text: "Hassle-free returns within 7 days",
+      // The same window the exchange policy page and every product page state,
+      // from the same setting.
+      text: `Hassle-free exchange within ${policies.exchangeWindowDays} days`,
     },
     {
       icon: Headset,

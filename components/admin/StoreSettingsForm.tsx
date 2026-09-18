@@ -4,6 +4,7 @@ import { saveSettingsAction } from "@/lib/supabase/actions/admin";
 import { DIVISIONS } from "@/data/bangladesh-geography";
 import { ActionForm, SubmitButton } from "./AdminForm";
 import {
+  AdminStickyActions,
   Field,
   Panel,
   PanelHeader,
@@ -29,6 +30,9 @@ export interface StoreSettingsValues {
   cod_enabled: boolean;
   maintenance_mode: boolean;
   order_notification_email: string;
+  delivery_estimate_inside: string;
+  delivery_estimate_outside: string;
+  exchange_window_days: number;
 }
 
 /**
@@ -188,6 +192,48 @@ export function StoreSettingsForm({ values }: { values: StoreSettingsValues }) {
             </select>
           </Field>
           <Field
+            label="Delivery estimate inside the free-delivery division"
+            htmlFor="delivery_estimate_inside"
+            hint="Shown on every product page and on the delivery policy page. Words, not a number — for example: 2-4 business days."
+          >
+            <input
+              id="delivery_estimate_inside"
+              name="delivery_estimate_inside"
+              maxLength={60}
+              defaultValue={values.delivery_estimate_inside}
+              className={adminInputClass}
+            />
+          </Field>
+          <Field
+            label="Delivery estimate elsewhere in Bangladesh"
+            htmlFor="delivery_estimate_outside"
+            hint="The same sentence for the other 63 districts."
+          >
+            <input
+              id="delivery_estimate_outside"
+              name="delivery_estimate_outside"
+              maxLength={60}
+              defaultValue={values.delivery_estimate_outside}
+              className={adminInputClass}
+            />
+          </Field>
+          <Field
+            label="Exchange window (days)"
+            htmlFor="exchange_window_days"
+            hint="Stated on the product page, the homepage and the exchange policy page — all three from this one number."
+          >
+            <input
+              id="exchange_window_days"
+              name="exchange_window_days"
+              type="number"
+              min={0}
+              max={365}
+              step="1"
+              defaultValue={values.exchange_window_days}
+              className={adminInputClass}
+            />
+          </Field>
+          <Field
             label="Internal order notification inboxes"
             htmlFor="order_notification_email"
             className="sm:col-span-2"
@@ -290,9 +336,9 @@ export function StoreSettingsForm({ values }: { values: StoreSettingsValues }) {
         </div>
       </Panel>
 
-      <div>
+      <AdminStickyActions status="Changes apply to the storefront as soon as they are saved.">
         <SubmitButton>Save settings</SubmitButton>
-      </div>
+      </AdminStickyActions>
     </ActionForm>
   );
 }

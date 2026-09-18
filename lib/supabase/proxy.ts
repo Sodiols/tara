@@ -2,6 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "@/types/database";
 import { isSupabaseConfigured, supabaseEnv } from "./env";
+import {
+  PIXEL_CONNECT_ORIGINS,
+  PIXEL_IMAGE_ORIGINS,
+  PIXEL_SCRIPT_ORIGINS,
+} from "@/lib/analytics/config";
 
 /**
  * Runs before every storefront and admin request.
@@ -96,6 +101,21 @@ function createNonce(): string {
 function contentSecurityPolicy(nonce: string, isDev: boolean): string {
   const supabaseOrigin = supabaseEnv.url || "";
   const supabaseSocket = supabaseOrigin.replace("https://", "wss://");
+  /*
+   * The measurement tags get exactly the origins they are configured to need
+   * and not one more. With no GA4 id there is no googletagmanager.com in this
+   * header; with no Meta pixel there is no facebook.net. See
+   * lib/analytics/config.ts, which is also what decides whether the tags are
+   * rendered at all, so the policy and the page can never disagree.
+   *
+   * `script-src` already carries 'strict-dynamic', under which a nonced script
+   * may load what it needs — these entries are for browsers that do not
+   * understand it. `connect-src` is the one that actually matters: without it
+   * every tag loads and then silently fails to report anything.
+   */
+  const pixelScripts = PIXEL_SCRIPT_ORIGINS.join(" ");
+  const pixelConnects = PIXEL_CONNECT_ORIGINS.join(" ");
+  const pixelImages = PIXEL_IMAGE_ORIGINS.join(" ");
   let monitoringOrigin = "";
   try {
     monitoringOrigin = new URL(process.env.NEXT_PUBLIC_SENTRY_DSN ?? "").origin;
@@ -106,13 +126,16 @@ function contentSecurityPolicy(nonce: string, isDev: boolean): string {
   return [
     "default-src 'self'",
     // 'unsafe-eval' is dev-only: React Fast Refresh needs it, production does not.
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https: ${isDev ? "'unsafe-eval'" : ""}`.trim(),
+    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https: ${isDev ? "'unsafe-eval'" : ""}${pixelScripts ? ` ${pixelScripts}` : ""}`.trim(),
     "style-src 'self' 'unsafe-inline'",
     // next/font/google self-hosts the font files at build time, so no
     // fonts.gstatic.com entry is needed at runtime.
     "font-src 'self' data:",
-    `img-src 'self' data: blob: https://images.unsplash.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
-    `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin} ${supabaseSocket}` : ""}${monitoringOrigin ? ` ${monitoringOrigin}` : ""}${isDev ? " ws: http://localhost:*" : ""}`,
+    `img-src 'self' data: blob: https://images.unsplash.com${supabaseOrigin ? ` ${supabaseOrigin}` : ""}${pixelImages ? ` ${pixelImages}` : ""}`,
+    // A product video is served from the same Supabase storage bucket as the
+    // photographs, so it needs no origin the images do not already have.
+    `media-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
+    `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin} ${supabaseSocket}` : ""}${monitoringOrigin ? ` ${monitoringOrigin}` : ""}${pixelConnects ? ` ${pixelConnects}` : ""}${isDev ? " ws: http://localhost:*" : ""}`,
     "frame-ancestors 'none'",
     "form-action 'self'",
     "base-uri 'self'",

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { exportNewsletterCsvAction } from "@/lib/supabase/actions/admin-export";
 import { useToastStore } from "@/store/toastStore";
 
+import { adminButtonClass } from "./ui";
 /**
  * CSV export.
  *
@@ -44,7 +45,7 @@ export function NewsletterExport({ activeOnly }: { activeOnly: boolean }) {
           setPending(false);
         }
       }}
-      className="inline-flex h-10 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine disabled:cursor-not-allowed disabled:text-muted"
+      className={adminButtonClass("secondary", "sm", "text-muted")}
     >
       {pending ? "Preparing…" : "Export CSV"}
     </button>

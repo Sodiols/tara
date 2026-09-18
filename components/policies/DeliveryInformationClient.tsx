@@ -1,6 +1,7 @@
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { formatTaka } from "@/lib/format";
 import type { DeliverySettings } from "@/lib/delivery";
+import type { PolicySettings } from "@/lib/supabase/queries/settings";
 
 /**
  * The delivery policy page.
@@ -9,18 +10,29 @@ import type { DeliverySettings } from "@/lib/delivery";
  * settings. The charges used to be written into the copy, so this page could
  * quote one price while checkout charged another — which is the worst place on
  * the site for that to happen, because this is where a customer comes to check.
+ *
+ * The timelines were the remaining hardcoded promise: "2-4 business days" was
+ * written here, in the product accordion and nowhere a shop owner could reach.
+ * They come from `store_settings` now, and the product page states the same two
+ * sentences from the same rows.
  */
-export function DeliveryInformationClient({ delivery }: { delivery: DeliverySettings }) {
+export function DeliveryInformationClient({
+  delivery,
+  policies,
+}: {
+  delivery: DeliverySettings;
+  policies: PolicySettings;
+}) {
   const insideTitle = `Delivery within ${delivery.freeDeliveryDivision}`;
   const insideText = delivery.freeDeliveryEnabled
-    ? `Orders within ${delivery.freeDeliveryDivision} typically arrive within 2-4 business days. Delivery is ${formatTaka(delivery.insideFee)}, and free on orders of ${formatTaka(delivery.freeDeliveryThreshold)} or more.`
-    : `Orders within ${delivery.freeDeliveryDivision} typically arrive within 2-4 business days. Delivery is ${formatTaka(delivery.insideFee)}.`;
+    ? `Orders within ${delivery.freeDeliveryDivision} typically arrive within ${policies.deliveryEstimateInside}. Delivery is ${formatTaka(delivery.insideFee)}, and free on orders of ${formatTaka(delivery.freeDeliveryThreshold)} or more.`
+    : `Orders within ${delivery.freeDeliveryDivision} typically arrive within ${policies.deliveryEstimateInside}. Delivery is ${formatTaka(delivery.insideFee)}.`;
 
   const sections = [
     { title: insideTitle, text: insideText },
     {
       title: "Delivery Nationwide",
-      text: `We deliver to all 64 districts of Bangladesh. Orders outside ${delivery.freeDeliveryDivision} usually take 4-7 business days and cost ${formatTaka(delivery.outsideFee)}, whatever the order total. The exact charge is always shown at checkout before you place your order.`,
+      text: `We deliver to all 64 districts of Bangladesh. Orders outside ${delivery.freeDeliveryDivision} usually take ${policies.deliveryEstimateOutside} and cost ${formatTaka(delivery.outsideFee)}, whatever the order total. The exact charge is always shown at checkout before you place your order.`,
     },
     {
       title: "Payment",

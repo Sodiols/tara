@@ -51,6 +51,52 @@ export type NotificationStatus =
   | "failed"
   | "skipped";
 
+/** What one product photograph shows. Migration 0026; optional everywhere. */
+export type ProductMediaRole =
+  | "front"
+  | "back"
+  | "side"
+  | "fabric"
+  | "detail"
+  | "bottom"
+  | "dupatta"
+  | "model"
+  | "other";
+
+/** The benefit a launch offer gives. Migration 0026. */
+export type LaunchOfferType =
+  | "free_delivery"
+  | "percentage"
+  | "fixed_amount"
+  | "first_order"
+  | "gift";
+
+export type LaunchOfferScope = "site_wide" | "selected_products";
+
+/**
+ * Every analytics event the storefront may record.
+ *
+ * Mirrors the `analytics_events_known_name` check constraint in migration
+ * 0026, which is the authority: a name missing there is discarded on ingest.
+ * `purchase` is written only by `track_analytics_purchase()`, never by the
+ * batch endpoint.
+ */
+export type AnalyticsEventName =
+  | "session_started"
+  | "page_view"
+  | "product_view"
+  | "product_image_interaction"
+  | "product_colour_selected"
+  | "product_size_selected"
+  | "add_to_cart"
+  | "remove_from_cart"
+  | "cart_view"
+  | "begin_checkout"
+  | "checkout_step"
+  | "purchase"
+  | "search"
+  | "category_view";
+
 export type InventoryAdjustmentReason =
   | "restock"
   | "correction"
@@ -149,6 +195,8 @@ export interface Database {
           material_en: string;
           size_guide_note_en: string;
           archived_at: string | null;
+          /** One optional short product video (migration 0026). */
+          video_url: string | null;
         }
       >;
       /**
@@ -177,6 +225,13 @@ export interface Database {
         is_primary: boolean;
         /** Null for a general product photograph that is not tied to a colour. */
         product_colour_id: string | null;
+        /**
+         * What the photograph shows (migration 0026). Null on everything
+         * uploaded before roles existed, and optional after: it drives the
+         * completeness panel in the back office and nothing on the storefront
+         * depends on it.
+         */
+        media_role: ProductMediaRole | null;
         created_at: string;
         updated_at: string;
       }>;
@@ -239,6 +294,13 @@ export interface Database {
           delivered_at: string | null;
           risk_flags: string[];
           archived_at: string | null;
+          /**
+           * How much of `discount_amount` came from the launch offer rather
+           * than from a coupon, and what the offer was called at the time
+           * (migration 0026). Zero and null on every order placed before it.
+           */
+          launch_offer_discount: number;
+          launch_offer_label: string | null;
         }
       >;
       order_items: Table<{
@@ -415,6 +477,84 @@ export interface Database {
         is_public: boolean;
         label: string | null;
         updated_at: string;
+      }>;
+      /**
+       * The one launch offer (migration 0026). Exactly one row, id 1, enforced
+       * by a check constraint rather than by convention.
+       */
+      launch_offer: Table<
+        Timestamps & {
+          id: number;
+          is_enabled: boolean;
+          title: string;
+          description: string;
+          offer_type: LaunchOfferType;
+          applies_to: LaunchOfferScope;
+          discount_value: number | null;
+          minimum_order_amount: number;
+          gift_description: string;
+          starts_at: string | null;
+          ends_at: string | null;
+        }
+      >;
+      launch_offer_products: Table<{
+        product_id: string;
+        is_hero: boolean;
+        created_at: string;
+      }>;
+      /**
+       * First-party analytics (migration 0026).
+       *
+       * Readable only with `analytics.view`, and writable only through
+       * `track_analytics_events()` / `track_analytics_purchase()` — neither
+       * `anon` nor `authenticated` holds an INSERT grant on any of the three.
+       */
+      analytics_visitors: Table<{
+        id: string;
+        first_seen_at: string;
+        last_seen_at: string;
+        user_id: string | null;
+        first_source: string;
+        first_utm_source: string | null;
+        first_utm_medium: string | null;
+        first_utm_campaign: string | null;
+        first_utm_content: string | null;
+        first_utm_term: string | null;
+        first_referrer_host: string | null;
+        first_landing_path: string | null;
+        session_count: number;
+      }>;
+      analytics_sessions: Table<{
+        id: string;
+        visitor_id: string;
+        started_at: string;
+        last_event_at: string;
+        user_id: string | null;
+        utm_source: string | null;
+        utm_medium: string | null;
+        utm_campaign: string | null;
+        utm_content: string | null;
+        utm_term: string | null;
+        referrer_host: string | null;
+        landing_path: string | null;
+        source: string;
+        event_count: number;
+      }>;
+      analytics_events: Table<{
+        id: number;
+        visitor_id: string;
+        session_id: string;
+        event_name: AnalyticsEventName;
+        created_at: string;
+        path: string | null;
+        product_id: string | null;
+        product_variant_id: string | null;
+        order_id: string | null;
+        colour: string | null;
+        size: string | null;
+        quantity: number | null;
+        value: number | null;
+        meta: Json | null;
       }>;
     };
     Views: Record<string, never>;
@@ -642,6 +782,35 @@ export interface Database {
       };
       requeue_notification: { Args: { p_id: string }; Returns: boolean };
       can_send_test_email: { Args: Record<PropertyKey, never>; Returns: boolean };
+      /** The live launch offer, or null. Public. Migration 0026. */
+      active_launch_offer: { Args: Record<PropertyKey, never>; Returns: Json };
+      /**
+       * What the live offer is worth on a basket, for display. Never answers a
+       * first-order offer in the customer's favour — only `place_order()` knows
+       * whether this is somebody's first order.
+       */
+      launch_offer_quote: {
+        Args: { p_subtotal: number; p_product_ids: string[] };
+        Returns: Json;
+      };
+      admin_save_launch_offer: { Args: { p_offer: Json }; Returns: Json };
+      admin_set_launch_offer_products: {
+        Args: { p_product_ids: string[]; p_hero_ids: string[] };
+        Returns: Json;
+      };
+      /** Records a batch of analytics events. Never raises for bad data. */
+      track_analytics_events: { Args: { p_payload: Json }; Returns: Json };
+      /** Records one order's conversion, exactly once, ever. */
+      track_analytics_purchase: {
+        Args: {
+          p_visitor: string;
+          p_session: string;
+          p_order_number: string;
+          p_tracking_token: string;
+        };
+        Returns: boolean;
+      };
+      admin_marketing_analytics: { Args: { p_filters: Json }; Returns: Json };
     };
     Enums: {
       user_role: UserRole;

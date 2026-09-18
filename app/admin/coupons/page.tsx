@@ -1,6 +1,12 @@
-import Link from "next/link";
 import { getAdminCoupons, parsePage } from "@/lib/supabase/queries/admin";
-import { PageHeader, Pagination, Panel } from "@/components/admin/ui";
+import {
+  AdminFilterBar,
+  AdminQuickFilters,
+  AdminSearchInput,
+  PageHeader,
+  Pagination,
+  Panel,
+} from "@/components/admin/ui";
 import { CouponAdmin } from "@/components/admin/CouponAdmin";
 
 type SearchParams = { page?: string; q?: string; state?: string };
@@ -35,50 +41,24 @@ export default async function AdminCouponsPage({
   return (
     <>
       <PageHeader
-        eyebrow="Selling"
+        eyebrow="Marketing"
         title="Coupons"
-        description={`${total.toLocaleString("en-US")} coupon${total === 1 ? "" : "s"}.`}
+        description={`${total.toLocaleString("en-US")} coupon${total === 1 ? "" : "s"}. A coupon is a code the customer types at checkout; for an automatic campaign, use the Launch offer.`}
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {STATES.map((option) => {
-          const isActive = (params.state ?? "") === option.value;
-          return (
-            <Link
-              key={option.label}
-              href={option.value ? `/admin/coupons?state=${option.value}` : "/admin/coupons"}
-              aria-current={isActive ? "true" : undefined}
-              className={
-                isActive
-                  ? "inline-flex h-9 items-center rounded-control border border-taraWine bg-taraWine px-3 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory"
-                  : "inline-flex h-9 items-center rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-              }
-            >
-              {option.label}
-            </Link>
-          );
-        })}
-        <form method="get" action="/admin/coupons" className="ml-auto flex items-center gap-2">
-          {params.state && <input type="hidden" name="state" value={params.state} />}
-          <label htmlFor="coupon-search" className="sr-only">
-            Search coupons
-          </label>
-          <input
-            id="coupon-search"
-            name="q"
-            type="search"
-            defaultValue={params.q ?? ""}
-            placeholder="Search by code"
-            className="h-9 w-48 rounded-control border border-border bg-taraWhite px-3 font-sans text-sm outline-none focus:border-taraWine"
-          />
-          <button
-            type="submit"
-            className="inline-flex h-9 items-center rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-          >
-            Search
-          </button>
-        </form>
-      </div>
+      <AdminQuickFilters
+        label="Filter coupons"
+        items={STATES.map((option) => ({
+          label: option.label,
+          href: option.value ? `/admin/coupons?state=${option.value}` : "/admin/coupons",
+          active: (params.state ?? "") === option.value,
+        }))}
+      />
+
+      <AdminFilterBar action="/admin/coupons" submitLabel="Search">
+        {params.state && <input type="hidden" name="state" value={params.state} />}
+        <AdminSearchInput defaultValue={params.q ?? ""} placeholder="Coupon code" label="Search coupons" />
+      </AdminFilterBar>
 
       <CouponAdmin coupons={rows} />
 

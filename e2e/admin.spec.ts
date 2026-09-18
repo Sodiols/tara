@@ -94,7 +94,7 @@ test.describe("admin panel", () => {
 
   test("a product can be opened and its images managed", async ({ page }) => {
     await page.goto("/admin/products");
-    const firstProduct = page.locator('a[href^="/admin/products/"]').first();
+    const firstProduct = page.locator('a[href^="/admin/products/"]:not([href$="/new"])').first();
     test.skip(
       !(await firstProduct.isVisible().catch(() => false)),
       "No products in this environment.",
@@ -116,19 +116,66 @@ test.describe("admin panel", () => {
     await expect(images.getByText(/add product images/i)).toBeVisible();
   });
 
-  test("the create screen asks for the images once, before the product exists", async ({
-    page,
-  }) => {
+  test("adding a product is one screen, from basics to publish", async ({ page }) => {
     await page.goto("/admin/products/new");
 
-    // One image control on the whole screen. The old flow had one here and a
-    // second waiting on the editor immediately afterwards, which is what made
-    // creating a product feel like being asked for the same files twice.
-    await expect(page.getByText(/add product images/i)).toHaveCount(1);
-    await expect(page.getByRole("button", { name: /^create product$/i })).toBeVisible();
+    // Every stage of the product is on this one screen — nothing is left for a
+    // second screen after the product exists.
+    for (const heading of [
+      /basic information/i,
+      /colours and photographs/i,
+      /sizes, variants and opening stock/i,
+      /product details/i,
+      /merchandising and search/i,
+      /review and publish/i,
+    ]) {
+      await expect(page.getByRole("heading", { name: heading })).toBeVisible();
+    }
 
-    // Nothing on this screen promises a second step for images.
+    // One image control, and one action bar that is always on screen.
+    await expect(page.getByText(/add product images/i)).toHaveCount(1);
+    await expect(page.getByRole("button", { name: /^save as draft$/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^publish product$/i })).toBeVisible();
+
+    // Nothing on this screen promises a second step.
     await expect(page.getByText(/save the product first/i)).toHaveCount(0);
-    await expect(page.getByText(/add its variants and images/i)).toHaveCount(0);
+    await expect(page.getByText(/variants can be added once/i)).toHaveCount(0);
+  });
+
+  test("publishing an incomplete product explains what is missing", async ({ page }) => {
+    await page.goto("/admin/products/new");
+    await page.getByRole("button", { name: /^publish product$/i }).click();
+    // Nothing is created; the page says why, next to the fields.
+    await expect(page.getByText(/not saved\./i)).toBeVisible();
+    await expect(page).toHaveURL(/\/admin\/products\/new$/);
+  });
+
+  test("sizes turn into one variant per colour", async ({ page }) => {
+    await page.goto("/admin/products/new");
+    await page.getByLabel("Product code").fill("E2E-BUILDER");
+    await page.getByLabel(/colour 1/i).fill("Black");
+    await page.getByRole("button", { name: /add colour/i }).first().click();
+    await page.getByLabel(/colour 2/i).fill("Maroon");
+    await page.getByRole("button", { name: /^S$/ }).click();
+    await page.getByRole("button", { name: /^M$/ }).click();
+    await expect(page.getByText(/4 variants · 2 colours × 2 sizes/i)).toBeVisible();
+    await expect(page.getByLabel(/sku for black \/ s/i)).toHaveValue("E2E-BUILDER-S-BLACK");
+  });
+
+  test("the editor has one save for the product, and says when it is unsaved", async ({ page }) => {
+    await page.goto("/admin/products");
+    const firstProduct = page.locator('a[href^="/admin/products/"]:not([href$="/new"])').first();
+    test.skip(
+      !(await firstProduct.isVisible().catch(() => false)),
+      "No products in this environment.",
+    );
+    await firstProduct.click();
+    await page.waitForURL("**/admin/products/**");
+
+    const save = page.getByRole("button", { name: /^save changes$/i });
+    await expect(save).toBeDisabled();
+    await page.getByLabel("Tags").fill("e2e-check");
+    await expect(page.getByText(/unsaved changes/i)).toBeVisible();
+    await expect(save).toBeEnabled();
   });
 });

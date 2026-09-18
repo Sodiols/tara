@@ -6,8 +6,15 @@ import { getAdminOrderDetail } from "@/lib/supabase/queries/admin";
 import { requireStaff } from "@/lib/supabase/auth";
 import { formatDateTime, formatTaka } from "@/lib/format";
 import { formatBdPhone, toInternationalBdPhone } from "@/lib/phone";
-import { CUSTOMER_STATUS_LABELS, FULFILMENT_PIPELINE, ORDER_STATUS_LABELS } from "@/lib/order-status";
 import {
+  CUSTOMER_STATUS_LABELS,
+  FULFILMENT_PIPELINE,
+  ORDER_STATUS_LABELS,
+  PAYMENT_STATUS_LABELS,
+} from "@/lib/order-status";
+import {
+  AdminLinkButton,
+  AdminStatusSummary,
   Badge,
   DetailRow,
   PageHeader,
@@ -59,29 +66,29 @@ export default async function AdminOrderDetailPage({
   const archived = Boolean(order.archived_at);
   const canDelete = staff.permissions.includes("archive.manage");
 
-  const printLinkClass =
-    "inline-flex h-11 items-center gap-2 rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine";
-
   return (
     <>
       <PageHeader
-        eyebrow={
-          <Link href="/admin/orders" className="underline-offset-4 hover:underline">
-            ← Orders
-          </Link>
-        }
+        back={{ href: "/admin/orders", label: "Orders" }}
         title={order.order_number}
-        description={`Placed ${formatDateTime(order.created_at)}`}
+        meta={
+          <>
+            {archived && <Badge tone="warning">Archived</Badge>}
+            <OrderStatusBadge status={order.status} />
+            <PaymentStatusBadge status={order.payment_status} />
+          </>
+        }
+        description={`Placed ${formatDateTime(order.created_at)} · ${order.customer_name}`}
         actions={
           <>
-            <Link href={`/admin/orders/${order.id}/invoice`} className={printLinkClass}>
+            <AdminLinkButton href={`/admin/orders/${order.id}/invoice`}>
               <ReceiptText size={15} aria-hidden="true" />
               Invoice
-            </Link>
-            <Link href={`/admin/orders/${order.id}/packing-slip`} className={printLinkClass}>
+            </AdminLinkButton>
+            <AdminLinkButton href={`/admin/orders/${order.id}/packing-slip`}>
               <Printer size={15} aria-hidden="true" />
               Packing slip
-            </Link>
+            </AdminLinkButton>
           </>
         }
       />
@@ -97,17 +104,44 @@ export default async function AdminOrderDetailPage({
         </div>
       )}
 
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        {archived && <Badge tone="warning">Archived</Badge>}
-        <OrderStatusBadge status={order.status} />
-        <PaymentStatusBadge status={order.payment_status} />
-        <Badge tone="neutral">Cash on delivery</Badge>
-        {order.risk_flags.map((flag) => (
-          <Badge key={flag} tone="warning">
-            {flag.replace(/_/g, " ")}
-          </Badge>
-        ))}
+      {/* Order summary — the answer to "what is this order?" in one row. */}
+      <div className="mb-5">
+        <AdminStatusSummary
+          items={[
+            { label: "Status", value: ORDER_STATUS_LABELS[order.status] },
+            {
+              label: "Payment",
+              value: PAYMENT_STATUS_LABELS[order.payment_status],
+              hint: "Cash on delivery",
+            },
+            { label: "Total", value: formatTaka(order.total) },
+            {
+              label: "Items",
+              value: items.reduce((sum, item) => sum + item.quantity, 0),
+              hint: `${items.length} line${items.length === 1 ? "" : "s"}`,
+            },
+            { label: "Delivery", value: shipping.zoneLabel ?? "—", hint: formatTaka(order.delivery_fee) },
+            {
+              label: "Customer",
+              value: order.user_id ? "Registered" : "Guest",
+              hint: order.customer_name,
+            },
+          ]}
+        />
       </div>
+
+      {order.risk_flags.length > 0 && (
+        <div className="mb-5 flex flex-wrap items-center gap-2" aria-label="Risk flags">
+          <span className="font-sans text-xs font-semibold uppercase tracking-wide text-muted">
+            Check before confirming:
+          </span>
+          {order.risk_flags.map((flag) => (
+            <Badge key={flag} tone="warning">
+              {flag.replace(/_/g, " ")}
+            </Badge>
+          ))}
+        </div>
+      )}
 
       {/* Fulfilment rail */}
       {pipelineIndex >= 0 && (
@@ -206,7 +240,7 @@ export default async function AdminOrderDetailPage({
                 </DetailRow>
               )}
               <DetailRow label="Total">
-                <strong className="font-serif text-lg">{formatTaka(order.total)}</strong>
+                <strong className="font-sans text-lg font-bold">{formatTaka(order.total)}</strong>
               </DetailRow>
             </dl>
           </Panel>
@@ -366,6 +400,16 @@ export default async function AdminOrderDetailPage({
         </div>
 
         <div className="flex flex-col gap-5">
+          {/* Fulfilment and payment first: it is what this page is opened to do. */}
+          {!archived && (
+            <OrderActions
+              orderId={order.id}
+              status={order.status}
+              paymentStatus={order.payment_status}
+              permissions={staff.permissions}
+            />
+          )}
+
           <Panel>
             <PanelHeader title="Customer" />
             <dl className="px-5 py-3">
@@ -446,26 +490,24 @@ export default async function AdminOrderDetailPage({
               )}
             </div>
           </Panel>
-
-          {!archived && (
-            <OrderActions
-              orderId={order.id}
-              status={order.status}
-              paymentStatus={order.payment_status}
-              permissions={staff.permissions}
-            />
-          )}
-
-          {canDelete && (
-            <OrderDeletePanel
-              orderId={order.id}
-              orderNumber={order.order_number}
-              status={order.status}
-              archived={archived}
-            />
-          )}
         </div>
       </div>
+
+      {/*
+        Archive and permanent delete, kept apart from fulfilment. Administrators
+        only; every action re-checks archive.manage on the server and permanent
+        deletion requires the typed confirmation word.
+      */}
+      {canDelete && (
+        <section aria-label="Danger zone" className="mt-8 border-t border-border pt-6">
+          <OrderDeletePanel
+            orderId={order.id}
+            orderNumber={order.order_number}
+            status={order.status}
+            archived={archived}
+          />
+        </section>
+      )}
     </>
   );
 }

@@ -1,15 +1,17 @@
-import Link from "next/link";
 import { getAdminOrders, parsePage } from "@/lib/supabase/queries/admin";
 import { requireStaff } from "@/lib/supabase/auth";
 import { storeDateInputValue } from "@/lib/format";
 import { ORDER_STATUSES, PAYMENT_STATUSES, ORDER_STATUS_LABELS, PAYMENT_STATUS_LABELS } from "@/lib/order-status";
 import {
   AdminEmptyState,
+  AdminFilterBar,
+  AdminFilterSelect,
+  AdminQuickFilters,
+  AdminSearchInput,
   Field,
   PageHeader,
   Pagination,
   Panel,
-  Toolbar,
   adminInputClass,
 } from "@/components/admin/ui";
 import { OrdersTable } from "@/components/admin/OrdersTable";
@@ -48,13 +50,13 @@ export default async function AdminOrdersPage({
   const [staff, { rows, total, pageSize }] = await Promise.all([
     requireStaff(),
     getAdminOrders({
-    page,
-    search: params.q,
-    status: (params.status as OrderStatus) || "all",
-    paymentStatus: (params.payment as PaymentStatus) || "all",
-    from: params.from,
-    to: params.to,
-    sort: (params.sort as "newest" | "oldest" | "highest" | "lowest") || "newest",
+      page,
+      search: params.q,
+      status: (params.status as OrderStatus) || "all",
+      paymentStatus: (params.payment as PaymentStatus) || "all",
+      from: params.from,
+      to: params.to,
+      sort: (params.sort as "newest" | "oldest" | "highest" | "lowest") || "newest",
     }),
   ]);
   // Controls only; every delete path re-checks archive.manage on the server.
@@ -70,135 +72,99 @@ export default async function AdminOrdersPage({
   };
 
   const activeFilter = params.status ?? params.payment ?? "";
+  const filtered = Boolean(
+    params.q || params.status || params.payment || params.from || params.to,
+  );
 
   return (
     <>
       <PageHeader
-        eyebrow="Selling"
+        eyebrow="Sales"
         title="Orders"
-        description={`${total.toLocaleString("en-US")} order${total === 1 ? "" : "s"} match the current filters.${canDelete ? " Archived orders are in Archive & Trash." : ""}`}
+        description={`${total.toLocaleString("en-US")} order${total === 1 ? "" : "s"}${filtered ? " match these filters" : ""}. Open one to confirm, pack, ship or print it.${canDelete ? " Archived orders are in Archive & Trash." : ""}`}
       />
 
-      <nav aria-label="Quick filters" className="mb-4 flex flex-wrap gap-2">
-        {QUICK_FILTERS.map((filter) => {
+      <AdminQuickFilters
+        label="Quick filters"
+        items={QUICK_FILTERS.map((filter) => {
           const value = new URL(filter.href, "http://x").searchParams;
-          const isActive =
-            (value.get("status") ?? value.get("payment") ?? "") === activeFilter;
-          return (
-            <Link
-              key={filter.label}
-              href={filter.href}
-              aria-current={isActive ? "true" : undefined}
-              className={
-                isActive
-                  ? "inline-flex h-9 items-center rounded-control border border-taraWine bg-taraWine px-3 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory"
-                  : "inline-flex h-9 items-center rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-              }
-            >
-              {filter.label}
-            </Link>
-          );
+          return {
+            label: filter.label,
+            href: filter.href,
+            active: (value.get("status") ?? value.get("payment") ?? "") === activeFilter,
+          };
         })}
-      </nav>
+      />
 
-      <form method="get" action="/admin/orders">
-        <Toolbar>
-          <Field label="Search" htmlFor="order-search" className="min-w-[220px] flex-1">
-            <input
-              id="order-search"
-              name="q"
-              type="search"
-              defaultValue={params.q ?? ""}
-              placeholder="Order number, name, phone or email"
-              className={adminInputClass}
-            />
-          </Field>
-          <Field label="Status" htmlFor="order-status" className="min-w-[150px]">
-            <select
-              id="order-status"
-              name="status"
-              defaultValue={params.status ?? ""}
-              className={adminInputClass}
-            >
-              <option value="">All statuses</option>
-              {ORDER_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {ORDER_STATUS_LABELS[status]}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Payment" htmlFor="order-payment" className="min-w-[150px]">
-            <select
-              id="order-payment"
-              name="payment"
-              defaultValue={params.payment ?? ""}
-              className={adminInputClass}
-            >
-              <option value="">All payments</option>
-              {PAYMENT_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {PAYMENT_STATUS_LABELS[status]}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="From" htmlFor="order-from" className="min-w-[140px]">
-            <input
-              id="order-from"
-              name="from"
-              type="date"
-              max={storeDateInputValue(new Date())}
-              defaultValue={params.from ?? ""}
-              className={adminInputClass}
-            />
-          </Field>
-          <Field label="To" htmlFor="order-to" className="min-w-[140px]">
-            <input
-              id="order-to"
-              name="to"
-              type="date"
-              max={storeDateInputValue(new Date())}
-              defaultValue={params.to ?? ""}
-              className={adminInputClass}
-            />
-          </Field>
-          <Field label="Sort" htmlFor="order-sort" className="min-w-[150px]">
-            <select
-              id="order-sort"
-              name="sort"
-              defaultValue={params.sort ?? "newest"}
-              className={adminInputClass}
-            >
-              <option value="newest">Newest first</option>
-              <option value="oldest">Oldest first</option>
-              <option value="highest">Highest value</option>
-              <option value="lowest">Lowest value</option>
-            </select>
-          </Field>
-          <div className="flex items-center gap-2 pb-[1px]">
-            <button
-              type="submit"
-              className="inline-flex h-11 items-center rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:bg-taraBlack hover:border-taraBlack"
-            >
-              Apply
-            </button>
-            <Link
-              href="/admin/orders"
-              className="inline-flex h-11 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-            >
-              Reset
-            </Link>
-          </div>
-        </Toolbar>
-      </form>
+      <AdminFilterBar action="/admin/orders" resetHref="/admin/orders" hasActiveFilters={filtered}>
+        <AdminSearchInput
+          defaultValue={params.q ?? ""}
+          placeholder="Order number, name, phone or email"
+        />
+        <AdminFilterSelect
+          name="status"
+          label="Status"
+          defaultValue={params.status ?? ""}
+          options={[
+            { value: "", label: "All statuses" },
+            ...ORDER_STATUSES.map((status) => ({ value: status, label: ORDER_STATUS_LABELS[status] })),
+          ]}
+        />
+        <AdminFilterSelect
+          name="payment"
+          label="Payment"
+          defaultValue={params.payment ?? ""}
+          options={[
+            { value: "", label: "All payments" },
+            ...PAYMENT_STATUSES.map((status) => ({ value: status, label: PAYMENT_STATUS_LABELS[status] })),
+          ]}
+        />
+        <Field label="From" htmlFor="order-from" className="sm:w-40">
+          <input
+            id="order-from"
+            name="from"
+            type="date"
+            max={storeDateInputValue(new Date())}
+            defaultValue={params.from ?? ""}
+            className={adminInputClass}
+          />
+        </Field>
+        <Field label="To" htmlFor="order-to" className="sm:w-40">
+          <input
+            id="order-to"
+            name="to"
+            type="date"
+            max={storeDateInputValue(new Date())}
+            defaultValue={params.to ?? ""}
+            className={adminInputClass}
+          />
+        </Field>
+        <AdminFilterSelect
+          name="sort"
+          label="Sort"
+          defaultValue={params.sort ?? "newest"}
+          options={[
+            { value: "newest", label: "Newest first" },
+            { value: "oldest", label: "Oldest first" },
+            { value: "highest", label: "Highest value" },
+            { value: "lowest", label: "Lowest value" },
+          ]}
+        />
+      </AdminFilterBar>
 
       <Panel>
         {rows.length === 0 ? (
-          <AdminEmptyState
-            title="No orders match those filters"
-            description="Try widening the date range, clearing the search, or resetting the filters."
-          />
+          filtered ? (
+            <AdminEmptyState
+              title="No orders match these filters"
+              description="Try widening the date range, clearing the search, or clearing the filters."
+            />
+          ) : (
+            <AdminEmptyState
+              title="No orders yet"
+              description="Orders placed on the storefront appear here the moment they arrive."
+            />
+          )
         ) : (
           <>
             <OrdersTable rows={rows} canDelete={canDelete} />

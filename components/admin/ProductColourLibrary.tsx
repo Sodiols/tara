@@ -10,7 +10,14 @@ import {
 import type { Tables } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { ActionButton, ActionForm, SubmitButton } from "./AdminForm";
-import { AdminEmptyState, Field, Panel, PanelHeader, adminInputClass } from "./ui";
+import {
+  AdminEmptyState,
+  Field,
+  Panel,
+  PanelHeader,
+  adminButtonClass,
+  adminInputClass,
+} from "./ui";
 
 type ProductColour = Tables<"product_colours">;
 
@@ -60,7 +67,7 @@ export function ProductColourLibrary({
           <button
             type="button"
             onClick={openNew}
-            className="inline-flex h-10 items-center rounded-control border border-taraWine bg-taraWine px-4 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
+            className={adminButtonClass("primary", "sm")}
           >
             Add colour
           </button>

@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 
+import { adminButtonClass } from "./ui";
 /**
  * Print chrome for the invoice and packing slip.
  *
@@ -27,7 +28,7 @@ export function PrintToolbar({ backHref, label }: { backHref: string; label: str
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3 print:hidden">
       <Link
         href={backHref}
-        className="inline-flex h-11 items-center rounded-control border border-border bg-white px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
+        className={adminButtonClass("secondary", "md")}
       >
         ← Back to order
       </Link>
@@ -36,7 +37,7 @@ export function PrintToolbar({ backHref, label }: { backHref: string; label: str
         <button
           type="button"
           onClick={() => window.print()}
-          className="inline-flex h-11 items-center rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
+          className={adminButtonClass("primary", "md")}
         >
           Print {label}
         </button>

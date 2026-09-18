@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import Link from "next/link";
 
+import { adminButtonClass } from "@/components/admin/ui";
 /**
  * Admin error boundary.
  *
@@ -26,7 +27,7 @@ export default function AdminError({
       <p className="font-sans text-[11px] font-semibold uppercase tracking-widest text-taraWine">
         TARA Operations
       </p>
-      <h1 className="mt-2 font-serif text-2xl text-ink">This screen could not load</h1>
+      <h1 className="mt-2 font-sans text-2xl font-bold text-ink">This screen could not load</h1>
       <p className="mt-3 font-sans text-sm leading-6 text-muted">
         Something went wrong while fetching the data for this page. Nothing was changed. Try again,
         and if it keeps happening, check the server logs.
@@ -38,13 +39,13 @@ export default function AdminError({
         <button
           type="button"
           onClick={reset}
-          className="inline-flex h-11 items-center rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
+          className={adminButtonClass("primary", "md")}
         >
           Try again
         </button>
         <Link
           href="/admin"
-          className="inline-flex h-11 items-center rounded-control border border-border bg-taraWhite px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
+          className={adminButtonClass("secondary", "md")}
         >
           Back to dashboard
         </Link>

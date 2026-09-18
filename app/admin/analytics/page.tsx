@@ -1,10 +1,10 @@
-import Link from "next/link";
 import { getAnalytics } from "@/lib/supabase/queries/admin";
 import { formatDate, formatNumber, formatPercent, formatTaka, formatTakaCompact } from "@/lib/format";
 import { ORDER_STATUS_LABELS } from "@/lib/order-status";
 import {
   AdminEmptyState,
   AdminErrorState,
+  AdminQuickFilters,
   DetailRow,
   PageHeader,
   Panel,
@@ -49,7 +49,7 @@ export default async function AdminAnalyticsPage({
   if (!data) {
     return (
       <>
-        <PageHeader eyebrow="Overview" title="Analytics" />
+        <PageHeader eyebrow="Insights" title="Analytics" />
         <AdminErrorState
           title="Analytics are unavailable"
           description="The analytics function could not be reached. Check that supabase/migrations/0002_production_hardening.sql has been applied."
@@ -70,30 +70,19 @@ export default async function AdminAnalyticsPage({
   return (
     <>
       <PageHeader
-        eyebrow="Overview"
+        eyebrow="Insights"
         title="Analytics"
-        description={`Every figure below is computed from real order data over the last ${window} days.`}
+        description={`Sales, from real order data over the last ${window} days. For where customers came from, see Marketing analytics.`}
       />
 
-      <nav aria-label="Time range" className="mb-5 flex flex-wrap gap-2">
-        {WINDOWS.map((option) => {
-          const isActive = option === window;
-          return (
-            <Link
-              key={option}
-              href={`/admin/analytics?days=${option}`}
-              aria-current={isActive ? "true" : undefined}
-              className={
-                isActive
-                  ? "inline-flex h-9 items-center rounded-control border border-taraWine bg-taraWine px-3 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory"
-                  : "inline-flex h-9 items-center rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-              }
-            >
-              {option === 365 ? "12 months" : `${option} days`}
-            </Link>
-          );
-        })}
-      </nav>
+      <AdminQuickFilters
+        label="Time range"
+        items={WINDOWS.map((option) => ({
+          label: option === 365 ? "12 months" : `${option} days`,
+          href: `/admin/analytics?days=${option}`,
+          active: option === window,
+        }))}
+      />
 
       <div className="mb-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatTile

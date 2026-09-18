@@ -290,6 +290,24 @@ export const adminProductSchema = z
     isBestSeller: z.boolean().default(false),
     seoTitle: optionalText(70),
     seoDescription: optionalText(180),
+    /*
+     * One optional short product video.
+     *
+     * https only, and the shape is checked again by a constraint on the column
+     * (migration 0026): this ends up in a `src` on the storefront, so "any
+     * string staff typed" is not good enough. A blank field is null, not "".
+     */
+    videoUrl: z
+      .union([
+        z.literal(""),
+        z
+          .string()
+          .trim()
+          .max(500)
+          .regex(/^https:\/\/\S+$/, "Use a full https:// link to the video file."),
+      ])
+      .optional()
+      .transform((value) => (value ? value : null)),
   })
   .refine(
     (value) =>
@@ -347,6 +365,7 @@ export function productFormValues(formData: FormData) {
     isBestSeller: checkbox("isBestSeller"),
     seoTitle: text("seoTitle"),
     seoDescription: text("seoDescription"),
+    videoUrl: text("videoUrl"),
   };
 }
 
@@ -508,6 +527,67 @@ export const adminCouponSchema = z
     { path: ["expiresAt"], message: "The expiry must be after the start date." },
   );
 
+/**
+ * The launch offer (migration 0026).
+ *
+ * Validated here so an administrator gets a sentence rather than a constraint
+ * violation, and validated AGAIN in `admin_save_launch_offer()`, which is the
+ * authority: the bounds on a discount decide money, and a bound only the form
+ * enforces is a bound a request can skip.
+ *
+ * The refinements encode what each offer type needs, because "20% off" with no
+ * percentage and "৳200 off" with no amount are both offers that would go live
+ * promising nothing.
+ */
+export const launchOfferSchema = z
+  .object({
+    isEnabled: z.boolean().default(false),
+    title: z.string().trim().max(120).default(""),
+    description: z.string().trim().max(400).default(""),
+    offerType: z.enum([
+      "free_delivery",
+      "percentage",
+      "fixed_amount",
+      "first_order",
+      "gift",
+    ]),
+    appliesTo: z.enum(["site_wide", "selected_products"]),
+    discountValue: optionalPrice,
+    minimumOrderAmount: z.coerce.number().min(0).max(1_000_000).default(0),
+    giftDescription: z.string().trim().max(200).default(""),
+    startsAt: optionalDate,
+    endsAt: optionalDate,
+  })
+  .refine(
+    (value) => !value.isEnabled || value.title.length >= 3,
+    { path: ["title"], message: "Give the offer a title customers will see." },
+  )
+  .refine(
+    (value) =>
+      !["percentage", "first_order"].includes(value.offerType) ||
+      (value.discountValue !== null && value.discountValue > 0 && value.discountValue <= 90),
+    {
+      path: ["discountValue"],
+      // Capped well below 100 on purpose: a launch campaign is a discount, and
+      // a typo that gave the stock away should be refused rather than saved.
+      message: "Enter a percentage between 1 and 90.",
+    },
+  )
+  .refine(
+    (value) =>
+      value.offerType !== "fixed_amount" ||
+      (value.discountValue !== null && value.discountValue > 0),
+    { path: ["discountValue"], message: "Enter the amount to take off, in taka." },
+  )
+  .refine(
+    (value) => value.offerType !== "gift" || !value.isEnabled || value.giftDescription.length >= 3,
+    { path: ["giftDescription"], message: "Say what the gift is." },
+  )
+  .refine(
+    (value) => !value.startsAt || !value.endsAt || value.endsAt > value.startsAt,
+    { path: ["endsAt"], message: "The end date must be after the start date." },
+  );
+
 // Every field here is written to store_settings and read back by something the
 // customer can see. There is no setting in this schema the application ignores.
 export const adminSettingsSchema = z.object({
@@ -528,6 +608,17 @@ export const adminSettingsSchema = z.object({
   free_delivery_division: z.enum(DIVISIONS),
   cod_enabled: z.boolean(),
   maintenance_mode: z.boolean(),
+  /*
+   * The two promises every product page makes, and the exchange window.
+   *
+   * Free text rather than a number of days, because "2-4 business days" is what
+   * the shop actually says and a pair of integers cannot express it. Bounded and
+   * trimmed; blank falls back to the seeded wording rather than printing an
+   * empty promise.
+   */
+  delivery_estimate_inside: z.string().trim().max(60),
+  delivery_estimate_outside: z.string().trim().max(60),
+  exchange_window_days: z.coerce.number().int().min(0).max(365),
   // Where the store's own "new order" notification is sent. Private — never
   // exposed to the storefront — and now genuinely used by lib/email. One
   // address or several separated by commas; saved normalised and de-duplicated

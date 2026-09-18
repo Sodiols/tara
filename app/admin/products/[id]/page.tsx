@@ -1,38 +1,47 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getProductEditorData } from "@/lib/supabase/queries/admin";
-import { formatDateTime } from "@/lib/format";
-import { PageHeader, Badge } from "@/components/admin/ui";
+import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
+import { productTrustReport } from "@/lib/product-trust";
+import { formatDateTime, formatNumber, formatTaka } from "@/lib/format";
+import {
+  AdminSecondaryAction,
+  AdminStatusSummary,
+  PageHeader,
+} from "@/components/admin/ui";
 import { ProductStatusBadge } from "@/components/admin/status";
-import { ProductForm } from "@/components/admin/ProductForm";
-import { ProductVariants } from "@/components/admin/ProductVariants";
-import { ProductImageLibrary } from "@/components/admin/ProductImageManager";
-import { ProductColourLibrary } from "@/components/admin/ProductColourLibrary";
-import { ProductCreatedBanner } from "@/components/admin/ProductCreatedBanner";
+import { ProductEditor } from "@/components/admin/ProductEditor";
+
+export const metadata: Metadata = {
+  title: "Edit product",
+  robots: { index: false, follow: false },
+};
 
 /**
  * The product editor.
  *
- * The section order depends on why the staff member is here. Straight after
- * creation (`?created=1`) the images are done and the variants are not, so
- * variants come first and the page scrolls to them. On an ordinary edit the
- * usual order applies: what the product is, what it looks like, then what can
- * be bought.
+ * A summary first — status, price, variants, stock, photographs, how complete
+ * the listing is — so the state of the product is readable before anything is
+ * scrolled. Then the workspace: every section in the order staff work in, one
+ * Save for the product's own fields, and a panel-level button for each
+ * individual operation. See components/admin/ProductEditor.tsx.
  */
 export default async function EditProductPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ created?: string }>;
 }) {
   const { id } = await params;
-  const { created } = await searchParams;
-  const data = await getProductEditorData(id);
+  // The shop's own settings are part of the completeness answer: two of the
+  // checks are whether the shop has stated its delivery estimate and exchange
+  // window at all, which every product page shows.
+  const [data, settings] = await Promise.all([
+    getProductEditorData(id),
+    getPublicStoreSettings(),
+  ]);
   if (!data) notFound();
 
   const { product, categories, collections, variants, images, colours } = data;
-  const justCreated = created === "1";
 
   // How many photographs each colour owns, counted once here rather than in the
   // panel, so the colour list and the image grid cannot disagree.
@@ -43,94 +52,106 @@ export default async function EditProductPage({
     return counts;
   }, {});
 
-  const productForm = (
-    <ProductForm product={product} categories={categories} collections={collections} />
-  );
-  const variantsPanel = (
-    <ProductVariants
-      productId={product.id}
-      productCode={product.product_code}
-      productName={product.name_en}
-      variants={variants}
-      colours={colours}
-      autoOpen={justCreated}
-    />
-  );
-  // Colours sit directly above the images they group, and above variants, which
-  // is the order the work happens in: define the colourway, photograph it, then
-  // list the sizes it comes in.
-  const coloursPanel = (
-    <ProductColourLibrary
-      productId={product.id}
-      colours={colours}
-      imageCounts={imageCounts}
-    />
-  );
-  const imagesPanel = (
-    <ProductImageLibrary productId={product.id} images={images} colours={colours} />
-  );
+  const trust = productTrustReport({
+    description: product.description_en,
+    fabric: product.fabric_en,
+    careInstructions: product.care_instructions_en,
+    status: product.status,
+    images: images.map((image) => ({
+      isPrimary: image.is_primary,
+      role: image.media_role,
+      altText: image.alt_en,
+    })),
+    variants: variants.map((variant) => ({
+      size: variant.size,
+      colourName: variant.colour_en,
+      stock: variant.stock_quantity,
+      isActive: variant.is_active,
+    })),
+    colourCount: colours.length,
+    videoUrl: product.video_url,
+    shop: {
+      deliveryStated: Boolean(
+        settings.policies.deliveryEstimateInside.trim() &&
+          settings.policies.deliveryEstimateOutside.trim(),
+      ),
+      exchangeStated: settings.policies.exchangeWindowDays > 0,
+    },
+  });
+
+  const activeVariants = variants.filter((variant) => variant.is_active);
+  const totalStock = activeVariants.reduce((sum, variant) => sum + variant.stock_quantity, 0);
+  const outOfStock = activeVariants.filter((variant) => variant.stock_quantity <= 0).length;
 
   return (
     <>
       <PageHeader
-        eyebrow={
-          <Link href="/admin/products" className="underline-offset-4 hover:underline">
-            ← Products
-          </Link>
-        }
+        back={{ href: "/admin/products", label: "Products" }}
         title={product.name_en}
-        description={`Last updated ${formatDateTime(product.updated_at)}`}
+        meta={<ProductStatusBadge status={product.status} />}
+        description={`${product.product_code} · last updated ${formatDateTime(product.updated_at)}`}
         actions={
           product.status === "active" ? (
-            <Link
-              href={`/product/${product.slug}`}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-11 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-            >
+            <AdminSecondaryAction href={`/product/${product.slug}`} external>
               View on storefront
-            </Link>
+            </AdminSecondaryAction>
           ) : null
         }
       />
 
-      {justCreated && (
-        <ProductCreatedBanner imageCount={images.length} variantCount={variants.length} />
-      )}
-
-      <div className="mb-5 flex flex-wrap items-center gap-2">
-        <ProductStatusBadge status={product.status} />
-        <Badge tone="neutral">{product.product_code}</Badge>
-        <Badge tone={variants.length === 0 ? "warning" : "neutral"}>
-          {variants.length} variant{variants.length === 1 ? "" : "s"}
-        </Badge>
-        <Badge tone="neutral">
-          {images.length} image{images.length === 1 ? "" : "s"}
-        </Badge>
-        {product.review_count > 0 && (
-          <Badge tone="info">
-            {Number(product.average_rating).toFixed(1)} ★ · {product.review_count} reviews
-          </Badge>
-        )}
+      <div className="mb-8">
+        <AdminStatusSummary
+          items={[
+            {
+              label: "Status",
+              value: product.status === "active" ? "Active" : product.status === "draft" ? "Draft" : "Archived",
+              hint: product.status === "active" ? "Visible to customers" : "Hidden from customers",
+            },
+            {
+              label: "Price",
+              value: formatTaka(product.base_price),
+              hint: product.compare_at_price ? `Was ${formatTaka(product.compare_at_price)}` : undefined,
+            },
+            {
+              label: "Variants",
+              value: formatNumber(variants.length),
+              hint:
+                variants.length === activeVariants.length
+                  ? "All available"
+                  : `${activeVariants.length} available`,
+            },
+            {
+              label: "Total stock",
+              value: formatNumber(totalStock),
+              hint: outOfStock > 0 ? `${outOfStock} variant${outOfStock === 1 ? "" : "s"} sold out` : "Across active variants",
+            },
+            {
+              label: "Photographs",
+              value: formatNumber(images.length),
+              hint: `${colours.length} colour${colours.length === 1 ? "" : "s"}`,
+            },
+            {
+              label: "Listing",
+              value: `${trust.score}%`,
+              hint:
+                trust.missingRequired > 0
+                  ? `${trust.missingRequired} important item${trust.missingRequired === 1 ? "" : "s"} missing`
+                  : "Complete",
+            },
+          ]}
+        />
       </div>
 
-      <div className="flex flex-col gap-5">
-        {justCreated ? (
-          <>
-            {variantsPanel}
-            {productForm}
-            {coloursPanel}
-            {imagesPanel}
-          </>
-        ) : (
-          <>
-            {productForm}
-            {coloursPanel}
-            {imagesPanel}
-            {variantsPanel}
-          </>
-        )}
-      </div>
+      <ProductEditor
+        product={product}
+        categories={categories}
+        collections={collections}
+        colours={colours}
+        images={images}
+        variants={variants}
+        imageCounts={imageCounts}
+        trust={trust}
+      />
     </>
   );
 }

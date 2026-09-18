@@ -1,10 +1,13 @@
 import Link from "next/link";
 import { getDashboardMetrics } from "@/lib/supabase/queries/admin";
 import { requireStaff } from "@/lib/supabase/auth";
+import type { Permission } from "@/lib/permissions";
+import { Boxes, ClipboardList, Mail, PackagePlus, Percent, Star } from "lucide-react";
 import { formatDateTime, formatNumber, formatTaka, formatTakaCompact } from "@/lib/format";
 import {
   AdminEmptyState,
   AdminErrorState,
+  AdminLinkButton,
   DetailRow,
   PageHeader,
   Panel,
@@ -13,6 +16,7 @@ import {
   TableWrap,
   Td,
   Th,
+  type BadgeTone,
 } from "@/components/admin/ui";
 import { OrderStatusBadge, PaymentStatusBadge, StockBadge } from "@/components/admin/status";
 import type { OrderStatus } from "@/types/database";
@@ -32,7 +36,7 @@ export default async function AdminDashboardPage({
   if (!metrics) {
     return (
       <>
-        <PageHeader eyebrow="TARA Operations" title="Dashboard" />
+        <PageHeader eyebrow="Home" title="Dashboard" />
         <AdminErrorState
           title="Dashboard data is unavailable"
           description="The store metrics could not be loaded. Check that the database migrations in supabase/migrations have been applied, then refresh."
@@ -42,13 +46,87 @@ export default async function AdminDashboardPage({
   }
 
   const status = (key: OrderStatus) => metrics.statusCounts[key] ?? 0;
+  const can = (permission: Permission) => staff.permissions.includes(permission);
+
+  /*
+   * What is waiting, filtered by what this role can act on. Each tile links to
+   * the list that fixes it; a count this person cannot do anything about is
+   * noise on the first screen of their day.
+   */
+  const attention: Parameters<typeof StatTile>[0][] = [
+    ...(can("orders.view")
+      ? [
+          {
+            label: "Pending orders",
+            value: formatNumber(status("pending")),
+            hint: "Waiting to be confirmed",
+            href: "/admin/orders?status=pending",
+            tone: (status("pending") > 0 ? "warning" : "neutral") as BadgeTone,
+          },
+        ]
+      : []),
+    ...(can("inventory.adjust")
+      ? [
+          {
+            label: "Out of stock",
+            value: formatNumber(metrics.outOfStockVariants),
+            hint: "Active variants with zero stock",
+            href: "/admin/inventory?state=out",
+            tone: (metrics.outOfStockVariants > 0 ? "danger" : "neutral") as BadgeTone,
+          },
+          {
+            label: "Low stock",
+            value: formatNumber(metrics.lowStockVariants),
+            hint: "At or below threshold",
+            href: "/admin/inventory?state=low",
+            tone: (metrics.lowStockVariants > 0 ? "warning" : "neutral") as BadgeTone,
+          },
+        ]
+      : []),
+    ...(can("messages.manage")
+      ? [
+          {
+            label: "Unread messages",
+            value: formatNumber(metrics.unreadMessages),
+            hint: "From the contact form",
+            href: "/admin/messages?status=new",
+            tone: (metrics.unreadMessages > 0 ? "warning" : "neutral") as BadgeTone,
+          },
+        ]
+      : []),
+    ...(can("reviews.moderate")
+      ? [
+          {
+            label: "Reviews to moderate",
+            value: formatNumber(metrics.pendingReviews),
+            hint: "Not shown until approved",
+            href: "/admin/reviews?status=pending",
+            tone: (metrics.pendingReviews > 0 ? "warning" : "neutral") as BadgeTone,
+          },
+        ]
+      : []),
+  ];
+
   const needsAttention =
-    status("pending") + metrics.lowStockVariants + metrics.pendingReviews + metrics.unreadMessages;
+    (can("orders.view") ? status("pending") : 0) +
+    (can("inventory.adjust") ? metrics.lowStockVariants : 0) +
+    (can("reviews.moderate") ? metrics.pendingReviews : 0) +
+    (can("messages.manage") ? metrics.unreadMessages : 0);
+
+  /** The everyday jobs, for the permissions this person holds. */
+  const quickActions = [
+    { href: "/admin/products/new", label: "Add product", icon: PackagePlus, permission: "catalogue.manage", primary: true },
+    { href: "/admin/orders?status=pending", label: "Pending orders", icon: ClipboardList, permission: "orders.view" },
+    { href: "/admin/inventory?state=low", label: "Low stock", icon: Boxes, permission: "inventory.adjust" },
+    { href: "/admin/messages?status=new", label: "Messages", icon: Mail, permission: "messages.manage" },
+    { href: "/admin/reviews?status=pending", label: "Reviews", icon: Star, permission: "reviews.moderate" },
+    { href: "/admin/coupons", label: "Create coupon", icon: Percent, permission: "coupons.manage" },
+  ].filter((action) => can(action.permission as Permission));
 
   return (
     <>
       <PageHeader
-        eyebrow="TARA Operations"
+        eyebrow="Home"
         title={`Good to see you, ${staff.name.split(" ")[0]}`}
         description={
           needsAttention > 0
@@ -66,8 +144,57 @@ export default async function AdminDashboardPage({
         </div>
       )}
 
+      {/* Needs attention — what is waiting on somebody, first. Only the tiles
+          this role can act on: a support account is not shown stock it cannot
+          adjust. */}
+      {attention.length > 0 && (
+        <section aria-labelledby="attention-heading" className="mb-6">
+          <h2
+            id="attention-heading"
+            className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[0.18em] text-muted"
+          >
+            Needs attention
+          </h2>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            {attention.map((tile) => (
+              <StatTile key={tile.label} {...tile} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Quick actions — the everyday jobs, one tap away, for this role only. */}
+      {quickActions.length > 0 && (
+        <section aria-labelledby="actions-heading" className="mb-6">
+          <h2
+            id="actions-heading"
+            className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[0.18em] text-muted"
+          >
+            Quick actions
+          </h2>
+          <div className="flex flex-wrap gap-2">
+            {quickActions.map((action) => (
+              <AdminLinkButton
+                key={action.href}
+                href={action.href}
+                variant={action.primary ? "primary" : "secondary"}
+              >
+                <action.icon size={15} aria-hidden="true" />
+                {action.label}
+              </AdminLinkButton>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Today */}
-      <section aria-label="Today" className="mb-6">
+      <section aria-labelledby="today-heading" className="mb-6">
+        <h2
+          id="today-heading"
+          className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[0.18em] text-muted"
+        >
+          Today
+        </h2>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <StatTile
             label="Orders today"
@@ -92,44 +219,7 @@ export default async function AdminDashboardPage({
             label="Customers"
             value={formatNumber(metrics.totalCustomers)}
             hint={`${formatNumber(metrics.newCustomersThisWeek)} new this week`}
-            href="/admin/customers"
-          />
-        </div>
-      </section>
-
-      {/* Needs attention */}
-      <section aria-label="Needs attention" className="mb-6">
-        <h2 className="mb-3 font-sans text-[11px] font-bold uppercase tracking-[0.18em] text-muted">
-          Needs attention
-        </h2>
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <StatTile
-            label="Pending orders"
-            value={formatNumber(status("pending"))}
-            hint="Waiting to be confirmed"
-            href="/admin/orders?status=pending"
-            tone={status("pending") > 0 ? "warning" : "neutral"}
-          />
-          <StatTile
-            label="Out of stock"
-            value={formatNumber(metrics.outOfStockVariants)}
-            hint="Active variants with zero stock"
-            href="/admin/inventory?state=out"
-            tone={metrics.outOfStockVariants > 0 ? "danger" : "neutral"}
-          />
-          <StatTile
-            label="Low stock"
-            value={formatNumber(metrics.lowStockVariants)}
-            hint="At or below threshold"
-            href="/admin/inventory?state=low"
-            tone={metrics.lowStockVariants > 0 ? "warning" : "neutral"}
-          />
-          <StatTile
-            label="Unread messages"
-            value={formatNumber(metrics.unreadMessages)}
-            hint={`${formatNumber(metrics.pendingReviews)} reviews awaiting moderation`}
-            href="/admin/messages?status=new"
-            tone={metrics.unreadMessages > 0 ? "warning" : "neutral"}
+            href={can("customers.view") ? "/admin/customers" : undefined}
           />
         </div>
       </section>
@@ -236,12 +326,14 @@ export default async function AdminDashboardPage({
             <PanelHeader
               title="Inventory to watch"
               actions={
-                <Link
-                  href="/admin/inventory?state=low"
-                  className="font-sans text-xs font-semibold uppercase tracking-wide text-taraWine underline-offset-4 hover:underline"
-                >
-                  Manage
-                </Link>
+                can("inventory.adjust") ? (
+                  <Link
+                    href="/admin/inventory?state=low"
+                    className="font-sans text-xs font-semibold uppercase tracking-wide text-taraWine underline-offset-4 hover:underline"
+                  >
+                    Manage
+                  </Link>
+                ) : undefined
               }
             />
             {metrics.attentionInventory.length === 0 ? (

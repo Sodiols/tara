@@ -55,6 +55,9 @@ export default async function AdminSettingsPage() {
           cod_enabled: asBoolean("cod_enabled", true),
           maintenance_mode: asBoolean("maintenance_mode", false),
           order_notification_email: notificationInbox,
+          delivery_estimate_inside: asString("delivery_estimate_inside") || "2-4 business days",
+          delivery_estimate_outside: asString("delivery_estimate_outside") || "4-7 business days",
+          exchange_window_days: asNumber("exchange_window_days", 7),
         }}
       />
 

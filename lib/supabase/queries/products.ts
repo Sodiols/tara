@@ -10,7 +10,8 @@ import type {
   ProductVariant,
   Review,
 } from "@/types";
-import type { Json } from "@/types/database";
+import type { Json, ProductMediaRole } from "@/types/database";
+import { MEDIA_ROLES } from "@/lib/product-trust";
 import { createPublicServerClient } from "../public-server";
 import { isSupabaseConfigured } from "../env";
 import { logger, logFailure } from "@/lib/logger";
@@ -194,12 +195,18 @@ function asMedia(value: unknown, images: string[]): ProductImageMedia[] {
       // older one it is absent, which reads as null — a general image — and the
       // gallery behaves exactly as it did before colours existed.
       const colourId = asString(item.colourId).trim();
+      const role = asString(item.role).trim();
       return [{
         url,
         alt: alt || null,
         isPrimary: item.isPrimary === true,
         sortOrder: asNumber(item.sortOrder, index),
         colourId: colourId || null,
+        // Absent on a database without 0026, and absent on any photograph
+        // nobody has labelled. Both read as null.
+        role: MEDIA_ROLES.includes(role as ProductMediaRole)
+          ? (role as ProductMediaRole)
+          : null,
       }];
     });
     if (parsed.length > 0) return parsed;
@@ -210,6 +217,7 @@ function asMedia(value: unknown, images: string[]): ProductImageMedia[] {
     isPrimary: index === 0,
     sortOrder: index,
     colourId: null,
+    role: null,
   }));
 }
 
@@ -257,6 +265,7 @@ function toProduct(raw: unknown, reviews: Review[] = []): Product | null {
     colours: asColours(row.colours),
     sizes: asStringArray(row.sizes),
     fabric: asString(row.fabric),
+    videoUrl: asString(row.videoUrl).trim() || undefined,
     stock: asNumber(row.stock),
     tags: asStringArray(row.tags),
     collection: asString(row.collection),
@@ -268,7 +277,18 @@ function toProduct(raw: unknown, reviews: Review[] = []): Product | null {
     reviewCount: asNumber(row.reviewCount),
     productCode: asString(row.productCode),
     careInstructions: asString(row.careInstructions),
-    unreadyDetails: unreadyDetails(row.unreadyDetails),
+    /*
+     * `search_catalogue()` returns this as `unstitchedDetails` — the column is
+     * `products.unstitched_details` and migration 0014 renamed the WORDING, not
+     * the schema. The mapper read `row.unreadyDetails`, which the function has
+     * never returned, so the Fabric Information accordion — the kameez, salwar
+     * and dupatta fabrics and their lengths, the one part of an unready three
+     * piece listing a customer most needs — rendered on no product at all.
+     *
+     * Both keys are accepted so a database whose function is later renamed
+     * keeps working either way.
+     */
+    unreadyDetails: unreadyDetails(row.unstitchedDetails ?? row.unreadyDetails),
     readyMadeDetails: readyMadeDetails(row.readyMadeDetails),
     // Listing pages carry no review bodies: the card shows a star rating, which
     // comes from the denormalised average on the product row.

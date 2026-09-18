@@ -43,9 +43,18 @@ export interface ColourGroupLike {
  * "black" through its case-folded unique index, but by then the product and
  * some of its uploads already exist.
  */
-export function describeColourProblems(colours: readonly ColourGroupLike[]): string | null {
-  if (colours.length === 0) return "Add at least one colour, or turn colour options off.";
-
+/**
+ * The naming half of the rule, on its own.
+ *
+ * Every colour needs a name, and no two may be the same colour once case and
+ * spacing are ignored — "Black" and " black" would be one colour to the
+ * database's unique index and two to the person typing. Used by the Product
+ * Builder, where a colour is defined for its variants whether or not it has
+ * photographs of its own.
+ */
+export function describeColourNameProblems(
+  colours: readonly { name: string }[],
+): string | null {
   const seen = new Map<string, string>();
   for (const colour of colours) {
     const name = colour.name.trim();
@@ -58,6 +67,14 @@ export function describeColourProblems(colours: readonly ColourGroupLike[]): str
     }
     seen.set(key, name);
   }
+  return null;
+}
+
+export function describeColourProblems(colours: readonly ColourGroupLike[]): string | null {
+  if (colours.length === 0) return "Add at least one colour, or turn colour options off.";
+
+  const naming = describeColourNameProblems(colours);
+  if (naming) return naming;
 
   const empty = colours.find((colour) => colour.images.length === 0);
   if (empty) {

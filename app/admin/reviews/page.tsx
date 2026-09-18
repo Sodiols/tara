@@ -3,7 +3,15 @@ import { getAdminReviews, parsePage } from "@/lib/supabase/queries/admin";
 import { moderateReviewAction } from "@/lib/supabase/actions/admin";
 import { archiveItemAction } from "@/lib/supabase/actions/archive";
 import { formatDateTime } from "@/lib/format";
-import { AdminEmptyState, PageHeader, Pagination, Panel } from "@/components/admin/ui";
+import {
+  AdminEmptyState,
+  AdminFilterBar,
+  AdminQuickFilters,
+  AdminSearchInput,
+  PageHeader,
+  Pagination,
+  Panel,
+} from "@/components/admin/ui";
 import { ReviewStatusBadge } from "@/components/admin/status";
 import { RowActionButton } from "@/components/admin/AdminForm";
 import type { ReviewStatus } from "@/types/database";
@@ -44,56 +52,34 @@ export default async function AdminReviewsPage({
   return (
     <>
       <PageHeader
-        eyebrow="People"
+        eyebrow="Customer care"
         title="Reviews"
         description="Only approved reviews are visible on the storefront and only they count towards a product's rating."
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {STATUSES.map((option) => {
-          const isActive = (params.status ?? "pending") === option.value;
-          return (
-            <Link
-              key={option.label}
-              href={option.value ? `/admin/reviews?status=${option.value}` : "/admin/reviews?status="}
-              aria-current={isActive ? "true" : undefined}
-              className={
-                isActive
-                  ? "inline-flex h-9 items-center rounded-control border border-taraWine bg-taraWine px-3 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory"
-                  : "inline-flex h-9 items-center rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-              }
-            >
-              {option.label}
-            </Link>
-          );
-        })}
-        <form method="get" action="/admin/reviews" className="ml-auto flex items-center gap-2">
-          <input type="hidden" name="status" value={params.status ?? "pending"} />
-          <label htmlFor="review-search" className="sr-only">
-            Search reviews
-          </label>
-          <input
-            id="review-search"
-            name="q"
-            type="search"
-            defaultValue={params.q ?? ""}
-            placeholder="Author or text"
-            className="h-9 w-52 rounded-control border border-border bg-taraWhite px-3 font-sans text-sm outline-none focus:border-taraWine"
-          />
-          <button
-            type="submit"
-            className="inline-flex h-9 items-center rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-          >
-            Search
-          </button>
-        </form>
-      </div>
+      <AdminQuickFilters
+        label="Filter by status"
+        items={STATUSES.map((option) => ({
+          label: option.label,
+          href: option.value ? `/admin/reviews?status=${option.value}` : "/admin/reviews?status=",
+          active: (params.status ?? "pending") === option.value,
+        }))}
+      />
+
+      <AdminFilterBar action="/admin/reviews" submitLabel="Search">
+        <input type="hidden" name="status" value={(params.status ?? "pending")} />
+        <AdminSearchInput defaultValue={params.q ?? ""} placeholder="Author or text" label="Search reviews" />
+      </AdminFilterBar>
 
       <Panel>
         {rows.length === 0 ? (
           <AdminEmptyState
-            title="Nothing to moderate"
-            description="Reviews can only be written by customers who actually received the product, so this queue stays short."
+            title={(params.status ?? "pending") === "pending" ? "Nothing to moderate" : "No reviews here"}
+            description={
+              (params.status ?? "pending") === "pending"
+                ? "Every review has been approved or rejected. Only customers who received the product can write one."
+                : "Try another status, or clear the search."
+            }
           />
         ) : (
           <>
