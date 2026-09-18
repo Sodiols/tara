@@ -1,9 +1,21 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 import { getTaxonomyOptions } from "@/lib/supabase/queries/admin";
 import { requirePermission } from "@/lib/supabase/auth";
-import { AdminEmptyState, PageHeader, Panel } from "@/components/admin/ui";
-import { ProductCreateForm } from "@/components/admin/ProductCreateForm";
+import { AdminEmptyState, AdminPrimaryAction, PageHeader, Panel } from "@/components/admin/ui";
+import { ProductBuilder } from "@/components/admin/product-builder/ProductBuilder";
 
+export const metadata: Metadata = {
+  title: "Add product",
+  robots: { index: false, follow: false },
+};
+
+/**
+ * Add product — the whole product, on one screen.
+ *
+ * Basics, colours and photographs, sizes and opening stock, details,
+ * merchandising and a readiness review, saved as a draft or published from the
+ * same action bar. There is no second screen to finish it on.
+ */
 export default async function NewProductPage() {
   await requirePermission("catalogue.manage");
   const { categories, collections } = await getTaxonomyOptions();
@@ -11,32 +23,21 @@ export default async function NewProductPage() {
   return (
     <>
       <PageHeader
-        eyebrow={
-          <Link href="/admin/products" className="underline-offset-4 hover:underline">
-            ← Products
-          </Link>
-        }
-        title="New product"
-        description="Add the product details and images. Variants can be added once the product is created."
+        back={{ href: "/admin/products", label: "Products" }}
+        title="Add product"
+        description="Everything the product needs, in order. Save a draft at any point; publish when the review says it is ready."
       />
 
       {categories.length === 0 ? (
         <Panel>
           <AdminEmptyState
             title="Create a category first"
-            description="Every product must belong to a category, and none exist yet."
-            action={
-              <Link
-                href="/admin/categories"
-                className="mt-2 inline-flex h-11 items-center rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory"
-              >
-                Manage categories
-              </Link>
-            }
+            description="Every product belongs to a category, and none exist yet."
+            action={<AdminPrimaryAction href="/admin/categories">Manage categories</AdminPrimaryAction>}
           />
         </Panel>
       ) : (
-        <ProductCreateForm categories={categories} collections={collections} />
+        <ProductBuilder categories={categories} collections={collections} />
       )}
     </>
   );

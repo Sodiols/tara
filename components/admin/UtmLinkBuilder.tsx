@@ -4,7 +4,14 @@ import { useMemo, useState } from "react";
 import { Copy } from "lucide-react";
 import { buildTrackedUrl } from "@/lib/analytics/attribution";
 import { useToastStore } from "@/store/toastStore";
-import { Field, Panel, PanelHeader, adminInputClass, adminSelectClass } from "./ui";
+import {
+  Field,
+  Panel,
+  PanelHeader,
+  adminButtonClass,
+  adminInputClass,
+  adminSelectClass,
+} from "./ui";
 
 /**
  * Builds the links the dashboard above can actually group.
@@ -145,7 +152,7 @@ export function UtmLinkBuilder({ siteUrl }: { siteUrl: string }) {
             <button
               type="button"
               onClick={() => void copy()}
-              className="inline-flex h-11 items-center gap-2 rounded-control border border-taraWine bg-taraWine px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
+              className={adminButtonClass("primary", "md")}
             >
               <Copy size={15} aria-hidden="true" />
               Copy

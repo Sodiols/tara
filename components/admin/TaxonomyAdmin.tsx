@@ -16,6 +16,7 @@ import {
   TableWrap,
   Td,
   Th,
+  adminButtonClass,
   adminInputClass,
   adminTextareaClass,
 } from "./ui";
@@ -38,10 +39,13 @@ export function TaxonomyAdmin({
   kind,
   items,
   productCounts,
+  relatedHref,
 }: {
   kind: "categories" | "collections";
   items: Row[];
   productCounts: Record<string, number>;
+  /** The other taxonomy's page, linked beside the list. */
+  relatedHref?: string;
 }) {
   const [editing, setEditing] = useState<Row | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -78,20 +82,31 @@ export function TaxonomyAdmin({
               : "Every product belongs to exactly one category."
           }
           actions={
-            <button
-              type="button"
-              onClick={() => openEditor(null)}
-              className="inline-flex h-10 items-center rounded-control border border-taraWine bg-taraWine px-4 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
-            >
-              New {singular}
-            </button>
+            <>
+              {relatedHref && (
+                <Link href={relatedHref} className={adminButtonClass("ghost", "sm")}>
+                  {isCollections ? "Categories" : "Collections"} →
+                </Link>
+              )}
+              <button
+                type="button"
+                onClick={() => openEditor(null)}
+                className={adminButtonClass("primary", "sm")}
+              >
+                Add {singular}
+              </button>
+            </>
           }
         />
 
         {items.length === 0 ? (
           <AdminEmptyState
             title={`No ${kind} yet`}
-            description={`Create your first ${singular} to start organising the catalogue.`}
+            description={
+              isCollections
+                ? "Add a collection to group products for a season or a campaign. Products can be in one collection at most."
+                : "Add a category before adding products — every product needs one."
+            }
           />
         ) : (
           <TableWrap>
@@ -341,7 +356,7 @@ export function TaxonomyAdmin({
                 <button
                   type="button"
                   onClick={closeEditor}
-                  className="inline-flex h-11 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-muted transition-colors hover:text-taraWine"
+                  className={adminButtonClass("secondary", "md", "text-muted")}
                 >
                   Cancel
                 </button>

@@ -14,6 +14,7 @@ import {
   TableWrap,
   Td,
   Th,
+  adminButtonClass,
   adminInputClass,
 } from "./ui";
 import { ActiveBadge, Badge } from "./status";
@@ -58,7 +59,7 @@ export function CouponAdmin({ coupons }: { coupons: Coupon[] }) {
             <button
               type="button"
               onClick={() => open(null)}
-              className="inline-flex h-10 items-center rounded-control border border-taraWine bg-taraWine px-4 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
+              className={adminButtonClass("primary", "sm")}
             >
               New coupon
             </button>
@@ -316,7 +317,7 @@ export function CouponAdmin({ coupons }: { coupons: Coupon[] }) {
                 <button
                   type="button"
                   onClick={close}
-                  className="inline-flex h-11 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-muted transition-colors hover:text-taraWine"
+                  className={adminButtonClass("secondary", "md", "text-muted")}
                 >
                   Cancel
                 </button>

@@ -71,7 +71,7 @@ export default async function MarketingAnalyticsPage({
   if (!data) {
     return (
       <>
-        <PageHeader eyebrow="Overview" title="Marketing analytics" />
+        <PageHeader eyebrow="Marketing" title="Marketing analytics" />
         <AdminErrorState
           title="Marketing analytics are unavailable"
           description="The analytics function could not be reached. Check that supabase/migrations/0026_launch_offer_and_first_party_analytics.sql has been applied."
@@ -89,7 +89,7 @@ export default async function MarketingAnalyticsPage({
   return (
     <>
       <PageHeader
-        eyebrow="Overview"
+        eyebrow="Marketing"
         title="Marketing analytics"
         description="First-party, from TARA's own events and TARA's own orders. Attribution: last non-direct campaign, carried forward per visitor. Revenue excludes cancelled, returned and archived orders."
       />

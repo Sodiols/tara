@@ -106,3 +106,40 @@ export function roleHasPermission(role: unknown, permission: Permission): boolea
 export function roleLabel(role: unknown): string {
   return isAppRole(role) ? ROLE_LABELS[role] : "Unknown";
 }
+
+/**
+ * What each role is for, in one sentence — shown where a role is assigned so
+ * the person assigning it can see what they are handing over. Display only;
+ * the permissions above (and `role_permissions()` in the database) decide.
+ */
+export const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
+  admin: "Everything, including store settings, staff roles, the audit log and permanent deletion.",
+  manager: "Runs the shop day to day: catalogue, stock, orders, coupons, marketing and customer care. No settings or staff.",
+  staff: "The old general staff role. Has exactly what Manager has.",
+  fulfilment: "Packs and ships: sees orders, moves them through fulfilment, adjusts stock and adds notes.",
+  support: "Answers customers: sees orders and customers, handles messages and adds order notes.",
+  customer: "No back-office access — shops on the storefront only.",
+};
+
+/** Permissions in plain words, for the roles table. */
+export const PERMISSION_LABELS: Record<Permission, string> = {
+  "catalogue.manage": "Products & catalogue",
+  "inventory.adjust": "Adjust stock",
+  "orders.view": "View orders",
+  "orders.fulfil": "Fulfil orders",
+  "orders.cancel": "Cancel & return orders",
+  "orders.payment": "Payment status",
+  "orders.note": "Order notes",
+  "customers.view": "View customers",
+  "customers.manage": "Manage customers",
+  "coupons.manage": "Coupons",
+  "reviews.moderate": "Moderate reviews",
+  "messages.manage": "Messages",
+  "newsletter.manage": "Newsletter",
+  "settings.manage": "Store settings",
+  "staff.manage": "Staff & roles",
+  "audit.view": "Audit log",
+  "analytics.view": "Analytics",
+  "archive.manage": "Archive & permanent delete",
+};
+

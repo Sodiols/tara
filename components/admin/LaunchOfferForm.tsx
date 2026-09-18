@@ -11,6 +11,7 @@ import { offerBadge, offerSentence, type LaunchOffer } from "@/lib/launch-offer"
 import type { LaunchOfferAdminData } from "@/lib/supabase/queries/launch-offer";
 import { ActionButton, ActionForm, SubmitButton } from "./AdminForm";
 import {
+  AdminStickyActions,
   Badge,
   Field,
   Panel,
@@ -86,7 +87,7 @@ export function LaunchOfferForm({ data }: { data: LaunchOfferAdminData }) {
               <Badge tone="neutral">Selected products</Badge>
             )}
           </div>
-          <p className="font-serif text-lg text-ink">{title || "No title yet"}</p>
+          <p className="font-sans text-lg font-semibold text-ink">{title || "No title yet"}</p>
           <p className="font-sans text-sm text-muted">{offerSentence(preview)}</p>
           {!offer.is_enabled && (
             <p className="font-sans text-xs text-muted">
@@ -261,9 +262,9 @@ export function LaunchOfferForm({ data }: { data: LaunchOfferAdminData }) {
           </div>
         </Panel>
 
-        <div className="flex flex-wrap gap-3">
+        <AdminStickyActions status="The campaign products below are saved separately, with their own button.">
           <SubmitButton>Save offer</SubmitButton>
-        </div>
+        </AdminStickyActions>
       </ActionForm>
 
       <CampaignProducts products={products} participating={participating} />

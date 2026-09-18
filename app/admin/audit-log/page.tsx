@@ -1,19 +1,18 @@
-import Link from "next/link";
 import { getAuditLog, parsePage } from "@/lib/supabase/queries/admin";
 import { formatDateTime } from "@/lib/format";
 import { roleLabel } from "@/lib/permissions";
 import {
   AdminEmptyState,
+  AdminFilterBar,
+  AdminFilterSelect,
+  AdminSearchInput,
   Badge,
-  Field,
   PageHeader,
   Pagination,
   Panel,
   TableWrap,
   Td,
   Th,
-  Toolbar,
-  adminInputClass,
 } from "@/components/admin/ui";
 
 type SearchParams = { page?: string; q?: string; entity?: string };
@@ -73,54 +72,29 @@ export default async function AdminAuditLogPage({
         description="Every order transition, payment change, stock adjustment, coupon edit, moderation decision, settings change and role change. Written by the database, so it cannot be skipped by any client."
       />
 
-      <form method="get" action="/admin/audit-log">
-        <Toolbar>
-          <Field label="Search" htmlFor="audit-search" className="min-w-[240px] flex-1">
-            <input
-              id="audit-search"
-              name="q"
-              type="search"
-              defaultValue={params.q ?? ""}
-              placeholder="Staff email, action or record"
-              className={adminInputClass}
-            />
-          </Field>
-          <Field label="Record type" htmlFor="audit-entity" className="min-w-[180px]">
-            <select
-              id="audit-entity"
-              name="entity"
-              defaultValue={params.entity ?? ""}
-              className={adminInputClass}
-            >
-              {ENTITY_TYPES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="flex items-center gap-2 pb-[1px]">
-            <button
-              type="submit"
-              className="inline-flex h-11 items-center rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
-            >
-              Apply
-            </button>
-            <Link
-              href="/admin/audit-log"
-              className="inline-flex h-11 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-            >
-              Reset
-            </Link>
-          </div>
-        </Toolbar>
-      </form>
+      <AdminFilterBar
+        action="/admin/audit-log"
+        resetHref="/admin/audit-log"
+        hasActiveFilters={Boolean(params.q || params.entity)}
+      >
+        <AdminSearchInput defaultValue={params.q ?? ""} placeholder="Staff email, action or record" />
+        <AdminFilterSelect
+          name="entity"
+          label="Record type"
+          defaultValue={params.entity ?? ""}
+          options={ENTITY_TYPES}
+        />
+      </AdminFilterBar>
 
       <Panel>
         {rows.length === 0 ? (
           <AdminEmptyState
-            title="Nothing recorded yet"
-            description="Sensitive administrative actions are appended here as they happen."
+            title={params.q || params.entity ? "Nothing matches these filters" : "Nothing recorded yet"}
+            description={
+              params.q || params.entity
+                ? "Try a different search or record type."
+                : "Sensitive administrative actions are appended here as they happen."
+            }
           />
         ) : (
           <>

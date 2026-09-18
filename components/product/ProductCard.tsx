@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { Eye, Ruler, ShoppingBag } from "lucide-react";
+import { Eye, ShoppingBag } from "lucide-react";
 import type { Product, ProductVariant } from "@/types";
 import { useAddToCart } from "@/hooks/useAddToCart";
 import { useProductVariants } from "@/hooks/useProductVariants";
@@ -127,6 +127,18 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
     : null;
 
   const displayPrice = selectedVariant?.price ?? product.price;
+  /*
+   * The compare-at price, struck through beneath the selling price.
+   *
+   * Compared against the price actually on the card rather than the product's
+   * base price: a variant with its own price override can be dearer than the
+   * base, and a "was" figure below what the card now asks would read as a price
+   * rise dressed up as a sale. When that happens, nothing is shown.
+   */
+  const compareAtPrice =
+    product.previousPrice && product.previousPrice > displayPrice
+      ? product.previousPrice
+      : null;
 
   const openOptions = () => {
     // Fired on the first hover, focus or touch of the options area, so the
@@ -349,9 +361,22 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
               {product.name}
             </h3>
           </Link>
-          <span className="hidden shrink-0 font-sans text-[16px] font-bold leading-snug text-ink sm:block">
-            {formatPrice(displayPrice)}
-          </span>
+          {/*
+            Stacked, not side by side: beside the price the struck figure would
+            take its width out of the title, which is already the thing that
+            truncates on a narrow card.
+          */}
+          <div className="hidden shrink-0 flex-col items-end sm:flex">
+            <span className="font-sans text-[16px] font-bold leading-snug text-ink">
+              {formatPrice(displayPrice)}
+            </span>
+            {compareAtPrice && (
+              <span className="font-sans text-[12px] font-normal leading-tight text-muted line-through">
+                <span className="sr-only">Was </span>
+                {formatPrice(compareAtPrice)}
+              </span>
+            )}
+          </div>
         </div>
 
         {/*
@@ -381,18 +406,11 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
         {/* ROW 3 and 4 — sizes. Desktop only, and only when sizes are real. */}
         {showSizes && (
           <div className="mt-3 hidden sm:block">
-            <div className="flex items-center justify-between gap-2">
-              <span className="font-sans text-[13px] font-semibold leading-none text-ink">
-                Select Size
-              </span>
-              <Link
-                href="/size-guide"
-                className="inline-flex shrink-0 items-center gap-1 font-sans text-[12px] leading-none text-muted underline underline-offset-4 transition-colors hover:text-wine focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine"
-              >
-                <Ruler size={13} aria-hidden="true" />
-                Size Guide
-              </Link>
-            </div>
+            {/* No size guide link here: it is on the product page, beside the
+                size selector, where somebody deciding on a size actually is. */}
+            <span className="block font-sans text-[13px] font-semibold leading-none text-ink">
+              Select Size
+            </span>
 
             {/*
               One row, never wrapping, and never stretched.
@@ -459,9 +477,19 @@ export function ProductCard({ product, onQuickView, imagePriority }: ProductCard
               wider than a two-across phone card, so the FOURTH swatch is the
               thing that gives way below `sm`; see Swatches.
             */}
-            <span className="shrink-0 whitespace-nowrap font-sans text-[16px] font-bold leading-none text-ink">
-              {formatPrice(displayPrice)}
-            </span>
+            <div className="flex shrink-0 flex-col">
+              <span className="whitespace-nowrap font-sans text-[16px] font-bold leading-none text-ink">
+                {formatPrice(displayPrice)}
+              </span>
+              {/* Under the price rather than beside it: this row is shared
+                  with the swatches and has no width to spare. */}
+              {compareAtPrice && (
+                <span className="mt-1 whitespace-nowrap font-sans text-[11px] font-normal leading-none text-muted line-through">
+                  <span className="sr-only">Was </span>
+                  {formatPrice(compareAtPrice)}
+                </span>
+              )}
+            </div>
             {showColours && (
               <Swatches
                 product={product}

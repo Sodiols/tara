@@ -1,7 +1,13 @@
 import { getStaffList } from "@/lib/supabase/queries/admin";
 import { requireStaff } from "@/lib/supabase/auth";
 import { formatDate } from "@/lib/format";
-import { ROLE_PERMISSIONS, ASSIGNABLE_ROLES, roleLabel } from "@/lib/permissions";
+import {
+  ASSIGNABLE_ROLES,
+  PERMISSION_LABELS,
+  ROLE_DESCRIPTIONS,
+  ROLE_PERMISSIONS,
+  roleLabel,
+} from "@/lib/permissions";
 import {
   AdminEmptyState,
   PageHeader,
@@ -40,16 +46,17 @@ export default async function AdminStaffPage() {
           </thead>
           <tbody>
             {ASSIGNABLE_ROLES.map((role) => (
-              <tr key={role}>
-                <Td className="whitespace-nowrap font-medium">{roleLabel(role)}</Td>
+              <tr key={role} className="align-top">
+                <Td className="whitespace-nowrap">
+                  <span className="block font-semibold">{roleLabel(role)}</span>
+                </Td>
                 <Td>
-                  {ROLE_PERMISSIONS[role].length === 0 ? (
-                    <span className="text-muted">Storefront only — no back-office access.</span>
-                  ) : (
+                  <p className="mb-2 text-sm text-ink">{ROLE_DESCRIPTIONS[role]}</p>
+                  {ROLE_PERMISSIONS[role].length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {ROLE_PERMISSIONS[role].map((permission) => (
                         <Badge key={permission} tone="neutral">
-                          {permission}
+                          {PERMISSION_LABELS[permission]}
                         </Badge>
                       ))}
                     </div>
@@ -69,7 +76,7 @@ export default async function AdminStaffPage() {
         {members.length === 0 ? (
           <AdminEmptyState
             title="No staff accounts yet"
-            description="Promote an existing customer account from the Customers list, or from the form below."
+            description="Ask the person to register on the storefront, then open their account from Customers and set a role — the steps are below."
           />
         ) : (
           <TableWrap>

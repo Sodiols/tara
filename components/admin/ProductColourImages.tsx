@@ -5,8 +5,6 @@ import {
   ArrowLeft,
   ArrowRight,
   ImagePlus,
-  Palette,
-  Plus,
   Star,
   Trash2,
   X,
@@ -21,9 +19,8 @@ import {
   screenImageCandidates,
   type UploadOutcome,
 } from "@/lib/product-image-workflow";
-import { describeColourProblems } from "@/lib/product-colour-images";
 import { cn } from "@/lib/utils";
-import { Field, Panel, PanelHeader, adminInputClass } from "./ui";
+import { Field, adminInputClass } from "./ui";
 
 /**
  * Colours and their photographs, on the create screen.
@@ -92,21 +89,32 @@ export interface ColourDraftsController {
 
 const DEFAULT_HEX = "#702D42";
 
-// The rule itself lives in lib/product-colour-images.ts with the rest of the
-// colour logic, so the create screen and the tests apply the same one.
-export { describeColourProblems };
+
+/** Blank colours to start with. The builder opens with one ready to name. */
+function seedColours(count: number): ColourDraft[] {
+  return Array.from({ length: count }, (_, index) => ({
+    key: `colour-${index + 1}`,
+    name: "",
+    hex: DEFAULT_HEX,
+    images: [],
+    mainKey: null,
+  }));
+}
 
 export function useColourDrafts(
   limit: number = MAX_IMAGES_PER_PRODUCT,
+  initialColours = 0,
 ): ColourDraftsController {
-  const [colours, setColours] = useState<ColourDraft[]>([]);
+  // Seeded in the state initialiser rather than by an effect, so React's
+  // development double-invocation cannot add the starting colour twice.
+  const [colours, setColours] = useState<ColourDraft[]>(() => seedColours(initialColours));
   const [notice, setNotice] = useState("");
 
   // Kept in step synchronously: an event handler must never screen a new pick
   // against a stale list, and the unmount cleanup has to see the final one
   // rather than the empty array captured when the effect was created.
-  const coloursRef = useRef<ColourDraft[]>([]);
-  const counter = useRef(0);
+  const coloursRef = useRef<ColourDraft[]>(colours);
+  const counter = useRef(initialColours);
 
   const commit = useCallback((next: ColourDraft[]) => {
     coloursRef.current = next;
@@ -384,15 +392,20 @@ function ColourImageCard({
           >
             <Star size={15} aria-hidden="true" fill={isMain ? "currentColor" : "none"} />
           </button>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={onRemove}
-            aria-label={`Remove ${label}`}
-            className={cn(iconButtonClass, "ml-auto hover:border-[#8C2F2F] hover:text-[#8C2F2F]")}
-          >
-            <X size={15} aria-hidden="true" />
-          </button>
+          {/* An uploaded photograph is already on the product; removing it
+              here would only hide it from this screen. It is deleted from
+              the editor, where the delete is real. */}
+          {!image.imageId && (
+            <button
+              type="button"
+              disabled={disabled}
+              onClick={onRemove}
+              aria-label={`Remove ${label}`}
+              className={cn(iconButtonClass, "ml-auto hover:border-[#8C2F2F] hover:text-[#8C2F2F]")}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          )}
         </div>
         {image.error ? (
           <p className="font-sans text-[11px] leading-4 text-[#8C2F2F]">{image.error}</p>
@@ -406,10 +419,11 @@ function ColourImageCard({
   );
 }
 
-function ColourGroup({
+export function ColourGroup({
   colour,
   index,
   disabled,
+  locked = false,
   remaining,
   onRename,
   onRecolour,
@@ -422,6 +436,8 @@ function ColourGroup({
   colour: ColourDraft;
   index: number;
   disabled: boolean;
+  /** The colour exists in the database: it can be renamed, not removed here. */
+  locked?: boolean;
   remaining: number;
   onRename: (value: string) => void;
   onRecolour: (value: string) => void;
@@ -470,18 +486,20 @@ function ColourGroup({
             />
           </Field>
         </div>
-        <button
-          type="button"
-          onClick={onRemoveColour}
-          disabled={disabled}
-          className="mb-1 inline-flex h-10 items-center gap-2 rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-muted transition-colors hover:border-[#8C2F2F] hover:text-[#8C2F2F] disabled:cursor-not-allowed"
-        >
-          <Trash2 size={14} aria-hidden="true" />
-          Remove{" "}
-          <span className="sr-only">
-            {colour.name.trim() || `colour ${index + 1}`} and its photographs
-          </span>
-        </button>
+        {!locked && (
+          <button
+            type="button"
+            onClick={onRemoveColour}
+            disabled={disabled}
+            className="mb-1 inline-flex h-10 items-center gap-2 rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-muted transition-colors hover:border-[#8C2F2F] hover:text-[#8C2F2F] disabled:cursor-not-allowed"
+          >
+            <Trash2 size={14} aria-hidden="true" />
+            Remove{" "}
+            <span className="sr-only">
+              {colour.name.trim() || `colour ${index + 1}`} and its photographs
+            </span>
+          </button>
+        )}
       </div>
 
       <div className="flex flex-col gap-3 px-4 py-4">
@@ -539,140 +557,5 @@ function ColourGroup({
         </div>
       </div>
     </li>
-  );
-}
-
-/**
- * The "Colours & Images" section of the create screen.
- *
- * Off by default: most products are photographed once, and a form that opens
- * with three empty colour groups would make the common case the slow one. The
- * toggle is what decides which of the two image workflows the create form runs.
- */
-export function ColourImagesSection({
-  enabled,
-  onEnabledChange,
-  drafts,
-  disabled,
-  flatImagesSlot,
-}: {
-  enabled: boolean;
-  onEnabledChange: (next: boolean) => void;
-  drafts: ColourDraftsController;
-  disabled: boolean;
-  /** The existing single-gallery picker, used when colour options are off. */
-  flatImagesSlot: React.ReactNode;
-}) {
-  const remaining = MAX_IMAGES_PER_PRODUCT - drafts.totalImages;
-
-  return (
-    <Panel>
-      <PanelHeader
-        title="Colours & images"
-        description="Group the photographs by colourway so the storefront can switch between them."
-        actions={
-          <span className="font-sans text-xs text-muted">
-            {enabled
-              ? `${drafts.totalImages} / ${MAX_IMAGES_PER_PRODUCT} images`
-              : "Optional"}
-          </span>
-        }
-      />
-
-      <div className="flex flex-col gap-5 px-5 py-5">
-        <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 font-sans text-xs font-semibold uppercase tracking-wider text-muted">
-            Does this product come in more than one colour?
-          </legend>
-          <div className="flex flex-wrap gap-2">
-            {[
-              { value: false, label: "No — one set of photographs" },
-              { value: true, label: "Yes — photographs per colour" },
-            ].map((option) => (
-              <label
-                key={String(option.value)}
-                className={cn(
-                  "inline-flex cursor-pointer items-center gap-2 rounded-control border px-4 py-2.5 font-sans text-sm transition-colors",
-                  enabled === option.value
-                    ? "border-taraWine bg-taraWine/5 text-ink"
-                    : "border-border bg-taraWhite text-muted hover:border-taraWine",
-                  disabled && "pointer-events-none opacity-60",
-                )}
-              >
-                <input
-                  type="radio"
-                  name="hasColourOptions"
-                  checked={enabled === option.value}
-                  disabled={disabled}
-                  onChange={() => onEnabledChange(option.value)}
-                  className="h-4 w-4 accent-[#702D42]"
-                />
-                {option.label}
-              </label>
-            ))}
-          </div>
-        </fieldset>
-
-        {!enabled ? (
-          flatImagesSlot
-        ) : (
-          <div className="flex flex-col gap-4">
-            {drafts.colours.length === 0 ? (
-              <div className="flex flex-col items-center gap-3 rounded-panel border border-dashed border-border bg-taraIvory/40 px-5 py-8 text-center">
-                <Palette size={22} className="text-taraWine" aria-hidden="true" />
-                <p className="max-w-sm font-sans text-xs leading-5 text-muted">
-                  Add a colour, name it, then choose the photographs that show that
-                  colourway. Customers see only the selected colour on the product page.
-                </p>
-              </div>
-            ) : (
-              <ul className="flex flex-col gap-4">
-                {drafts.colours.map((colour, index) => (
-                  <ColourGroup
-                    key={colour.key}
-                    colour={colour}
-                    index={index}
-                    disabled={disabled}
-                    remaining={remaining}
-                    onRename={(value) => drafts.rename(colour.key, value)}
-                    onRecolour={(value) => drafts.recolour(colour.key, value)}
-                    onFiles={(files) => drafts.addFiles(colour.key, files)}
-                    onRemoveColour={() => drafts.removeColour(colour.key)}
-                    onRemoveImage={(imageKey) => drafts.removeImage(colour.key, imageKey)}
-                    onMoveImage={(imageKey, direction) =>
-                      drafts.moveImage(colour.key, imageKey, direction)
-                    }
-                    onMain={(imageKey) => drafts.setMain(colour.key, imageKey)}
-                  />
-                ))}
-              </ul>
-            )}
-
-            {drafts.notice && (
-              <p role="alert" className="font-sans text-xs leading-5 text-[#8A6A1F]">
-                {drafts.notice}
-              </p>
-            )}
-
-            <div className="flex flex-wrap items-center gap-3">
-              <button
-                type="button"
-                onClick={drafts.addColour}
-                disabled={disabled}
-                className="inline-flex h-11 items-center gap-2 rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack disabled:cursor-not-allowed disabled:border-border disabled:bg-taraIvory disabled:text-muted"
-              >
-                <Plus size={15} aria-hidden="true" />
-                {drafts.colours.length === 0 ? "Add colour" : "Add another colour"}
-              </button>
-              <p className="font-sans text-xs text-muted">
-                {remaining <= 0
-                  ? `That is the maximum of ${MAX_IMAGES_PER_PRODUCT} images across all colours.`
-                  : `${remaining} image slot${remaining === 1 ? "" : "s"} left across all colours.`}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-    </Panel>
   );
 }

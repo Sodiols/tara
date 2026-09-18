@@ -599,7 +599,7 @@ export async function saveProductColourAction(formData: FormData): Promise<
  */
 export async function createProductColoursAction(
   productId: string,
-  colours: { key: string; nameEn: string; colourHex: string }[],
+  colours: { key: string; nameEn: string; colourHex: string; id?: string }[],
 ): Promise<ActionResult<{ ids: Record<string, string> }>> {
   await requirePermission("catalogue.manage");
 
@@ -627,6 +627,35 @@ export async function createProductColoursAction(
       isActive: true,
     });
     if (!parsed.success) return fail(firstIssue(parsed.error));
+
+    /*
+     * A colour this screen already created, sent back with its id. Updated in
+     * place — renamed, recoloured, reordered — rather than matched by name,
+     * because a colour renamed between a failed attempt and its retry would
+     * otherwise be created a second time and leave the first one behind with
+     * nothing attached to it. The id is only trusted for THIS product.
+     */
+    const ownId = colour.id && z.string().uuid().safeParse(colour.id).success ? colour.id : null;
+    if (ownId && (existing ?? []).some((row) => row.id === ownId)) {
+      const { error } = await supabase
+        .from("product_colours")
+        .update({
+          name_en: parsed.data.nameEn,
+          colour_hex: parsed.data.colourHex.toUpperCase(),
+          sort_order: index,
+        })
+        .eq("id", ownId)
+        .eq("product_id", product.data);
+      if (error) {
+        if (isDuplicateColour(error)) {
+          return fail(`This product already has a colour called ${parsed.data.nameEn}.`);
+        }
+        return logAndFail("product colour update", error, "Could not save the colours.");
+      }
+      ids[colour.key] = ownId;
+      byName.set(parsed.data.nameEn.toLowerCase(), ownId);
+      continue;
+    }
 
     const known = byName.get(parsed.data.nameEn.toLowerCase());
     if (known) {
@@ -850,6 +879,171 @@ export async function saveVariantAction(formData: FormData): Promise<ActionResul
   revalidatePath(`/admin/products/${input.productId}`);
   revalidatePath("/admin/inventory");
   return { ok: true, message: "Variant added." };
+}
+
+/**
+ * Creates several variants at once, for the Product Builder.
+ *
+ * The builder generates a grid — every chosen size in every colour — and this
+ * turns the rows that do not exist yet into `product_variants`, each with the
+ * opening stock the administrator entered.
+ *
+ * OPENING STOCK AND THE AUDIT TRAIL. The stock guard trigger blocks any UPDATE
+ * that moves `stock_quantity`; an INSERT carrying a starting quantity is the
+ * one write it deliberately allows, because a variant that did not exist a
+ * moment ago has no history to keep. That is the same rule `saveVariantAction`
+ * has always followed for its `initialStock`. Once a row exists, this action
+ * never touches it again — every later change goes through
+ * `adjustInventoryAction` and leaves an `inventory_adjustments` row.
+ *
+ * RE-ENTRANT. A row whose SKU already exists ON THIS PRODUCT is treated as
+ * created and its id returned, so a retry after "4 of 6 variants created" sends
+ * the whole remaining list and creates only the two that are missing — never a
+ * second copy, never a stock top-up. A SKU used by a DIFFERENT product is
+ * refused for that row alone; the others still go through.
+ *
+ * COLOUR IS AUTHORITATIVE. Each row names a `product_colours.id`. The name and
+ * swatch are read from that row — which must belong to this product — and the
+ * trigger from migration 0025 enforces the same thing on write, so a variant
+ * cannot disagree with the colour it points at.
+ */
+export async function createProductVariantsAction(
+  productId: string,
+  rows: {
+    key: string;
+    colourId: string;
+    size: string;
+    sku: string;
+    openingStock: number;
+    priceOverride: number | null;
+    lowStockThreshold: number;
+    isActive: boolean;
+  }[],
+): Promise<
+  ActionResult<{
+    /** Created (or already existing) variant ids, by row key. */
+    ids: Record<string, string>;
+    /** A sentence per row that could not be created, by row key. */
+    errors: Record<string, string>;
+  }>
+> {
+  await requirePermission("catalogue.manage");
+
+  const product = z.string().uuid().safeParse(productId);
+  if (!product.success) return fail("Unknown product.");
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { ok: true, data: { ids: {}, errors: {} } };
+  }
+  if (rows.length > 200) return fail("Create at most 200 variants at once.");
+
+  const supabase = await createClient();
+
+  const [{ data: colours }, { data: existing }] = await Promise.all([
+    supabase
+      .from("product_colours")
+      .select("id,name_en,colour_hex")
+      .eq("product_id", product.data),
+    supabase.from("product_variants").select("id,sku").eq("product_id", product.data),
+  ]);
+  const colourById = new Map((colours ?? []).map((colour) => [colour.id, colour]));
+  const existingBySku = new Map(
+    (existing ?? []).map((variant) => [variant.sku.toUpperCase(), variant.id]),
+  );
+
+  const ids: Record<string, string> = {};
+  const errors: Record<string, string> = {};
+  let created = 0;
+
+  for (const row of rows) {
+    const colour = colourById.get(row.colourId);
+    if (!colour) {
+      errors[row.key] = "That colour no longer belongs to this product.";
+      continue;
+    }
+
+    const parsed = adminVariantSchema.safeParse({
+      productId: product.data,
+      sku: row.sku,
+      size: row.size,
+      colourEn: colour.name_en,
+      colourHex: colour.colour_hex,
+      priceOverride: row.priceOverride === null ? "" : String(row.priceOverride),
+      lowStockThreshold: String(row.lowStockThreshold),
+      isActive: row.isActive,
+      initialStock: String(row.openingStock),
+    });
+    if (!parsed.success) {
+      errors[row.key] = firstIssue(parsed.error);
+      continue;
+    }
+    const input = parsed.data;
+
+    // Already created on an earlier attempt: report it, change nothing.
+    const alreadyHere = existingBySku.get(input.sku);
+    if (alreadyHere) {
+      ids[row.key] = alreadyHere;
+      continue;
+    }
+
+    const { data: elsewhere } = await supabase
+      .from("product_variants")
+      .select("id")
+      .eq("sku", input.sku)
+      .maybeSingle();
+    if (elsewhere) {
+      errors[row.key] = `SKU ${input.sku} is already used by another product.`;
+      continue;
+    }
+
+    const { data, error } = await supabase
+      .from("product_variants")
+      .insert({
+        product_id: product.data,
+        sku: input.sku,
+        size: input.size,
+        colour_en: input.colourEn,
+        colour_hex: input.colourHex.toUpperCase(),
+        product_colour_id: colour.id,
+        price_override: input.priceOverride,
+        low_stock_threshold: input.lowStockThreshold,
+        is_active: input.isActive,
+        stock_quantity: input.initialStock,
+      })
+      .select("id")
+      .maybeSingle();
+
+    if (error || !data) {
+      if (error?.message.includes("duplicate key")) {
+        errors[row.key] = `SKU ${input.sku} is already in use.`;
+      } else {
+        logFailure("admin.variant_batch_insert", error ?? { message: "no row" }, {
+          sku: input.sku,
+        });
+        errors[row.key] = "Could not create this variant.";
+      }
+      continue;
+    }
+
+    ids[row.key] = data.id;
+    existingBySku.set(input.sku, data.id);
+    created += 1;
+  }
+
+  if (created > 0) {
+    updateTag("catalogue");
+    revalidatePath(`/admin/products/${product.data}`);
+    revalidatePath("/admin/inventory");
+  }
+
+  const failed = Object.keys(errors).length;
+  return {
+    ok: true,
+    message:
+      failed === 0
+        ? `${Object.keys(ids).length} variant${Object.keys(ids).length === 1 ? "" : "s"} ready.`
+        : `${failed} variant${failed === 1 ? "" : "s"} could not be created.`,
+    data: { ids, errors },
+  };
 }
 
 export async function adjustInventoryAction(formData: FormData): Promise<ActionResult> {

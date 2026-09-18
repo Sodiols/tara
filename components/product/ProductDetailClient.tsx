@@ -377,7 +377,14 @@ export function ProductDetailClient({
         </div>
 
         <div className="min-w-0 min-[900px]:sticky min-[900px]:top-[120px] min-[900px]:self-start">
-          <h1 className="font-serif font-normal text-3xl sm:text-4xl lg:text-[2.75rem] leading-[1.05] text-ink mb-3 text-balance">
+          {/*
+            Manrope, the site's own text face, rather than the Bodoni display
+            face — the same family as the product card titles, so the name reads
+            the same on the listing and on the page. Semibold and a step smaller
+            than the old 44px, because a sans at display size is louder than a
+            serif at the same size.
+          */}
+          <h1 className="font-sans font-semibold text-2xl sm:text-[1.75rem] lg:text-[2rem] leading-tight tracking-[-0.01em] text-ink mb-3 text-balance">
             {product.name}
           </h1>
 

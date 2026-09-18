@@ -4,6 +4,7 @@ import { saveSettingsAction } from "@/lib/supabase/actions/admin";
 import { DIVISIONS } from "@/data/bangladesh-geography";
 import { ActionForm, SubmitButton } from "./AdminForm";
 import {
+  AdminStickyActions,
   Field,
   Panel,
   PanelHeader,
@@ -335,9 +336,9 @@ export function StoreSettingsForm({ values }: { values: StoreSettingsValues }) {
         </div>
       </Panel>
 
-      <div>
+      <AdminStickyActions status="Changes apply to the storefront as soon as they are saved.">
         <SubmitButton>Save settings</SubmitButton>
-      </div>
+      </AdminStickyActions>
     </ActionForm>
   );
 }

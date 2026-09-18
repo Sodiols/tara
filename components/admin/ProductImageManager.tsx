@@ -36,7 +36,13 @@ import type { Tables } from "@/types/database";
 import { cn } from "@/lib/utils";
 import { useToastStore } from "@/store/toastStore";
 import { ActionButton } from "./AdminForm";
-import { Panel, PanelHeader, adminInputClass, adminSelectClass } from "./ui";
+import {
+  Panel,
+  PanelHeader,
+  adminButtonClass,
+  adminInputClass,
+  adminSelectClass,
+} from "./ui";
 import { uploadPendingImages } from "./upload-pending-images";
 
 /**
@@ -402,18 +408,22 @@ export function PendingImageGrid({
                           fill={isMain ? "currentColor" : "none"}
                         />
                       </button>
-                      <button
-                        type="button"
-                        disabled={disabled}
-                        onClick={() => pending.remove(item.key)}
-                        aria-label={`Remove ${item.file.name}`}
-                        className={cn(
-                          iconButtonClass,
-                          "ml-auto hover:border-[#8C2F2F] hover:text-[#8C2F2F]",
-                        )}
-                      >
-                        <X size={15} aria-hidden="true" />
-                      </button>
+                      {/* Already on the product: deleting it is the
+                          editor's job, where the delete is real. */}
+                      {!item.imageId && (
+                        <button
+                          type="button"
+                          disabled={disabled}
+                          onClick={() => pending.remove(item.key)}
+                          aria-label={`Remove ${item.file.name}`}
+                          className={cn(
+                            iconButtonClass,
+                            "ml-auto hover:border-[#8C2F2F] hover:text-[#8C2F2F]",
+                          )}
+                        >
+                          <X size={15} aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
                     {item.error ? (
                       <p className="font-sans text-[11px] leading-4 text-[#8C2F2F]">{item.error}</p>
@@ -679,7 +689,7 @@ export function ProductImageLibrary({
               type="button"
               onClick={() => setAdding((open) => !open)}
               disabled={remaining === 0 && !adding}
-              className="inline-flex h-10 items-center gap-2 rounded-control border border-border bg-taraWhite px-4 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine disabled:cursor-not-allowed disabled:text-muted"
+              className={adminButtonClass("secondary", "sm", "text-muted")}
             >
               {adding ? "Close" : "Add images"}
             </button>
@@ -820,7 +830,7 @@ export function ProductImageLibrary({
                   onClick={upload}
                   disabled={uploading || pending.items.length === 0}
                   aria-busy={uploading}
-                  className="inline-flex h-11 items-center justify-center gap-2 rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack disabled:cursor-not-allowed disabled:border-border disabled:bg-taraIvory disabled:text-muted"
+                  className={adminButtonClass("primary", "md")}
                 >
                   {uploading && <Loader2 size={15} className="animate-spin" aria-hidden="true" />}
                   {uploading

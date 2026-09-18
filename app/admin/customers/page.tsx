@@ -5,15 +5,15 @@ import { formatBdPhone } from "@/lib/phone";
 import { ASSIGNABLE_ROLES, roleLabel } from "@/lib/permissions";
 import {
   AdminEmptyState,
-  Field,
+  AdminFilterBar,
+  AdminFilterSelect,
+  AdminSearchInput,
   PageHeader,
   Pagination,
   Panel,
   TableWrap,
   Td,
   Th,
-  Toolbar,
-  adminInputClass,
 } from "@/components/admin/ui";
 import { ActiveBadge, Badge } from "@/components/admin/status";
 
@@ -44,60 +44,37 @@ export default async function AdminCustomersPage({
   return (
     <>
       <PageHeader
-        eyebrow="People"
+        eyebrow="Sales"
         title="Customers"
         description={`${total.toLocaleString("en-US")} account${total === 1 ? "" : "s"}. Open a customer to see their orders and spend.`}
       />
 
-      <form method="get" action="/admin/customers">
-        <Toolbar>
-          <Field label="Search" htmlFor="customer-search" className="min-w-[240px] flex-1">
-            <input
-              id="customer-search"
-              name="q"
-              type="search"
-              defaultValue={params.q ?? ""}
-              placeholder="Name, email or phone"
-              className={adminInputClass}
-            />
-          </Field>
-          <Field label="Role" htmlFor="customer-role" className="min-w-[170px]">
-            <select
-              id="customer-role"
-              name="role"
-              defaultValue={params.role ?? ""}
-              className={adminInputClass}
-            >
-              <option value="">All roles</option>
-              {ASSIGNABLE_ROLES.map((role) => (
-                <option key={role} value={role}>
-                  {roleLabel(role)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <div className="flex items-center gap-2 pb-[1px]">
-            <button
-              type="submit"
-              className="inline-flex h-11 items-center rounded-control border border-taraWine bg-taraWine px-5 font-sans text-[13px] font-semibold uppercase tracking-wide text-taraIvory transition-colors hover:border-taraBlack hover:bg-taraBlack"
-            >
-              Apply
-            </button>
-            <Link
-              href="/admin/customers"
-              className="inline-flex h-11 items-center rounded-control border border-border bg-taraWhite px-4 font-sans text-[13px] font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-            >
-              Reset
-            </Link>
-          </div>
-        </Toolbar>
-      </form>
+      <AdminFilterBar
+        action="/admin/customers"
+        resetHref="/admin/customers"
+        hasActiveFilters={Boolean(params.q || params.role)}
+      >
+        <AdminSearchInput defaultValue={params.q ?? ""} placeholder="Name, email or phone" />
+        <AdminFilterSelect
+          name="role"
+          label="Role"
+          defaultValue={params.role ?? ""}
+          options={[
+            { value: "", label: "All roles" },
+            ...ASSIGNABLE_ROLES.map((role) => ({ value: role, label: roleLabel(role) })),
+          ]}
+        />
+      </AdminFilterBar>
 
       <Panel>
         {rows.length === 0 ? (
           <AdminEmptyState
-            title="No customers match those filters"
-            description="Accounts appear here as soon as someone registers on the storefront."
+            title={params.q || params.role ? "No customers match these filters" : "No customers yet"}
+            description={
+              params.q || params.role
+                ? "Try a different search, or clear the filters."
+                : "Accounts appear here as soon as someone registers on the storefront."
+            }
           />
         ) : (
           <>

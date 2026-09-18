@@ -23,11 +23,13 @@ export default async function AdminCategoriesPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Selling"
+        eyebrow="Catalogue"
         title="Categories"
-        description="The top-level structure of the catalogue. Archiving a category hides it from the storefront; an administrator can restore it from Archive & Trash."
+        description="What a product IS — Two Piece, Hijab, Accessories. Every product belongs to exactly one category, and each category is a page in the storefront menu. For seasonal or curated groups, use Collections."
       />
       <TaxonomyAdmin
+        // The other taxonomy, one tap away, so the difference is visible.
+        relatedHref="/admin/collections"
         kind="categories"
         items={categories ?? []}
         productCounts={productCounts}

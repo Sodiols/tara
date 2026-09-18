@@ -21,7 +21,7 @@ export default async function LaunchOfferPage() {
   if (!data) {
     return (
       <>
-        <PageHeader eyebrow="Selling" title="Launch offer" />
+        <PageHeader eyebrow="Marketing" title="Launch offer" />
         <AdminErrorState
           title="The launch offer is unavailable"
           description="The launch_offer table could not be read. Check that supabase/migrations/0026_launch_offer_and_first_party_analytics.sql has been applied."
@@ -33,7 +33,7 @@ export default async function LaunchOfferPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Selling"
+        eyebrow="Marketing"
         title="Launch offer"
         description="One offer, shown on the homepage, on participating product pages, in the bag and at checkout. The discount is applied and re-checked by the database when the order is placed."
       />

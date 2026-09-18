@@ -51,7 +51,7 @@ export default async function AdminNewsletterPage({
   return (
     <>
       <PageHeader
-        eyebrow="People"
+        eyebrow="Marketing"
         title="Newsletter"
         description={`${total.toLocaleString("en-US")} record${total === 1 ? "" : "s"}. Unsubscribing keeps the row so the address is never re-added by mistake.`}
       />

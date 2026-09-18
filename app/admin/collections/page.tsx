@@ -27,11 +27,12 @@ export default async function AdminCollectionsPage() {
   return (
     <>
       <PageHeader
-        eyebrow="Selling"
+        eyebrow="Catalogue"
         title="Collections"
-        description="Seasonal and curated edits. Scheduled collections appear and disappear on their own dates."
+        description="A seasonal or curated edit — Eid, Summer, Festive. Optional for a product, and can be scheduled to appear and disappear on its own dates. For what a product is, use Categories."
       />
       <TaxonomyAdmin
+        relatedHref="/admin/categories"
         kind="collections"
         items={collections ?? []}
         productCounts={productCounts}

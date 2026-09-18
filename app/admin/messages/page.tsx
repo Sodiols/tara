@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { getAdminMessages, parsePage } from "@/lib/supabase/queries/admin";
 import { updateMessageStatusAction } from "@/lib/supabase/actions/admin";
 import { formatDateTime } from "@/lib/format";
@@ -6,6 +5,9 @@ import { formatBdPhone } from "@/lib/phone";
 import { MESSAGE_STATUSES, MESSAGE_STATUS_LABELS } from "@/lib/order-status";
 import {
   AdminEmptyState,
+  AdminFilterBar,
+  AdminQuickFilters,
+  AdminSearchInput,
   Field,
   PageHeader,
   Pagination,
@@ -53,58 +55,34 @@ export default async function AdminMessagesPage({
   return (
     <>
       <PageHeader
-        eyebrow="People"
+        eyebrow="Customer care"
         title="Contact messages"
         description="Submitted through the storefront contact form. Never shown publicly."
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        {FILTERS.map((option) => {
-          const isActive = status === option.value;
-          return (
-            <Link
-              key={option.label}
-              href={
-                option.value ? `/admin/messages?status=${option.value}` : "/admin/messages?status="
-              }
-              aria-current={isActive ? "true" : undefined}
-              className={
-                isActive
-                  ? "inline-flex h-9 items-center rounded-control border border-taraWine bg-taraWine px-3 font-sans text-xs font-semibold uppercase tracking-wide text-taraIvory"
-                  : "inline-flex h-9 items-center rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-              }
-            >
-              {option.label}
-            </Link>
-          );
-        })}
-        <form method="get" action="/admin/messages" className="ml-auto flex items-center gap-2">
-          <input type="hidden" name="status" value={status} />
-          <label htmlFor="message-search" className="sr-only">
-            Search messages
-          </label>
-          <input
-            id="message-search"
-            name="q"
-            type="search"
-            defaultValue={params.q ?? ""}
-            placeholder="Name, email or text"
-            className="h-9 w-52 rounded-control border border-border bg-taraWhite px-3 font-sans text-sm outline-none focus:border-taraWine"
-          />
-          <button
-            type="submit"
-            className="inline-flex h-9 items-center rounded-control border border-border bg-taraWhite px-3 font-sans text-xs font-semibold uppercase tracking-wide text-ink transition-colors hover:border-taraWine hover:text-taraWine"
-          >
-            Search
-          </button>
-        </form>
-      </div>
+      <AdminQuickFilters
+        label="Filter by status"
+        items={FILTERS.map((option) => ({
+          label: option.label,
+          href: option.value ? `/admin/messages?status=${option.value}` : "/admin/messages?status=",
+          active: status === option.value,
+        }))}
+      />
+
+      <AdminFilterBar action="/admin/messages" submitLabel="Search">
+        <input type="hidden" name="status" value={status} />
+        <AdminSearchInput defaultValue={params.q ?? ""} placeholder="Name, email or text" label="Search messages" />
+      </AdminFilterBar>
 
       <Panel>
         {rows.length === 0 ? (
           <AdminEmptyState
-            title="No messages here"
-            description="Customer enquiries from the contact page land in this queue."
+            title={status === "new" ? "No new messages" : "No messages here"}
+            description={
+              status === "new"
+                ? "Everything from the contact page has been read. New enquiries arrive here."
+                : "Try another status, or clear the search."
+            }
           />
         ) : (
           <>
