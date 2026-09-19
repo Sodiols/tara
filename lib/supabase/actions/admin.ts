@@ -793,7 +793,9 @@ export async function assignImageColourAction(
 // Variants and inventory
 // ---------------------------------------------------------------------------
 
-export async function saveVariantAction(formData: FormData): Promise<ActionResult> {
+export async function saveVariantAction(
+  formData: FormData,
+): Promise<ActionResult<{ id: string }>> {
   await requirePermission("catalogue.manage");
 
   /*
@@ -863,22 +865,32 @@ export async function saveVariantAction(formData: FormData): Promise<ActionResul
     // stock_quantity is deliberately absent: a database trigger rejects any
     // direct stock write so that every movement carries a reason and an audit
     // trail. Use adjustInventoryAction instead.
-    const { error } = await supabase.from("product_variants").update(payload).eq("id", input.id);
+    const { error } = await supabase
+      .from("product_variants")
+      .update(payload)
+      .eq("id", input.id)
+      .eq("product_id", input.productId);
     if (error) return logAndFail("variant update", error, "Could not save this variant.");
     updateTag("catalogue");
     revalidatePath(`/admin/products/${input.productId}`);
-    return { ok: true, message: "Variant updated." };
+    return { ok: true, message: "Variant updated.", data: { id: input.id } };
   }
 
-  const { error } = await supabase
+  // The new id is returned so the editor can record the row as created: a
+  // retry after a later step fails must not try to insert it a second time.
+  const { data: inserted, error } = await supabase
     .from("product_variants")
-    .insert({ ...payload, stock_quantity: input.initialStock });
-  if (error) return logAndFail("variant insert", error, "Could not add this variant.");
+    .insert({ ...payload, stock_quantity: input.initialStock })
+    .select("id")
+    .maybeSingle();
+  if (error || !inserted) {
+    return logAndFail("variant insert", error ?? { message: "no row" }, "Could not add this variant.");
+  }
 
   updateTag("catalogue");
   revalidatePath(`/admin/products/${input.productId}`);
   revalidatePath("/admin/inventory");
-  return { ok: true, message: "Variant added." };
+  return { ok: true, message: "Variant added.", data: { id: inserted.id } };
 }
 
 /**
