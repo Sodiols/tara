@@ -4,8 +4,9 @@ import { useEffect, useState, useSyncExternalStore } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import Image from "next/image";
-import { Menu, Search, User, ShoppingBag } from "lucide-react";
+import { Menu, User, ShoppingBag } from "lucide-react";
 import { DesktopNavigation } from "./DesktopNavigation";
+import { HeaderSearch } from "./HeaderSearch";
 import { useCartStore } from "@/store/cartStore";
 import { Container } from "./Container";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
@@ -97,43 +98,22 @@ export function Header({ identity }: { identity: StoreIdentity }) {
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-sm border-b border-border">
       <Container>
         {/*
-          Two layouts, one bar.
+          The search field is the centre of the bar.
 
-          FROM lg the logo sits at the left edge and everything else — the
-          primary links, then the four icons — is one right-aligned group.
-          `justify-between` across the two visible items does that with no
-          spacer elements and no magic widths.
-
-          BELOW lg there are no primary links, so the bar falls back to the
-          standard phone arrangement: hamburger, centred logo, icons. That is
-          what the three grid columns are for; 1fr / auto / 1fr centres the logo
-          in the bar however wide either side happens to be.
+          Logo, a search field filling the space in the middle, then account
+          and bag — one row at every width, with the primary links on a row of
+          their own underneath from lg. The field opens the full search panel.
         */}
-        {/*
-          BELOW sm the columns are auto / 1fr / auto, not 1fr / auto / 1fr.
-          A phone header now carries three icons — search, account, bag —
-          and those icons beside a hamburger cannot share a bar with a
-          logo held at the exact centre until roughly 430px: the equal side
-          columns are too narrow for the icon group, which then overflows into
-          the logo. So on a phone the logo centres in the space between the
-          two sides instead, and from sm up the true centre returns.
-        */}
-        <div className="grid grid-cols-[auto_1fr_auto] items-center gap-x-2 h-16 sm:grid-cols-[1fr_auto_1fr] sm:gap-x-6 lg:h-20 lg:flex lg:justify-between lg:gap-x-8">
-          <div className="flex min-w-0 items-center lg:hidden">
-            <button
-              onClick={() => setMobileNavOpen(true)}
-              aria-label={"Menu"}
-              className="p-2 -ml-2 text-ink"
-            >
-              <Menu size={22} />
-            </button>
-          </div>
-
-          <Link
-            href="/"
-            className="shrink-0 justify-self-center lg:justify-self-start"
-            aria-label={"TARA"}
+        <div className="flex h-16 items-center gap-2 sm:gap-4 md:gap-6 lg:h-20 lg:gap-10">
+          <button
+            onClick={() => setMobileNavOpen(true)}
+            aria-label={"Menu"}
+            className="-ml-2 shrink-0 p-2 text-ink lg:hidden"
           >
+            <Menu size={22} />
+          </button>
+
+          <Link href="/" className="shrink-0" aria-label={"TARA"}>
             <Image
               src="/logo/logo-black.png"
               alt={"TARA"}
@@ -152,65 +132,56 @@ export function Header({ identity }: { identity: StoreIdentity }) {
               loading="eager"
               fetchPriority="low"
               quality={90}
-              // 20px at every width. It was 24px from lg, which put the
-              // wordmark at 30% of an 80px bar and made it read heavier than
-              // the 13px links sitting beside it. One size is also one less
-              // thing to keep in step between breakpoints.
               className="h-5 w-auto"
             />
           </Link>
 
-          {/*
-            The links and the icons travel together as the right-hand group. The
-            outer gap only separates those two clusters — the icons keep their
-            own tight spacing in the inner box, so moving the nav here does not
-            push the cart away from the other icons.
-          */}
-          <div className="flex min-w-0 shrink-0 items-center justify-end gap-6 xl:gap-10">
-            <DesktopNavigation />
-            <div className="flex shrink-0 items-center gap-0 sm:gap-1">
-              <button
-                onClick={() => setSearchOpen(true)}
-                aria-label={"Search"}
-                className="p-1.5 sm:p-2 text-ink hover:text-wine transition-colors"
+          <HeaderSearch onOpen={() => setSearchOpen(true)} className="min-w-0 flex-1" />
+
+          <div className="flex shrink-0 items-center gap-0 sm:gap-1">
+            {/*
+              Visible at every width. It used to be desktop-only, which left a
+              phone with no way into the account area from the bar at all —
+              only from inside the hamburger drawer.
+            */}
+            {authState === "authenticated" ? (
+              <AccountMenu fullName={accountName} />
+            ) : (
+              <Link
+                href="/login"
+                aria-label={"Account"}
+                aria-busy={authState === "loading"}
+                className={`inline-flex p-1.5 sm:p-2 text-ink hover:text-wine transition-colors ${
+                  authState === "loading" ? "opacity-50" : ""
+                }`}
               >
-                <Search size={20} />
-              </button>
-              {/*
-                Visible at every width. It used to be desktop-only, which left a
-                phone with no way into the account area from the bar at all —
-                only from inside the hamburger drawer.
-              */}
-              {authState === "authenticated" ? (
-                <AccountMenu fullName={accountName} />
-              ) : (
-                <Link
-                  href="/login"
-                  aria-label={"Account"}
-                  aria-busy={authState === "loading"}
-                  className={`inline-flex p-1.5 sm:p-2 text-ink hover:text-wine transition-colors ${
-                    authState === "loading" ? "opacity-50" : ""
-                  }`}
-                >
-                  <User size={20} />
-                </Link>
+                <User size={20} />
+              </Link>
+            )}
+            <button
+              onClick={openBag}
+              aria-label={"Shopping Bag"}
+              className="relative p-1.5 sm:p-2 text-ink hover:text-wine transition-colors"
+            >
+              <ShoppingBag size={20} />
+              {cartCount > 0 && (
+                <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 bg-wine text-white text-[10px] leading-none rounded-full w-4 h-4 flex items-center justify-center">
+                  {cartCount}
+                </span>
               )}
-              <button
-                onClick={openBag}
-                aria-label={"Shopping Bag"}
-                className="relative p-1.5 sm:p-2 text-ink hover:text-wine transition-colors"
-              >
-                <ShoppingBag size={20} />
-                {cartCount > 0 && (
-                  <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 bg-wine text-white text-[10px] leading-none rounded-full w-4 h-4 flex items-center justify-center">
-                    {cartCount}
-                  </span>
-                )}
-              </button>
-            </div>
+            </button>
           </div>
         </div>
+
       </Container>
+
+      <div className="hidden border-t border-border lg:block">
+        <Container>
+          <div className="flex h-11 items-center justify-center">
+            <DesktopNavigation />
+          </div>
+        </Container>
+      </div>
 
       {mobileNavOpen ? (
         <MobileNavigation
