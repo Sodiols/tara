@@ -175,7 +175,7 @@ export function Header({ identity }: { identity: StoreIdentity }) {
 
       </Container>
 
-      <div className="hidden border-t border-border lg:block">
+      <div className="hidden lg:block">
         <Container>
           <div className="flex h-11 items-center justify-center">
             <DesktopNavigation />
