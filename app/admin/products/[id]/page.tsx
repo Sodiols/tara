@@ -22,9 +22,10 @@ export const metadata: Metadata = {
  *
  * A summary first — status, price, variants, stock, photographs, how complete
  * the listing is — so the state of the product is readable before anything is
- * scrolled. Then the workspace: every section in the order staff work in, one
- * Save for the product's own fields, and a panel-level button for each
- * individual operation. See components/admin/ProductEditor.tsx.
+ * scrolled. Then the workspace: every section in the order staff work in, and
+ * one Save changes for all of it — details, colours, photographs, variants and
+ * stock. Nothing is applied until it is saved. See
+ * components/admin/ProductEditor.tsx.
  */
 export default async function EditProductPage({
   params,
@@ -42,15 +43,6 @@ export default async function EditProductPage({
   if (!data) notFound();
 
   const { product, categories, collections, variants, images, colours } = data;
-
-  // How many photographs each colour owns, counted once here rather than in the
-  // panel, so the colour list and the image grid cannot disagree.
-  const imageCounts = images.reduce<Record<string, number>>((counts, image) => {
-    if (image.product_colour_id) {
-      counts[image.product_colour_id] = (counts[image.product_colour_id] ?? 0) + 1;
-    }
-    return counts;
-  }, {});
 
   const trust = productTrustReport({
     description: product.description_en,
@@ -149,7 +141,6 @@ export default async function EditProductPage({
         colours={colours}
         images={images}
         variants={variants}
-        imageCounts={imageCounts}
         trust={trust}
       />
     </>
