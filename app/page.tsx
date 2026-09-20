@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import { Suspense } from "react";
 import { HeroSection } from "@/components/home/HeroSection";
 import { NewArrivalsSection } from "@/components/home/NewArrivalsSection";
-import { FeaturedBanner } from "@/components/home/FeaturedBanner";
 import { BestSellersSection } from "@/components/home/BestSellersSection";
+import { RecentReviewsSection } from "@/components/home/RecentReviewsSection";
 import { BrandStorySection } from "@/components/home/BrandStorySection";
 import { SocialGallery } from "@/components/home/SocialGallery";
 import { ServiceBenefits } from "@/components/home/ServiceBenefits";
@@ -151,9 +151,8 @@ export default function HomePage() {
         </Suspense>
       </div>
 
-      <div className="defer-render [--defer-render-size:560px] md:[--defer-render-size:665px] lg:[--defer-render-size:940px]">
-        <FeaturedBanner />
-      </div>
+      {/* Heading only for now; what goes under it is still being decided. */}
+      <RecentReviewsSection />
 
       <div className="defer-render [--defer-render-size:765px] md:[--defer-render-size:530px] lg:[--defer-render-size:780px]">
         <BrandStorySection />
