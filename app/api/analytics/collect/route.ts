@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { consumeDurableLimit, guardPublicAction } from "@/lib/rate-limit";
 import { MAX_EVENTS_PER_BATCH } from "@/lib/analytics/events";
 import { logger } from "@/lib/logger";
+import { redactTrackingPath } from "@/lib/order-identifiers";
 
 /**
  * The one way analytics events get in.
@@ -52,7 +53,9 @@ const eventSchema = z.object({
     "search",
     "category_view",
   ]),
-  path: z.string().max(300).optional(),
+  // A tracking page path is a secret; it is stored as /track/[token] even if
+  // an older browser bundle sends it raw.
+  path: z.string().max(300).transform(redactTrackingPath).optional(),
   productId: z.string().uuid().optional(),
   variantId: z.string().uuid().optional(),
   colour: z.string().max(60).optional(),
@@ -73,7 +76,7 @@ const batchSchema = z.object({
       utmContent: z.string().max(120).optional(),
       utmTerm: z.string().max(120).optional(),
       referrerHost: z.string().max(120).optional(),
-      landingPath: z.string().max(300).optional(),
+      landingPath: z.string().max(300).transform(redactTrackingPath).optional(),
     })
     .default({}),
   events: z.array(eventSchema).min(1).max(MAX_EVENTS_PER_BATCH),

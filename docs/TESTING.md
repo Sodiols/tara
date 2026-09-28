@@ -32,6 +32,7 @@ bundler understands (`@/…` aliases and extensionless imports) and mapping
 | `tests/commerce.test.ts` | Money arithmetic, phone normalisation, store time zone, and every input schema |
 | `tests/security.test.ts` | Open-redirect protection, the role→permission table, and the order state machine |
 | `tests/hardening.test.ts` | JSON-LD escaping and log redaction |
+| `tests/order-identifiers.test.ts` | Order number and tracking token formats, legacy compatibility, the tracking allowlist, analytics redaction, and migration 0027's contract: CSPRNG source, bounded collision-only retry, immutability, and `place_order()` unchanged from 0026 outside the identifier block |
 | `tests/catalogue.test.ts` | Category labelling, including the prototype-pollution case that once blanked the product grid |
 
 ---
@@ -109,6 +110,31 @@ the role accounts, only the tests that need it skip.
 - replaying an idempotency key returns the original order and creates no second
   one
 - a second order from the same phone within 90 seconds is refused
+
+**`tests/integration/order-identifiers.test.ts`**
+
+- guest and signed-in orders receive a `TARA-YY-MM-…` number for the current
+  store month and a `TRK-…` token
+- an idempotent replay returns the same order number and token
+- concurrent orders never share either identifier
+- a caller cannot supply either identifier, as an RPC argument or smuggled in
+  the customer object, and cannot insert into `orders`
+- `get_order_tracking()` finds the order by its exact token and returns only the
+  allowlisted keys; the order number, the internal id, a guess, a lower-cased or
+  truncated token and a `%` wildcard all return null without error
+
+### SQL-level tests
+
+```bash
+psql "$TEST_DATABASE_URL" -v ON_ERROR_STOP=1 -f supabase/tests/0027_order_identifiers.sql
+```
+
+Run as the owner of a **testing** database. Everything is inside one
+transaction that is rolled back. It covers what the anon key cannot reach: the
+generators' shape, uniqueness and symbol spread; `NOT NULL` and `UNIQUE`; a
+forced order-number collision retried exactly once; five collisions in a row
+failing atomically; the immutability trigger; the insert shape check; the
+tracking allowlist; idempotent replay; and the grants.
 
 ---
 

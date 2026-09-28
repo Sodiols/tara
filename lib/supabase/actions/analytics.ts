@@ -5,6 +5,7 @@ import { createClient } from "../server";
 import { isSupabaseConfigured } from "../env";
 import { consumeDurableLimit, guardPublicAction } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { isOrderNumber, isTrackingToken } from "@/lib/order-identifiers";
 
 /**
  * Recording a conversion.
@@ -38,8 +39,11 @@ import { logger } from "@/lib/logger";
 const inputSchema = z.object({
   visitorId: z.string().uuid(),
   sessionId: z.string().uuid(),
-  orderNumber: z.string().trim().min(3).max(40),
-  trackingToken: z.string().trim().min(32).max(100),
+  orderNumber: z.string().trim().max(40).refine(isOrderNumber),
+  // Both token shapes: TRK- (24 characters, from migration 0027) and the 48-hex
+  // legacy form. A 32-character floor used to stand in for this, and it would
+  // have silently refused every new token.
+  trackingToken: z.string().trim().max(48).refine(isTrackingToken),
 });
 
 export async function recordPurchaseAction(input: unknown): Promise<{ ok: boolean }> {

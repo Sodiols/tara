@@ -3,6 +3,7 @@ import "server-only";
 import { createClient } from "../server";
 import { requirePermission, requireStaff } from "../auth";
 import { isAppRole, type Permission } from "@/lib/permissions";
+import { normaliseOrderNumber } from "@/lib/order-identifiers";
 import type {
   MessageStatus,
   OrderStatus,
@@ -233,7 +234,12 @@ export async function getAdminOrders(
   if (filters.from) query = query.gte("created_at", `${filters.from}T00:00:00+06:00`);
   if (filters.to) query = query.lte("created_at", `${filters.to}T23:59:59+06:00`);
 
-  const term = escapeFilterValue(filters.search ?? "");
+  // A complete order number -- what a customer reads out on the phone, in any
+  // case -- is an exact match on the unique index. Anything shorter keeps the
+  // broad search, so "8F42K" or a phone fragment still finds the order.
+  const exactOrderNumber = normaliseOrderNumber(filters.search);
+  const term = exactOrderNumber ? "" : escapeFilterValue(filters.search ?? "");
+  if (exactOrderNumber) query = query.eq("order_number", exactOrderNumber);
   if (term) {
     query = query.or(
       [

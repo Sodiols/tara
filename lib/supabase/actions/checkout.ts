@@ -11,6 +11,13 @@ import { normalizeBdPhone } from "@/lib/phone";
 import { normaliseSizeValue } from "@/lib/product-size";
 import { logger, logFailure } from "@/lib/logger";
 import { dispatchOrderNotifications } from "@/lib/email/dispatch";
+import {
+  isOrderNumber,
+  isTrackingToken,
+  trackingPath,
+  type OrderNumber,
+  type TrackingToken,
+} from "@/lib/order-identifiers";
 import type { CartItem } from "@/types";
 import type { ActionResult } from "./auth";
 import { isSupabaseConfigured } from "../env";
@@ -49,7 +56,25 @@ const checkoutInput = checkoutSchema.omit({ items: true }).extend({
   idempotencyKey: z.string().uuid().optional(),
 });
 
+/**
+ * What the browser learns about the order it just placed: the two public
+ * identifiers, the tracking page's path, and the total. Never the internal id.
+ *
+ * Both identifiers are minted by place_order() inside the order transaction
+ * (migration 0027). The checkout schema has no field for either -- zod drops
+ * unknown keys -- and place_order() has no parameter for either, so a browser
+ * that sends its own is simply ignored. A replayed idempotency key returns the
+ * original order's values, never fresh ones.
+ */
 type OrderResult = {
+  orderNumber: OrderNumber;
+  trackingToken: TrackingToken;
+  trackingUrl: string;
+  total: number;
+  replayed: boolean;
+};
+
+type PlaceOrderResponse = {
   orderNumber: string;
   trackingToken: string;
   total: number;
@@ -204,7 +229,26 @@ async function placeOrderAction(input: unknown): Promise<ActionResult<OrderResul
     return checkoutError(error.message);
   }
 
-  const order = data as unknown as OrderResult;
+  const placed = data as unknown as PlaceOrderResponse;
+  if (!isOrderNumber(placed.orderNumber) || !isTrackingToken(placed.trackingToken)) {
+    // The order exists -- this is a contract failure between this build and
+    // the database, not a checkout failure -- so the customer is not told to
+    // try again, which would place a second order.
+    logFailure("checkout.unexpected_identifiers", new Error("place_order returned identifiers in an unknown shape"), {
+      replayed: placed.replayed,
+    });
+    return {
+      ok: false,
+      message: "Your order was received, but we could not show its details. Please check your email or contact us before ordering again.",
+    };
+  }
+  const order: OrderResult = {
+    orderNumber: placed.orderNumber,
+    trackingToken: placed.trackingToken,
+    trackingUrl: trackingPath(placed.trackingToken),
+    total: Number(placed.total),
+    replayed: placed.replayed,
+  };
   logger.info("checkout.order_placed", {
     orderNumber: order.orderNumber,
     replayed: order.replayed,
@@ -318,35 +362,4 @@ export async function previewCouponAction(
   // place_order() at submit time, so a stale preview can never become the
   // amount actually charged.
   return { ok: true, data: { discount: preview.discount ?? 0, code: preview.code } };
-}
-
-export async function trackGuestOrderAction(orderNumber: string, trackingToken: string) {
-  if (!isSupabaseConfigured()) {
-    return { ok: false as const, message: "Supabase has not been configured yet." };
-  }
-
-  // Tracking tokens are 48 hex characters, so brute force is impractical — but
-  // the attempt rate is capped anyway, durably as well as in process.
-  const { fingerprint, result } = await guardPublicAction("tracking", 20, 600);
-  if (!result.allowed || !(await consumeDurableLimit("tracking", fingerprint))) {
-    return {
-      ok: false as const,
-      message: "Too many tracking attempts. Please wait a few minutes.",
-    };
-  }
-
-  const trimmedNumber = orderNumber.trim().slice(0, 40);
-  const trimmedToken = trackingToken.trim().slice(0, 100);
-  if (!trimmedNumber || trimmedToken.length < 32) {
-    return { ok: false as const, message: "No order matched those tracking details." };
-  }
-
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("get_guest_order_tracking", {
-    p_order_number: trimmedNumber,
-    p_tracking_token: trimmedToken,
-  });
-
-  if (error || !data) return { ok: false as const, message: "No order matched those tracking details." };
-  return { ok: true as const, data };
 }

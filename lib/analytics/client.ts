@@ -9,6 +9,7 @@ import {
 } from "./events";
 import { referrerHost, utmFromSearch } from "./attribution";
 import { sendPageViewToPixels, sendToPixels } from "./pixels";
+import { isTrackingPagePath, redactTrackingPath } from "@/lib/order-identifiers";
 
 /**
  * The storefront's own analytics, in the browser.
@@ -184,7 +185,9 @@ function sessionAttribution(freshSession: boolean): AttributionInput {
   const fromUrl: AttributionInput = {
     ...utmFromSearch(window.location.search),
     referrerHost: referrerHost(document.referrer, window.location.hostname),
-    landingPath: window.location.pathname.slice(0, 300),
+    // A tracking link as the landing page is common (it is in every order
+    // email), and its path is a secret: it is stored redacted.
+    landingPath: redactTrackingPath(window.location.pathname).slice(0, 300),
   };
 
   const useUrl = freshSession || !stored || hasCampaign(fromUrl);
@@ -291,7 +294,7 @@ export function track(event: AnalyticsEventInput): void {
     attachLifecycleListeners();
     queue.push({
       ...event,
-      path: event.path ?? window.location.pathname,
+      path: redactTrackingPath(event.path ?? window.location.pathname),
     });
     sendToPixels(event);
     if (queue.length >= MAX_EVENTS_PER_BATCH) flush();
@@ -324,7 +327,9 @@ export function trackPageView(path: string, options?: { pixels?: boolean }): voi
     // page of a visit is deliberately not reported here — otherwise every
     // landing page would be two page views in GA4 and one in TARA's own store,
     // and the two would never agree again.
-    if (options?.pixels !== false) sendPageViewToPixels(path);
+    // Never for a tracking page: the tags would report its secret URL. (They
+    // are not loaded on one anyway -- see MarketingTags -- this is the backstop.)
+    if (options?.pixels !== false && !isTrackingPagePath(path)) sendPageViewToPixels(path);
   } catch {
     // Same.
   }

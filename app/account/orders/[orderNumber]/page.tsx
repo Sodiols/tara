@@ -7,6 +7,8 @@ import { formatOrderAddress } from "@/lib/order-address";
 import { deliveryZoneLabel } from "@/lib/delivery";
 import { formatSizeLabel } from "@/lib/product-size";
 import { ReceiptDownloadButton } from "@/components/orders/ReceiptDownloadButton";
+import { LinkButton } from "@/components/ui/Button";
+import { isTrackingToken, trackingPath } from "@/lib/order-identifiers";
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ orderNumber: string }> }) {
   const { orderNumber } = await params;
@@ -20,11 +22,22 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ or
     outside: deliveryZoneLabel("outside_sylhet", settings.delivery),
   });
 
+  // The owner reads their own row under RLS, token included, so the account
+  // page can offer the same public tracking page the confirmation email links to.
+  const token = result.order.tracking_token;
+  const tracking = isTrackingToken(token) ? trackingPath(token) : null;
+
   return (
     <Container className="py-10 lg:py-14">
       <h1 className="font-serif text-3xl text-ink">{result.order.order_number}</h1>
       <p className="mt-2 text-sm capitalize text-muted">{result.order.status.replaceAll("_", " ")}</p>
-      <ReceiptDownloadButton orderNumber={result.order.order_number} className="mt-5" />
+      <div className="mt-5 flex flex-wrap items-start gap-3">
+        {tracking && (
+          // reloadDocument: the tracking URL is a secret; see MarketingTags.
+          <LinkButton href={tracking} reloadDocument variant="primary">{"Track order"}</LinkButton>
+        )}
+        <ReceiptDownloadButton orderNumber={result.order.order_number} />
+      </div>
       <div className="mt-8 divide-y divide-border border-y border-border">
         {result.items.map((item) => <div key={item.id} className="py-4 text-sm"><div className="flex justify-between gap-4"><span>{item.product_name_en} · {formatSizeLabel(item.size)} · {item.colour_en} × {item.quantity}</span><strong>{formatPrice(Number(item.line_total))}</strong></div>{result.order.status === "delivered" && <p className="mt-2 text-xs text-muted">Review this item from its product page.</p>}</div>)}
       </div>

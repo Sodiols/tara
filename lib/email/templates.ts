@@ -3,6 +3,7 @@ import "server-only";
 import { formatDateTime, formatTaka } from "@/lib/format";
 import { formatOrderAddress, formatOrderAddressInline } from "@/lib/order-address";
 import { ORDER_STATUS_LABELS } from "@/lib/order-status";
+import { isTrackingToken, trackingUrl } from "@/lib/order-identifiers";
 import type { OrderReceiptSnapshot } from "@/lib/order-receipt";
 import { resolveSiteOrigin } from "@/lib/site-url";
 import type { StoreIdentity } from "@/lib/supabase/queries/settings";
@@ -270,11 +271,17 @@ function adminNewOrderEmail(recipient: string | string[], snapshot: OrderReceipt
 export function buildOrderNotificationEmail(template: string, recipient: string | string[], snapshot: OrderReceiptSnapshot, store: StoreIdentity, images: ProductImageMap = {}): EmailMessage | null {
   const order = snapshot.order;
   const summary = orderSummary(snapshot);
-  const tracking = `${EMAIL_ORIGIN}/track-order`;
-  const trackingText = order.trackingToken ? `\n\nTrack at ${tracking}\nOrder number: ${order.orderNumber}\nTracking token: ${order.trackingToken}` : "";
-  const trackingHtml = order.trackingToken
+  // The link carries the token; the token itself is not printed. A customer
+  // needs one thing to click, and the order number (already in the summary
+  // above) is what they quote to support. A token in an unrecognised shape is
+  // left out rather than turned into a link that cannot work.
+  const token = order.trackingToken && isTrackingToken(order.trackingToken) ? order.trackingToken : null;
+  const tracking = token ? trackingUrl(EMAIL_ORIGIN, token) : null;
+  const trackingText = tracking ? `\n\nTrack your order: ${tracking}` : "";
+  const trackingHtml = tracking
     ? sectionTitle("Track your order")
-      + paragraph(`<a href="${escapeHtml(tracking)}" style="color:${BRAND.wine};font-weight:700">Track your order</a><br>Order number: <strong>${escapeHtml(order.orderNumber)}</strong><br>Tracking token: <code style="font-size:12px;word-break:break-all">${escapeHtml(order.trackingToken)}</code>`, "margin:0;font-size:14px")
+      + primaryButton("Track your order", tracking)
+      + paragraph(`Or open this link: <a href="${escapeHtml(tracking)}" style="color:${BRAND.wine};word-break:break-all">${escapeHtml(tracking)}</a>`, `margin:12px 0 0;font-size:12px;color:${BRAND.muted}`)
     : "";
 
   const customer = (title: string, intro: string, subject: string): EmailMessage => {
