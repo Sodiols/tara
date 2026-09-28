@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/env";
 import { logger, logFailure } from "@/lib/logger";
 import { parseOrderReceiptSnapshot } from "@/lib/order-receipt";
+import { receiptFilename } from "@/lib/order-identifiers";
 import { generateOrderReceiptPdf } from "@/lib/pdf/order-receipt";
 import { getStoreIdentity } from "@/lib/supabase/queries/settings";
 import { getEmailProvider, isEmailConfigured } from "./provider";
@@ -120,7 +121,7 @@ async function deliver(supabase: Awaited<ReturnType<typeof createClient>>, claim
         message = buildOrderNotificationEmail(notification.template, recipient, snapshot, store, images);
         if (message && notification.template === "order_placed" && notification.recipient !== "store") {
           const receipt = await generateOrderReceiptPdf(snapshot, store);
-          message.attachments = [{ filename: `TARA-Order-${snapshot.order.orderNumber}.pdf`, content: receipt, contentType: "application/pdf" }];
+          message.attachments = [{ filename: receiptFilename(snapshot.order.orderNumber), content: receipt, contentType: "application/pdf" }];
         }
       }
 

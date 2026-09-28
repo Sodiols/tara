@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { getOrder } from "@/lib/supabase/queries/orders";
 import { Container } from "@/components/layout/Container";
@@ -8,7 +9,16 @@ import { deliveryZoneLabel } from "@/lib/delivery";
 import { formatSizeLabel } from "@/lib/product-size";
 import { ReceiptDownloadButton } from "@/components/orders/ReceiptDownloadButton";
 import { LinkButton } from "@/components/ui/Button";
-import { isTrackingToken, trackingPath } from "@/lib/order-identifiers";
+import { isTrackingToken, normaliseOrderNumber, trackingPath } from "@/lib/order-identifiers";
+
+export async function generateMetadata({ params }: { params: Promise<{ orderNumber: string }> }): Promise<Metadata> {
+  // Only a real order number reaches the title; anything else in the URL does not.
+  const orderNumber = normaliseOrderNumber(decodeURIComponent((await params).orderNumber));
+  return {
+    title: orderNumber ? `Order ${orderNumber}` : "Order details",
+    description: "The details of an order placed with TARA.",
+  };
+}
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ orderNumber: string }> }) {
   const { orderNumber } = await params;

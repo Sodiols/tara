@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { receiptFilename } from "@/lib/order-identifiers";
 
 export function ReceiptDownloadButton({ orderNumber, trackingToken, className }: { orderNumber: string; trackingToken?: string; className?: string }) {
   const [loading, setLoading] = useState(false);
@@ -21,7 +22,7 @@ export function ReceiptDownloadButton({ orderNumber, trackingToken, className }:
       const url = URL.createObjectURL(await response.blob());
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `TARA-Order-${orderNumber}.pdf`;
+      anchor.download = receiptFilename(orderNumber);
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();

@@ -16,6 +16,7 @@ import {
   isTrackingToken,
   normaliseOrderNumber,
   normaliseTrackingToken,
+  receiptFilename,
   redactTrackingPath,
   trackingPath,
   trackingUrl,
@@ -204,6 +205,13 @@ describe("tracking tokens", () => {
     ]) {
       assert.equal(normaliseTrackingToken(hostile), null, String(hostile).slice(0, 40));
     }
+  });
+
+  test("the receipt file name does not repeat the brand and survives odd input", () => {
+    assert.equal(receiptFilename(NEW_NUMBER), "TARA-Order-26-09-8F42K7M9Q2.pdf");
+    assert.equal(receiptFilename(LEGACY_NUMBER), "TARA-Order-20260928-001042.pdf");
+    assert.equal(receiptFilename('x"; evil.exe'), "TARA-Order-xevilexe.pdf");
+    assert.equal(receiptFilename(""), "TARA-Order-receipt.pdf");
   });
 
   test("the public URL is /track/<token> and uses the configured origin", () => {

@@ -5,6 +5,7 @@ import { parseOrderReceiptSnapshot } from "@/lib/order-receipt";
 import { generateOrderReceiptPdf } from "@/lib/pdf/order-receipt";
 import { getStoreIdentity } from "@/lib/supabase/queries/settings";
 import { consumeDurableLimit, guardPublicAction } from "@/lib/rate-limit";
+import { receiptFilename } from "@/lib/order-identifiers";
 
 export const runtime = "nodejs";
 
@@ -40,7 +41,7 @@ export async function POST(request: Request, context: { params: Promise<{ orderN
     status: 200,
     headers: {
       "content-type": "application/pdf",
-      "content-disposition": `attachment; filename="TARA-Order-${orderNumber}.pdf"`,
+      "content-disposition": `attachment; filename="${receiptFilename(orderNumber)}"`,
       "cache-control": "private, no-store",
       "x-content-type-options": "nosniff",
     },

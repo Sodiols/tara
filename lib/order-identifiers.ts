@@ -128,6 +128,16 @@ export function trackingUrl(origin: string, token: TrackingToken): string {
 }
 
 /**
+ * The receipt PDF's file name, the same wherever it is produced. The order
+ * number already starts with the brand, so it is not repeated:
+ * TARA-Order-26-09-8F42K7M9Q2.pdf rather than TARA-Order-TARA-26-09-….pdf.
+ */
+export function receiptFilename(orderNumber: string): string {
+  const reference = orderNumber.replace(/^TARA-/, "").replace(/[^A-Za-z0-9-]/g, "");
+  return `TARA-Order-${reference || "receipt"}.pdf`;
+}
+
+/**
  * The tracking page's URL is a secret. Anything that records a path -- TARA's
  * own analytics, GA4, the Meta pixel -- sees this instead of the token.
  */
