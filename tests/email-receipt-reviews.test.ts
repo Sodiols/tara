@@ -76,7 +76,10 @@ describe("transactional email", () => {
     const customer = buildOrderNotificationEmail("order_placed", "ayesha@example.com", snapshot, store);
     const admin = buildOrderNotificationEmail("admin_new_order", "owner@example.com", snapshot, store);
     assert.match(customer?.text ?? "", /TARA-1052/);
-    assert.match(customer?.text ?? "", /Tracking token:/);
+    // A tracking LINK, not the bare token -- and a legacy (48-hex) token from
+    // before migration 0027 still produces a working one.
+    assert.match(customer?.text ?? "", new RegExp(`Track your order: https://[^\\s]+/track/${"a".repeat(48)}`));
+    assert.doesNotMatch(customer?.text ?? "", /Tracking token:/);
     assert.match(customer?.html ?? "", /BDT|৳/);
     assert.doesNotMatch(admin?.text ?? "", new RegExp("a".repeat(48)));
     assert.match(admin?.text ?? "", /Ayesha Rahman/);

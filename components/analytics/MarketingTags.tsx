@@ -1,6 +1,7 @@
 "use client";
 
 import Script from "next/script";
+import { usePathname } from "next/navigation";
 import {
   GA4_MEASUREMENT_ID,
   META_PIXEL_ID,
@@ -11,6 +12,7 @@ import {
   hasTikTokPixel,
 } from "@/lib/analytics/config";
 import { markPixelsReady } from "@/lib/analytics/pixels";
+import { isTrackingPagePath } from "@/lib/order-identifiers";
 
 /**
  * The third-party measurement tags — GA4, Meta and TikTok.
@@ -33,9 +35,18 @@ import { markPixelsReady } from "@/lib/analytics/pixels";
  * the page it loads on, and `trackPageView()` reports only the client-side
  * navigations after it (see the note there). One page, one page view, in every
  * tag.
+ *
+ * NEVER ON A TRACKING PAGE. /track/<token> is a URL whose path is a secret, and
+ * every one of these tags reports the full page URL by itself. So they are not
+ * rendered there at all, and every link into a tracking page is a full document
+ * load (see CheckoutForm and the account order page), so a tag loaded on an
+ * earlier page is not carried into it either. Leaving the tracking page for
+ * any other page renders this component again, and the tags load normally.
  */
 export function MarketingTags() {
+  const pathname = usePathname();
   if (!hasAnyPixel) return null;
+  if (isTrackingPagePath(pathname ?? "")) return null;
 
   return (
     <>

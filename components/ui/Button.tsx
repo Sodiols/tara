@@ -72,6 +72,13 @@ interface LinkButtonProps extends BaseProps {
   className?: string;
   children: React.ReactNode;
   ariaLabel?: string;
+  /**
+   * Render a plain anchor, so following it loads a fresh document instead of a
+   * client-side transition. For destinations that must not inherit anything
+   * from the current page, such as the tracking page's secret URL.
+   */
+  reloadDocument?: boolean;
+  "data-testid"?: string;
 }
 
 export function LinkButton({
@@ -82,11 +89,15 @@ export function LinkButton({
   className,
   children,
   ariaLabel,
+  reloadDocument,
+  "data-testid": testId,
 }: LinkButtonProps) {
+  const Anchor = reloadDocument ? "a" : Link;
   return (
-    <Link
+    <Anchor
       href={href}
       aria-label={ariaLabel}
+      data-testid={testId}
       className={cn(
         "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-control tracking-wide uppercase font-sans font-medium transition-colors duration-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-wine",
         variantClasses[variant],
@@ -96,6 +107,6 @@ export function LinkButton({
       )}
     >
       {children}
-    </Link>
+    </Anchor>
   );
 }

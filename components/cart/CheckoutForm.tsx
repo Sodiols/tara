@@ -7,7 +7,7 @@ import { CheckCircle2 } from "lucide-react";
 import { Breadcrumb } from "@/components/layout/Breadcrumb";
 import { Container } from "@/components/layout/Container";
 import { Input } from "@/components/ui/Input";
-import { Button } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { formatPrice } from "@/lib/utils";
 import { isValidBdPhone, normalizeBdPhone, formatBdPhone } from "@/lib/phone";
 import {
@@ -175,7 +175,10 @@ export function CheckoutForm({
   // field is wrong twice in a row.
   const [errorFocusRequest, setErrorFocusRequest] = useState(0);
   const [orderNumber, setOrderNumber] = useState<string | null>(null);
+  // The token is kept only for the receipt download and the purchase record.
+  // The customer is shown the tracking PAGE, not the secret itself.
   const [trackingToken, setTrackingToken] = useState("");
+  const [trackingUrl, setTrackingUrl] = useState("");
   const [orderTotal, setOrderTotal] = useState<number | null>(null);
 
   const [couponCode, setCouponCode] = useState("");
@@ -470,6 +473,7 @@ export function CheckoutForm({
 
     setOrderNumber(result.data.orderNumber);
     setTrackingToken(result.data.trackingToken);
+    setTrackingUrl(result.data.trackingUrl);
     setOrderTotal(result.data.total);
     // Only once the order exists in the database. For Buy Now this clears the
     // Buy Now selection and leaves the cart exactly as it was.
@@ -488,18 +492,28 @@ export function CheckoutForm({
             "Thank you for shopping with TARA. We will call you shortly to confirm your order, then deliver it to your address. You pay the delivery agent in cash when it arrives — nothing to pay now."
           }
         </p>
-        <p className="mb-2 text-sm text-ink">
-          {"Order Number"}: <strong data-testid="order-number">{orderNumber}</strong>
-        </p>
-        {orderTotal != null && (
-          <p className="mb-6 text-sm text-ink">
-            {"Total"}: <strong>{formatPrice(orderTotal)}</strong>
+        <div className="mb-6 rounded-panel border border-border px-5 py-4">
+          <p className="text-xs uppercase tracking-wide text-muted">{"Order number"}</p>
+          <p className="mt-1 font-serif text-2xl text-ink">
+            <strong data-testid="order-number" className="font-normal">{orderNumber}</strong>
           </p>
-        )}
-        <p className="mb-8 break-all text-xs text-muted">
-          {"Tracking token"}: <strong data-testid="tracking-token">{trackingToken}</strong>
-        </p>
-        <div className="flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+          {orderTotal != null && (
+            <p className="mt-2 text-sm text-ink">
+              {"Total"}: <strong>{formatPrice(orderTotal)}</strong>
+            </p>
+          )}
+          <p className="mt-2 text-xs text-muted">
+            {"Quote this number if you contact us about your order."}
+          </p>
+        </div>
+        <div className="flex flex-col items-center gap-3 sm:flex-row sm:flex-wrap sm:justify-center">
+          {trackingUrl && (
+            // reloadDocument: the tracking page must be a fresh document, so
+            // no third-party tag loaded here ever sees its URL.
+            <LinkButton href={trackingUrl} reloadDocument data-testid="tracking-link">
+              {"Track your order"}
+            </LinkButton>
+          )}
           <ReceiptDownloadButton orderNumber={orderNumber} trackingToken={trackingToken} />
           <Link href="/"><Button variant="secondary">{"Continue Shopping"}</Button></Link>
         </div>

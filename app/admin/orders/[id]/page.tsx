@@ -1,7 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { notFound } from "next/navigation";
-import { Printer, ReceiptText } from "lucide-react";
+import { Printer, ReceiptText, Truck } from "lucide-react";
 import { getAdminOrderDetail } from "@/lib/supabase/queries/admin";
 import { requireStaff } from "@/lib/supabase/auth";
 import { formatDateTime, formatTaka } from "@/lib/format";
@@ -28,6 +28,7 @@ import { OrderStatusBadge, PaymentStatusBadge } from "@/components/admin/status"
 import { OrderActions } from "@/components/admin/OrderActions";
 import { OrderDeletePanel } from "@/components/admin/OrderDeletePanel";
 import { getPublicStoreSettings } from "@/lib/supabase/queries/settings";
+import { isTrackingToken, trackingPath } from "@/lib/order-identifiers";
 import { formatOrderAddress } from "@/lib/order-address";
 import { deliveryZoneLabel } from "@/lib/delivery";
 import { formatSizeLabel } from "@/lib/product-size";
@@ -65,6 +66,9 @@ export default async function AdminOrderDetailPage({
   const pipelineIndex = FULFILMENT_PIPELINE.indexOf(order.status);
   const archived = Boolean(order.archived_at);
   const canDelete = staff.permissions.includes("archive.manage");
+  // What support sends a customer who has lost their confirmation email. The
+  // page it opens shows only what the customer would see.
+  const customerTracking = isTrackingToken(order.tracking_token) ? trackingPath(order.tracking_token) : null;
 
   return (
     <>
@@ -89,6 +93,12 @@ export default async function AdminOrderDetailPage({
               <Printer size={15} aria-hidden="true" />
               Packing slip
             </AdminLinkButton>
+            {customerTracking && (
+              <AdminLinkButton href={customerTracking} external>
+                <Truck size={15} aria-hidden="true" />
+                Customer tracking page
+              </AdminLinkButton>
+            )}
           </>
         }
       />

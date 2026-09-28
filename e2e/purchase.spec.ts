@@ -59,24 +59,55 @@ test.describe("cash-on-delivery purchase", () => {
     await expect(page.getByRole("button", { name: /download receipt/i })).toBeVisible();
 
     const orderNumber = (await page.getByTestId("order-number").textContent())?.trim() ?? "";
-    expect(orderNumber, "the confirmation must show an order number").toBeTruthy();
+    // TARA-YY-MM-XXXXXXXXXX: this year and month, ten symbols from the
+    // unambiguous alphabet (migration 0027). Never an internal id.
+    expect(orderNumber).toMatch(/^TARA-\d{2}-(0[1-9]|1[0-2])-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{10}$/);
 
-    const trackingToken = (await page.getByTestId("tracking-token").textContent())?.trim() ?? "";
-    expect(trackingToken, "the confirmation must show a tracking token").toBeTruthy();
+    const trackingHref = (await page.getByTestId("tracking-link").getAttribute("href")) ?? "";
+    expect(trackingHref).toMatch(/^\/track\/TRK-[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{20}$/);
+    const trackingToken = trackingHref.slice("/track/".length);
+    // The confirmation shows the page, not the secret.
+    await expect(page.getByText(trackingToken, { exact: true })).toHaveCount(0);
 
+    await page.getByTestId("tracking-link").click();
+    await page.waitForURL(`**${trackingHref}`);
+    await expect(page.getByTestId("tracked-order-number")).toHaveText(orderNumber, { timeout: 20_000 });
+    await expect(page.getByTestId("tracked-status")).toBeVisible();
+
+    // The public page says nothing about who the order is for or where it goes.
+    const body = (await page.locator("main").textContent()) ?? "";
+    for (const secret of ["Playwright Test", "playwright-receipt@example.com", "House 12, Road 3", "Test Area"]) {
+      expect(body, `the tracking page shows "${secret}"`).not.toContain(secret);
+    }
+
+    // The entry form accepts the pasted link and lands on the same page.
     await page.goto("/track-order");
-    await page.getByPlaceholder(/order number/i).fill(orderNumber);
-    await page.getByPlaceholder(/tracking token/i).fill(trackingToken);
+    await page.getByLabel(/tracking code or link/i).fill(`https://www.tarabd.co${trackingHref}`);
     await page.getByRole("button", { name: /^track$/i }).click();
-    await expect(page.getByText(orderNumber)).toBeVisible({ timeout: 20_000 });
+    await page.waitForURL(`**${trackingHref}`);
+    await expect(page.getByTestId("tracked-order-number")).toHaveText(orderNumber, { timeout: 20_000 });
   });
 
-  test("an order cannot be tracked with the order number alone", async ({ page }) => {
+  test("an order cannot be tracked by order number, internal id or a guessed token", async ({ page }) => {
+    for (const path of [
+      "/track/TARA-26-09-AAAAAAAAAA",
+      "/track/16de7294-88bb-486e-95b5-fd8cbea83c0a",
+      "/track/18427",
+      "/track/TRK-AAAAAAAAAAAAAAAAAAAA",
+      "/track/TRK-%25",
+    ]) {
+      await page.goto(path);
+      await expect(page.getByText(/could not find an order/i), path).toBeVisible({ timeout: 20_000 });
+      await expect(page.getByTestId("tracked-order-number")).toHaveCount(0);
+    }
+  });
+
+  test("the entry form refuses something that is not a tracking code", async ({ page }) => {
     await page.goto("/track-order");
-    await page.getByPlaceholder(/order number/i).fill("TARA-1000");
-    await page.getByPlaceholder(/tracking token/i).fill("0".repeat(48));
+    await page.getByLabel(/tracking code or link/i).fill("TARA-1000");
     await page.getByRole("button", { name: /^track$/i }).click();
-    await expect(page.getByText(/no order matched/i)).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole("alert")).toContainText(/tracking code/i);
+    await expect(page).toHaveURL(/\/track-order$/);
   });
 });
 

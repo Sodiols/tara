@@ -59,6 +59,7 @@ migration has been applied.
 | `0024_archive_and_delete_orders.sql` | **Run after 0023 and before deploying the matching code.** Orders join Archive & Trash, administrators only (`archive.manage`) for archive, restore and permanent delete. `admin_purge_archived_order()` returns stock still held (once, never for an order already restocked; shipped/delivered only when asked), decrements coupon `usage_count`, keeps reviews by unlinking them, deletes the order with its items, events, notes, redemptions and outbox rows, and writes an `order.purged` audit entry with no personal data. Revenue and statistics need no change: they are computed from the remaining orders. Archived orders are frozen until restored. |
 | `0025_product_colour_images.sql` | Colourways become rows. `product_colours` is the identity a photograph and a variant point at, so "this product's Black" is a thing with an id rather than a string repeated on every size; `product_images.product_colour_id` and `product_variants.product_colour_id` join to it, triggers keep a variant's colour text in step with its colour row and refuse a colour belonging to another product, and existing colours are backfilled from the variants that already existed. `search_catalogue()` carries `colourId` on each photograph and `id` on each colour; `place_order()` stores the bought colour's own photograph on the order line. |
 | `0026_launch_offer_and_first_party_analytics.sql` | **Run before deploying the matching code** — the product editor writes `products.video_url`, the storefront reads the offer, and the tracker posts to a function that does not exist until this is applied. Four things: product media roles (`product_images.media_role`, `products.video_url`, and the delivery/exchange wording as store settings); the launch offer (`launch_offer`, one row, disabled, and `launch_offer_products`), whose money is decided by `launch_offer_benefit()` inside a reproduced `place_order()` and never by a caller; first-party analytics (`analytics_visitors`, `analytics_sessions`, `analytics_events`, written only through `track_analytics_events()` and readable only with `analytics.view`); and `admin_marketing_analytics()`, which recomputes revenue from live orders so a cancellation leaves the dashboard by itself. Adds the `analytics` rate-limit bucket. Destroys nothing and rewrites no existing row. |
+| `0027_secure_order_identifiers.sql` | **Run before deploying the matching code** — the new `/track/<token>` page calls `get_order_tracking()`, which does not exist until this is applied. New orders get `TARA-YY-MM-XXXXXXXXXX` (10 random symbols) instead of the sequential `TARA-YYYYMMDD-NNNNNN`, and a `TRK-` + 20-symbol tracking token instead of 48 hex characters, both drawn from `gen_random_uuid()` inside `place_order()`'s transaction. The orders insert is retried (at most 5 times) only when the unique constraint on either identifier rejects it. A trigger makes both columns immutable and requires the new shapes on insert. Existing orders keep their numbers and tokens; missing values, if any, are back-filled. `get_order_tracking(token)` is the public, allowlisted lookup; `get_guest_order_tracking()` now returns the same allowlist; `claim_order_notifications()` and `get_customer_receipt()` accept both token shapes, and the receipt's token path closes one hour after the order. Tests: `supabase/tests/0027_order_identifiers.sql`. |
 
 ---
 
@@ -93,6 +94,14 @@ twice.
 **Order status follows an explicit table.** `order_status_transitions` lists
 every legal move and the permission it requires. There is no numeric ranking to
 trick.
+
+**Order identifiers are minted by the database, once.** `place_order()` draws
+`order_number` and `tracking_token` inside its transaction; no function takes
+either as a parameter and no client role can insert into `orders`. Both are
+`NOT NULL UNIQUE`, and `orders_identifiers_guard` rejects any later change to
+either. The internal `id` is never a public reference: customers see the order
+number, and the public tracking page is keyed only on the token. See
+`lib/order-identifiers.ts` for the formats.
 
 **Cash on delivery, in SQL.** `place_order()` writes `cash_on_delivery` and
 `standard` on every order and ignores what the caller asks for.
